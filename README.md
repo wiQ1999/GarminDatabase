@@ -4,7 +4,7 @@ Prywatne narzędzie do pobierania dziennych archiwów dobrostanu z Garmin Connec
 
 ## Stan projektu
 
-Uzgodniono wymagania; aplikacja nie jest jeszcze zaimplementowana. Dostępny jest skrypt próbny pobrania i porównania archiwów. Test użytkownika potwierdził identyczną zawartość wszystkich 20 plików FIT z WebAPI i ręcznego eksportu dla 2026-10-09. Nie potwierdzono jeszcze zakresu pól FIT ani dostępności całej historii.
+Uzgodniono wymagania; aplikacja nie jest jeszcze zaimplementowana. Test użytkownika potwierdził identyczną zawartość wszystkich 20 plików FIT z WebAPI i ręcznego eksportu dla 2026-10-09. Pobrano i przeskanowano 844 archiwa: 10 994 FIT, 69 typów wiadomości i 1133 warianty pól. Ciągła historia archiwów zaczyna się 2024-06-19; osobny METRICS pochodzi z 2024-02-17. Ustalono kompletny schemat SQLite v1, ale baza nie jest jeszcze zasilona. Część pól pozostaje bez publicznie opisanej semantyki.
 
 ## Dokumentacja
 
@@ -15,6 +15,9 @@ Uzgodniono wymagania; aplikacja nie jest jeszcze zaimplementowana. Dostępny jes
 5. [Eksport JSON](docs/05-export.md)
 6. [Plan realizacji i kryteria odbioru](docs/06-implementation.md)
 7. [Pobranie surowej historii — uruchomienie i wznowienie](docs/07-history-collection.md)
+8. [Wyniki analizy pełnej historii FIT](docs/08-fit-analysis.md)
+9. [Kompletny katalog wykrytych pól](docs/09-fit-field-catalog.md)
+10. [Schemat SQLite v1](docs/10-sqlite-schema.md) — [DDL](schema/001_initial.sql)
 
 ## Pobranie historii do analizy
 

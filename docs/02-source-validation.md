@@ -66,7 +66,7 @@ Pełny import historii jest następnym etapem dopiero po pozytywnym wyniku prób
 - Pobranie na koncie użytkownika dla 2026-10-09: wykonane przez użytkownika; raport przekazany w rozmowie.
 - Zgodność próbki: wszystkie 20 plików mają identyczne nazwy, rozmiary i SHA-256; `entries_equal_including_names=true`, `content_equal_ignoring_names=true`. Potwierdzono również przez lokalne porównanie zapisanych archiwów.
 - Całe ZIP nie są identyczne binarnie (`zip_bytes_equal=false`); różnica nie dotyczy zawartości plików FIT. Dokładnych różnic opakowania ZIP nie analizowano.
-- Zakres pól FIT, starsze daty i odpowiedź dla dnia bez danych: niezweryfikowane.
+- Zakres pól FIT i dostępność starszych dat: przeskanowano całą pobraną historię, wyniki w [analizie FIT](08-fit-analysis.md). Pobrano 844 archiwa; 169 dat ma nierozstrzygnięte 404. Znaczenie tych 404 nadal nie jest potwierdzone.
 - Logowanie umożliwiło użytkownikowi pobranie próbki. Nie ustalono, czy użyto MFA; ponowne użycie zapisanej sesji nie jest testowane przez skrypt.
 
 Odtworzenie środowiska na innym komputerze z Pythonem:

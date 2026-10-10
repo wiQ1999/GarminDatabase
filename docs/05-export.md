@@ -44,7 +44,7 @@ Jeśli podsumowania dzienne parametru nie istnieją w źródle, aplikacja ich ni
 }
 ```
 
-Nazwy parametrów i dokładny schemat ustalić po dekodowaniu próbki. Przy wartościach o różnej semantyce, np. parametr dzienny i chwilowy, zachować osobne reprezentacje. Nie używać podpisu „daily_summary”, jeżeli Garmin nie dostarczył takiej wartości.
+Wykryte nazwy i identyfikatory pól są w [katalogu pełnej historii](09-fit-field-catalog.md). Pole nieznane nie może być eksportowane pod zgadywaną nazwą metryki zdrowotnej. Katalog pól nie jest jeszcze finalnym katalogiem parametrów dla AI: trzeba wybrać reprezentacje źródłowe i rozróżnić metadane, próbki, przedziały oraz podsumowania. Przy wartościach o różnej semantyce, np. parametr dzienny i chwilowy, zachować osobne reprezentacje. Nie używać podpisu „daily_summary”, jeżeli Garmin nie dostarczył takiej wartości.
 
 ## Planowane polecenia — jeszcze niezaimplementowane
 

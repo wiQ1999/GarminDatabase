@@ -26,20 +26,13 @@ logs/                    # log techniczny, bez wartości zdrowotnych i sekretów
 
 Ścieżka danych jest konfigurowalna. Ma być możliwe przeniesienie archiwów i bazy przy wyłączonej aplikacji. SQLite używa ścieżek archiwów względem katalogu danych.
 
-## Model SQLite — projekt do dopracowania po dekodowaniu próbki
+## Model SQLite v1
 
-| Tabela | Przeznaczenie i kluczowe pola |
-| --- | --- |
-| import_days | data żądania, stan pobrania, stan przetwarzania, liczba prób, czas ostatniej próby, bezpieczny kod błędu |
-| archives | dzień żądania, względna ścieżka ZIP, SHA-256, liczba bajtów, czas pobrania |
-| source_files | archiwum, nazwa wpisu FIT, SHA-256, typ pliku |
-| fit_messages | plik źródłowy, kolejność wiadomości, numer wiadomości FIT, nazwa jeśli znana, czas źródłowy jeśli obecny |
-| fit_fields | wiadomość, numer i nazwa pola, dane pola jako JSON, jednostka, typ wartości, identyfikator pola producenta i status dekodowania |
-| schema_versions | wersja schematu, parsera i użytego profilu FIT |
+Po skanowaniu pełnej pobranej historii ustalono [kompletny schemat](10-sqlite-schema.md), zapisany jako [wykonywalny SQL](../schema/001_initial.sql). Zastępuje on wcześniejszy szkic sześciu tabel. Baza produkcyjna nie została jeszcze zasilona.
 
-Każdy rekord musi wskazywać źródłowy plik i pozycję. Klucz `(source_file_id, message_index, field_identity)` zapobiega duplikatom podczas ponownego przetwarzania. Tożsamość pola obejmuje także identyfikatory pól producenta. Wymusić klucze obce oraz indeksy czasu, parametru i pochodzenia.
+Model rozdziela daty pobrania, oryginalne archiwa, wystąpienia FIT w ZIP, unikatowe treści FIT, przebiegi dekodowania, definicje wiadomości i pól, wiadomości danych oraz wartości pól. Katalog profilu przechowuje rozpoznane nazwy, jednostki i reguły dekodowania; pola nieznane pozostają w bazie pod identyfikatorami źródłowymi. Wartości skalarne mają typowane kolumny, tablice i struktury — JSON. Nie powielamy wartości dla rozwiniętych komponentów.
 
-Nie projektować wyłącznie tabel dla z góry znanych metryk: mogłoby to zgubić nowe lub nierozpoznane pola. Można później utworzyć widoki ułatwiające eksport konkretnych parametrów, bez osobnej kopii wartości.
+Identyczny FIT obecny w kilku archiwach ma jedną reprezentację danych i wiele powiązań pochodzenia. Wartość identyfikuje klucz `(message_id, field_definition_id)`; definicja zachowuje przestrzeń nazw i indeks deweloperski w kontekście pliku. Indeksy obejmują czas, parametr, kategorię i hash pliku. Szczegółowe reguły integralności, czasu, ponownego przetwarzania i widoki są opisane w specyfikacji schematu.
 
 ## Wierność danych
 
