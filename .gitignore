@@ -1,0 +1,25 @@
+# Dane prywatne, eksporty, sesje i pliki robocze
+/data/
+/exports/
+/private/
+/logs/
+.env
+.env.*
+!.env.example
+*.zip
+*.fit
+*.FIT
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+.venv/
+.uv-cache/
+__pycache__/
+*.pyc
+.pytest_cache/
