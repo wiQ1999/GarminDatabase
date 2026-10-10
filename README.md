@@ -4,7 +4,7 @@ Prywatne narzędzie do pobierania dziennych archiwów dobrostanu z Garmin Connec
 
 ## Stan projektu
 
-Uzgodniono wymagania; aplikacja nie jest jeszcze zaimplementowana. Dostępny jest skrypt próbny pobrania i porównania archiwów. Równoważność WebAPI i ręcznego eksportu wymaga próby na koncie użytkownika. Nie potwierdzono jeszcze zakresu pól FIT ani dostępności całej historii.
+Uzgodniono wymagania; aplikacja nie jest jeszcze zaimplementowana. Dostępny jest skrypt próbny pobrania i porównania archiwów. Test użytkownika potwierdził identyczną zawartość wszystkich 20 plików FIT z WebAPI i ręcznego eksportu dla 2026-10-09. Nie potwierdzono jeszcze zakresu pól FIT ani dostępności całej historii.
 
 ## Dokumentacja
 

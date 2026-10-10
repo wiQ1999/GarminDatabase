@@ -20,7 +20,7 @@ Nazwy nie stanowią dowodu konkretnego zestawu pól. Użytkownik tego dnia zarej
 
 ## Kandydat WebAPI
 
-W kodzie `python-garminconnect`, sprawdzonym 2026-10-10, `download_health_snapshot(requested_date)` pobiera bajty z `/download-service/files/wellness/{requested_date}`. Nazwa metody nie dowodzi, że rezultat odpowiada eksportowi dobrostanu. Jest to kandydat do testu, nie potwierdzona integracja.
+W kodzie `python-garminconnect`, sprawdzonym 2026-10-10, `download_health_snapshot(requested_date)` pobiera bajty z `/download-service/files/wellness/{requested_date}`. Test na koncie użytkownika potwierdził zgodność z ręcznym eksportem dobrostanu dla 2026-10-09. Wynik dotyczy tej próbki; nie dowodzi dostępności wszystkich dat ani parametrów widocznych w Garmin Connect.
 
 Źródła pierwotne:
 
@@ -63,8 +63,11 @@ Pełny import historii jest następnym etapem dopiero po pozytywnym wyniku prób
 - Lista plików ręcznego ZIP: sprawdzona.
 - Kod kandydata WebAPI: sprawdzony.
 - Lokalne porównanie próbki z nią samą, wykrycie zmienionej zawartości, zmian nazw/kolejności i nieprawidłowego ZIP: sprawdzone. To test porównywarki, nie dowód zgodności WebAPI.
-- Pobranie na koncie użytkownika, zgodność archiwów i zakres pól: niezweryfikowane.
-- Automatyczne logowanie i MFA na tym koncie: niezweryfikowane.
+- Pobranie na koncie użytkownika dla 2026-10-09: wykonane przez użytkownika; raport przekazany w rozmowie.
+- Zgodność próbki: wszystkie 20 plików mają identyczne nazwy, rozmiary i SHA-256; `entries_equal_including_names=true`, `content_equal_ignoring_names=true`. Potwierdzono również przez lokalne porównanie zapisanych archiwów.
+- Całe ZIP nie są identyczne binarnie (`zip_bytes_equal=false`); różnica nie dotyczy zawartości plików FIT. Dokładnych różnic opakowania ZIP nie analizowano.
+- Zakres pól FIT, starsze daty i odpowiedź dla dnia bez danych: niezweryfikowane.
+- Logowanie umożliwiło użytkownikowi pobranie próbki. Nie ustalono, czy użyto MFA; ponowne użycie zapisanej sesji nie jest testowane przez skrypt.
 
 Odtworzenie środowiska na innym komputerze z Pythonem:
 
