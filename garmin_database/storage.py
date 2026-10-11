@@ -4,6 +4,14 @@ import sqlite3
 from .util import utc_now
 
 
+class Connection(sqlite3.Connection):
+    def __exit__(self,*args):
+        try:
+            return super().__exit__(*args)
+        finally:
+            self.close()
+
+
 class Database:
     def __init__(self, data_dir):
         self.root = Path(data_dir)
@@ -11,10 +19,10 @@ class Database:
 
     def connect(self, readonly=False):
         if readonly:
-            conn = sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=30)
+            conn = sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=30, factory=Connection)
         else:
             self.root.mkdir(parents=True, exist_ok=True)
-            conn = sqlite3.connect(self.path, timeout=30)
+            conn = sqlite3.connect(self.path, timeout=30, factory=Connection)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA busy_timeout=30000")
