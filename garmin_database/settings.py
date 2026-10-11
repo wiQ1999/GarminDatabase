@@ -1,25 +1,42 @@
-from dataclasses import asdict, dataclass, field
 import json
 import os
-from pathlib import Path
 import sys
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+
 from .util import atomic_json
 
 
 def application_dir():
-    return Path(os.environ.get("LOCALAPPDATA", Path.home() / ".local/share")) / "GarminDatabase"
+    return (
+        Path(os.environ.get("LOCALAPPDATA", Path.home() / ".local/share"))
+        / "GarminDatabase"
+    )
 
 
 def project_dir():
-    return Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]
+    if getattr(sys, "frozen", False):
+        directory = Path(sys.executable).parent
+        # The local onedir build lives under project/dist/GarminDatabase. Reuse
+        # the existing archive directory when launched from that checkout.
+        for parent in directory.parents:
+            if (parent / "schema/001_initial.sql").exists() and (
+                parent / "data/raw"
+            ).is_dir():
+                return parent
+        return directory
+    return Path(__file__).resolve().parents[1]
 
 
 @dataclass
 class Settings:
     data_dir: str = field(default_factory=lambda: str(project_dir() / "data"))
-    export_dir: str = field(default_factory=lambda: str(project_dir() / "exports/current"))
+    export_dir: str = field(
+        default_factory=lambda: str(project_dir() / "exports/current")
+    )
     recent_days: int = 90
     parameters: list[str] = field(default_factory=list)
+    full_samples: bool = False
     history_from: str = "2024-01-01"
     history_to: str = ""  # empty means yesterday, not a frozen relative date
     delay: float = 3.0
@@ -30,17 +47,24 @@ class Settings:
         if not path.exists():
             return cls()
         value = json.loads(path.read_text(encoding="utf-8"))
-        result = cls(**{k: v for k, v in value.items() if k in cls.__dataclass_fields__})
+        result = cls(
+            **{k: v for k, v in value.items() if k in cls.__dataclass_fields__}
+        )
         result.validate()
         return result
 
     def validate(self):
-        from datetime import date
         import math
+        from datetime import date
+
         if not isinstance(self.recent_days, int) or self.recent_days < 1:
             raise ValueError("Okres szczegółowy musi być dodatnią liczbą dni")
-        if not isinstance(self.parameters, list) or not all(isinstance(v, str) for v in self.parameters):
+        if not isinstance(self.parameters, list) or not all(
+            isinstance(v, str) for v in self.parameters
+        ):
             raise ValueError("Nieprawidłowa lista parametrów")
+        if not isinstance(self.full_samples, bool):
+            raise ValueError("Nieprawidłowy tryb eksportu")
         if not math.isfinite(self.delay) or self.delay < 0:
             raise ValueError("Nieprawidłowe opóźnienie")
         date.fromisoformat(self.history_from)

@@ -1,9 +1,11 @@
 """Session persistence uses DPAPI, never a plaintext temporary token store."""
+
 import ctypes
-from ctypes import wintypes
 import logging
 import os
+from ctypes import wintypes
 from pathlib import Path
+
 from .settings import application_dir
 from .util import atomic_write
 
@@ -11,20 +13,32 @@ from .util import atomic_write
 def dpapi(payload, decrypt=False):
     if os.name != "nt":
         raise RuntimeError("Magazyn sesji tej wersji wymaga Windows")
+
     class Blob(ctypes.Structure):
         _fields_ = [("size", wintypes.DWORD), ("data", ctypes.POINTER(ctypes.c_ubyte))]
+
     buffer = ctypes.create_string_buffer(payload)
     source = Blob(len(payload), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)))
     target = Blob()
     crypt = ctypes.WinDLL("crypt32", use_last_error=True)
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     fn = crypt.CryptUnprotectData if decrypt else crypt.CryptProtectData
-    fn.argtypes = [ctypes.POINTER(Blob), ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(Blob)]
+    fn.argtypes = [
+        ctypes.POINTER(Blob),
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(Blob),
+    ]
     fn.restype = wintypes.BOOL
     kernel.LocalFree.argtypes = [ctypes.c_void_p]
     kernel.LocalFree.restype = ctypes.c_void_p
     if not fn(ctypes.byref(source), None, None, None, None, 1, ctypes.byref(target)):
-        raise OSError(ctypes.get_last_error(), "Nie można odczytać lub zabezpieczyć sesji Windows")
+        raise OSError(
+            ctypes.get_last_error(), "Nie można odczytać lub zabezpieczyć sesji Windows"
+        )
     try:
         return ctypes.string_at(target.data, target.size)
     finally:
@@ -50,6 +64,7 @@ class GarminSource:
     def __init__(self, store=None, factory=None):
         if factory is None:
             from garminconnect import Garmin
+
             factory = Garmin
         self.factory = factory
         self.store = store or SessionStore()
@@ -59,9 +74,13 @@ class GarminSource:
             logging.getLogger(name).setLevel(logging.CRITICAL)
 
     def login(self, email=None, password=None, mfa=None):
-        api = self.factory(email=email, password=password, prompt_mfa=mfa, retry_attempts=1)
+        api = self.factory(
+            email=email, password=password, prompt_mfa=mfa, retry_attempts=1
+        )
         try:
-            token = self.store.load() if email is None else None
+            # Inline JSON explicitly overrides upstream GARMINTOKENS environment
+            # paths, so the library cannot persist an unencrypted token store.
+            token = self.store.load() if email is None else "{}"
             api.login(token)
             self.store.save(api.client.dumps())
             self.api = api

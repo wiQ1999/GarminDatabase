@@ -1,9 +1,9 @@
-from contextlib import contextmanager
-from datetime import date, datetime, timedelta, timezone
 import json
 import os
-from pathlib import Path
 import tempfile
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 
@@ -21,7 +21,9 @@ def yesterday():
 
 def dates(start, end):
     if start > end or end > yesterday():
-        raise ValueError("Zakres musi być uporządkowany i kończyć się najpóźniej wczoraj")
+        raise ValueError(
+            "Zakres musi być uporządkowany i kończyć się najpóźniej wczoraj"
+        )
     for n in range((end - start).days + 1):
         yield start + timedelta(days=n)
 
@@ -46,7 +48,12 @@ def atomic_write(path, payload):
 
 
 def atomic_json(path, value):
-    atomic_write(path, json.dumps(value, ensure_ascii=False, allow_nan=False, indent=2).encode("utf-8"))
+    atomic_write(
+        path,
+        json.dumps(value, ensure_ascii=False, allow_nan=False, indent=2).encode(
+            "utf-8"
+        ),
+    )
 
 
 @contextmanager
@@ -62,9 +69,11 @@ def writer_lock(data_dir):
         try:
             if os.name == "nt":
                 import msvcrt
+
                 msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
             else:
                 import fcntl
+
                 fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             raise RuntimeError("Inny proces zapisuje dane") from None
