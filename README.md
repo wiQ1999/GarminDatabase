@@ -1,6 +1,6 @@
 # GarminDatabase
 
-Prywatne narzędzie do pobierania dziennych archiwów dobrostanu z Garmin Connect, przechowywania danych i eksportowania ich do JSON dla Claude i ChatGPT.
+Prywatna aplikacja okienkowa dla Windows 11 do pobierania dziennych archiwów dobrostanu z Garmin Connect, przechowywania danych, przeglądania prostych wykresów i eksportowania JSON dla Claude i ChatGPT. Docelowo wspólna logika będzie również działać bez UI na Raspberry Pi.
 
 ## Stan projektu
 
@@ -18,6 +18,7 @@ Uzgodniono wymagania; aplikacja nie jest jeszcze zaimplementowana. Test użytkow
 8. [Wyniki analizy pełnej historii FIT](docs/08-fit-analysis.md)
 9. [Kompletny katalog wykrytych pól](docs/09-fit-field-catalog.md)
 10. [Schemat SQLite v1](docs/10-sqlite-schema.md) — [DDL](schema/001_initial.sql)
+11. [Interfejs Windows i ustawienia aplikacji](docs/11-desktop-ui.md)
 
 ## Pobranie historii do analizy
 

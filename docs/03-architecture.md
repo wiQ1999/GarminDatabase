@@ -19,12 +19,22 @@ Pobieranie, dekodowanie i eksport to odrębne operacje. Zmiana parsera nie wymag
 data/
   raw/YYYY-MM-DD.zip
   garmin.sqlite3
-private/                 # przyszła zapisana sesja
+private/                 # sesja istniejącego skryptu historycznego; nie docelowego UI
 exports/                 # wynik eksportu na żądanie
 logs/                    # log techniczny, bez wartości zdrowotnych i sekretów
 ```
 
 Ścieżka danych jest konfigurowalna. Ma być możliwe przeniesienie archiwów i bazy przy wyłączonej aplikacji. SQLite używa ścieżek archiwów względem katalogu danych.
+
+Docelowa aplikacja Windows zapisuje ustawienia w `%LOCALAPPDATA%/GarminDatabase/settings.json`, a sesję zaszyfrowaną DPAPI w `auth/session.bin` pod tym samym katalogiem. Nie zapisuje hasła ani kodu MFA. Obecne skrypty zachowują dotychczasowy sposób logowania; zmiana dotyczy planowanej aplikacji. Szczegóły: [UI i ustawienia](11-desktop-ui.md).
+
+## Interfejs i wspólna logika
+
+Okno Windows jest warstwą obsługi wspólnych operacji pobierania, importu, ponownego przetwarzania i eksportu. Długie operacje działają poza wątkiem UI. Odczyt wykresów dotyczy tylko wybranego parametru i okresu; szczegółowe pomiary są dostępne dla pojedynczego dnia, a dłuższe okresy wyłącznie jako podsumowania źródłowe Garmin.
+
+Przeglądanie zatwierdzonych danych ma działać podczas importu. Zaprojektować oddzielne połączenia odczytu i zapisu oraz transakcje tak, aby UI nie widziało nieukończonego importu. Tryb współbieżności SQLite i technologia UI wymagają wyboru i weryfikacji podczas implementacji.
+
+Raspberry Pi będzie w przyszłości uruchamiać te same operacje bez UI, według harmonogramu, i służyć jako hub dostępu do danych. Protokół dostępu, uwierzytelnianie i relacja z aplikacją Windows pozostają zakresem późniejszego etapu; nie zakładamy obecnie współdzielenia pliku SQLite przez sieć.
 
 ## Model SQLite v1
 

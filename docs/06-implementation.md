@@ -16,7 +16,7 @@ Odbiór: każdy rekord/nieobsługiwany fragment ma rozliczalne pochodzenie, arch
 
 ## Etap 2: importer historii i zaległości
 
-Zbudować konsolę, konfigurację katalogu i strefy, bezpieczne lokalne logowanie, stany dni, zapis atomowy i transakcje. Najpierw mały zakres, następnie historia od 2024-01-01. Import ręczny, bez harmonogramu.
+Zbudować rdzeń operacji niezależny od UI: konfigurację katalogu i strefy, logowanie, stany dni, zapis atomowy i transakcje. Udostępnić go aplikacji Windows opisanej w [specyfikacji UI](11-desktop-ui.md). Pierwsza wersja nie wymaga konsoli od użytkownika. Najpierw mały zakres, następnie historia od 2024-01-01. Import ręczny, bez harmonogramu.
 
 Odbiór: dzisiejsza data jest wykluczona; zakończone dni nie są ponownie pobierane; błąd nie jest oznaczany jako brak danych; przerwane zadanie można wznowić; błąd dekodowania nie wymaga kolejnego pobrania.
 
@@ -26,13 +26,21 @@ Wprowadzić katalog parametrów oparty na dekodowanych danych. Zbudować pliki h
 
 Odbiór: poprawny JSON, wszystkie wybrane próbki zachowane, zgodne wartości i jednostki, brak interpretacji, zakres i luki widoczne. Jeden plik na parametr bez automatycznego dzielenia.
 
-## Etap 4: codzienne uruchamianie
+## Etap 4: aplikacja Windows i wykresy
 
-Po stabilizacji wprowadzić harmonogram na Raspberry Pi. To samo polecenie `sync` nadrabia zaległe dni i kończy na wczoraj. Eksport pozostaje ręczny.
+Wybrać technologię UI, wykresów i pakowania zgodną z Pythonem oraz samodzielnym `.exe` na Windows 11. Zrealizować Start, Dane, Eksport i Ustawienia, ciemny motyw z niebieskimi akcentami oraz ikony według referencji. Formularz logowania obsługuje MFA i sesję szyfrowaną DPAPI poza bazą; ustawienia są w `%LOCALAPPDATA%/GarminDatabase/settings.json`.
+
+Połączyć „Pobierz dane” z pobieraniem i importem w tle, dodać postęp, zatrzymanie i wznowienie. Przeglądanie dotyczy zatwierdzonych danych podczas importu. Dla pojedynczego dnia pokazywać szczegółowe próbki, dla dłuższych zakresów tylko podsumowania Garmin; brak podsumowań nie uruchamia agregacji. Bez tabel rekordów i powiększania wykresu. Eksport zastępuje wcześniejsze wyniki i zapamiętuje ustawienia.
+
+Odbiór: kryteria ze specyfikacji UI, uruchomienie na Windows 11 bez osobnej instalacji Pythona, poprawne współbieżne przeglądanie i import oraz brak sekretów w ustawieniach i logach. Etapy rdzenia i UI można realizować częściowo równolegle, ale pierwszy produkt dla użytkownika ma interfejs okienkowy.
+
+## Etap 5: codzienne uruchamianie i hub danych
+
+Po stabilizacji wprowadzić harmonogram na Raspberry Pi bez UI. Wspólna operacja `sync` nadrabia zaległe dni i kończy na wczoraj. Eksport pozostaje ręczny. Zaprojektować udostępnianie danych z Raspberry Pi jako huba oraz mechanizm ochrony sesji na Linux; protokół dostępu i relacja z aplikacją Windows nie są jeszcze ustalone.
 
 ## Późniejsze rozszerzenia
 
-Aktualizacja pobranych dni, podział dużych eksportów, inne metryki lub treningi, UI, bezpośredni dostęp agenta, API/MCP. Każde wymaga osobnego doprecyzowania zakresu. Dodatkowe kopie zapasowe nie są obecnie planowane.
+Aktualizacja pobranych dni, podział dużych eksportów, inne metryki lub treningi, bezpośredni dostęp agenta, API/MCP. Każde wymaga osobnego doprecyzowania zakresu. UI jest już częścią pierwszej wersji; przyszły hub danych wymaga ustalenia sposobu dostępu. Dodatkowe kopie zapasowe nie są obecnie planowane.
 
 ## Konieczne sprawdzenia implementacji
 

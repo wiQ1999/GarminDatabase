@@ -55,4 +55,6 @@ garmin-db export --from 2026-09-01 --to 2026-09-30 --parameters heart_rate,sleep
 
 Domyślnie koniec okresu to wczoraj; 90 dni obejmuje wczoraj i poprzednie 89 dat. Eksport na żądanie wskazanego okresu zawiera wszystkie dostępne próbki wybranych parametrów. Przed zapisem podać planowaną objętość lub po zapisie raportować rozmiar plików. Nie obiecywać zgodności z konkretnym limitem kontekstu modeli.
 
-Eksporty są odtwarzalne z SQLite. Nie przechowywać ich jako dodatkowego stałego archiwum. Nie nadpisywać istniejących wyników bez jawnego wyboru użytkownika.
+Eksporty są odtwarzalne z SQLite. Nie przechowywać ich jako dodatkowego stałego archiwum. Użytkownik zaakceptował zastępowanie poprzednich plików eksportu: kolejne generowanie zastępuje wyniki aplikacji w wybranym folderze, bez tworzenia kolejnych kopii i bez usuwania obcych plików. Zapis pliku powinien być atomowy, aby błąd nie pozostawił uciętego JSON. Jeżeli zmienia się zestaw parametrów, usuwać nieaktualne wyniki wyłącznie na podstawie ewidencji plików wygenerowanych przez aplikację.
+
+W UI można wybrać parametry, zakres historii, okres szczegółowy (domyślnie 90 dni) i folder docelowy. Ostatnie ustawienia są zapisywane w `%LOCALAPPDATA%/GarminDatabase/settings.json`. Po eksporcie dostępny jest przycisk „Otwórz folder eksportu”. Ograniczenia zakresu wykresów nie ograniczają szczegółowego eksportu wskazanego okresu. Zobacz [specyfikację UI](11-desktop-ui.md).
