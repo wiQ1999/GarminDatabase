@@ -10,6 +10,13 @@ from .settings import application_dir
 from .util import atomic_write
 
 
+class SessionRequired(RuntimeError):
+    def __init__(self):
+        super().__init__(
+            "Brak zapisanej sesji Garmin. Otwórz Ustawienia i zaloguj się do Garmin."
+        )
+
+
 def dpapi(payload, decrypt=False):
     if os.name != "nt":
         raise RuntimeError("Magazyn sesji tej wersji wymaga Windows")
@@ -80,7 +87,10 @@ class GarminSource:
         try:
             # Inline JSON explicitly overrides upstream GARMINTOKENS environment
             # paths, so the library cannot persist an unencrypted token store.
-            token = self.store.load() if email is None else "{}"
+            try:
+                token = self.store.load() if email is None else "{}"
+            except FileNotFoundError:
+                raise SessionRequired() from None
             api.login(token)
             self.store.save(api.client.dumps())
             self.api = api

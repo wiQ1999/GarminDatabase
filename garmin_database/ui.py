@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .auth import GarminSource
+from .auth import GarminSource, SessionRequired, SessionStore
 from .chart import Chart
 from .exporter import Exporter
 from .icons import icon, symbol
@@ -89,7 +89,9 @@ class Worker(QThread):
             self.failure.emit("Zatrzymano. Ukończone dane zostały zachowane.")
         except Exception as error:
             self.failure.emit(
-                "Operacja nie powiodła się: "
+                str(error)
+                if isinstance(error, SessionRequired)
+                else "Operacja nie powiodła się: "
                 + type(error).__name__
                 + ". Sprawdź połączenie, sesję i katalog docelowy."
             )
@@ -327,7 +329,12 @@ class Window(QMainWindow):
         self.login_button = button("Zaloguj do Garmin", self.login)
         layout.addWidget(self.login_button)
         self.session_status = QLabel(
-            "Sesja jest szyfrowana przez Windows DPAPI. Hasło i kod MFA nie są zapisywane."
+            (
+                "Zapisana sesja Garmin jest dostępna. Jej ważność zostanie sprawdzona przy pobraniu. "
+                if SessionStore().path.is_file()
+                else "Brak zapisanej sesji Garmin. Zaloguj się, aby pobierać nowe dni. Lokalne archiwa można importować bez logowania. "
+            )
+            + "Sesja jest szyfrowana przez Windows DPAPI. Hasło i kod MFA nie są zapisywane."
         )
         self.session_status.setWordWrap(True)
         layout.addWidget(self.session_status)

@@ -172,6 +172,18 @@ class Importer:
                 "SELECT id FROM archives WHERE day=?", (day,)
             ).fetchone()[0]
             profile = self.profile(conn)
+            if previous and not force:
+                registered = conn.execute(
+                    "SELECT count(*) FROM archive_entries WHERE archive_id=?", (aid,)
+                ).fetchone()[0]
+                incomplete = conn.execute(
+                    """SELECT 1 FROM archive_entries e WHERE e.archive_id=? AND NOT EXISTS(
+                    SELECT 1 FROM file_decodes d WHERE d.fit_file_id=e.fit_file_id
+                    AND d.profile_id=? AND d.is_active=1 AND d.status='complete') LIMIT 1""",
+                    (aid, profile),
+                ).fetchone()
+                if registered == len(entries) and not incomplete:
+                    return 0  # no fictitious decode run for an unchanged completed ZIP
             run = conn.execute(
                 "INSERT INTO decode_runs(profile_id,started_at,status) VALUES(?,?,'running')",
                 (profile, utc_now()),

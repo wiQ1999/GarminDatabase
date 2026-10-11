@@ -101,3 +101,24 @@ def test_mfa_worker_prompt(qtbot, tmp_path, monkeypatch):
     )
     qtbot.waitUntil(lambda: not w.stop_button.isEnabled())
     assert captured == ["123456"] and w.worker.code is None
+
+
+def test_missing_session_is_explained_in_settings_and_worker(
+    qtbot, tmp_path, monkeypatch
+):
+    from garmin_database.auth import SessionRequired, SessionStore
+
+    monkeypatch.setattr(
+        "garmin_database.ui.SessionStore", lambda: SessionStore(tmp_path / "missing")
+    )
+    w = window(qtbot, tmp_path)
+    assert "Brak zapisanej sesji" in w.session_status.text()
+
+    def operation(worker):
+        raise SessionRequired()
+
+    worker = Worker(operation)
+    with qtbot.waitSignal(worker.failure, timeout=2000) as result:
+        worker.start()
+    worker.wait()
+    assert "Ustawienia" in result.args[0] and "RuntimeError" not in result.args[0]

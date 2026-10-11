@@ -62,6 +62,16 @@ Wynik końcowy: `quick_check=ok`, zero błędów kluczy obcych, zero niezgodnych
 
 Klient z zaszyfrowaną sesją został również sprawdzony na rzeczywistym WebAPI: kontrolne 20 FIT za 2026-10-09 ma identyczną zawartość jak archiwum lokalne. Test eksportu dwóch parametrów z 90 dni wygenerował poprawny `recent.json` o rozmiarze 4 956 982 bajtów, ze 106 674 próbkami tętna i 91 źródłowymi wartościami nocnego HRV. Osobna historia wybranego HRV miała 12 994 bajty. Liczba wartości nie musi być równa liczbie dni: zachowujemy różne wiadomości źródłowe. Raportowano tylko rozmiary i liczniki, bez wartości pomiarowych. Błędy sieci i ponowne żądanie MFA są pokryte testami kontrolowanymi; zachowanie Garmin po przyszłych zmianach usługi wymaga ponownej weryfikacji.
 
+## Wznowienie, rozmiar bazy i brak sesji
+
+Zwykłe „Pobierz dane” albo import lokalny pomijają dekodowanie ukończonego FIT. Ponowne odwiedzenie niezmienionego, kompletnego ZIP nie tworzy dodatkowego przebiegu dekodowania. „Przetwórz ponownie” wymusza wymianę wyników z zachowaniem tej samej liczby pomiarów. Nie pobiera ponownie ZIP ani nie tworzy rozpakowanej kopii.
+
+Rozmiar SQLite może rosnąć wskutek reorganizacji dużych tabel i indeksów podczas tej wymiany; aktywny WAL jest dodatkowym tymczasowym plikiem transakcji. Zwolniona przestrzeń jest używana przez SQLite ponownie, ale sam plik nie jest automatycznie zmniejszany. Dziennik `decode_runs` przechowuje małe rekordy techniczne. Rosnący rozmiar pliku nie oznacza automatycznie duplikowania danych. Kompaktowanie nie odbywa się automatycznie i wymaga zaplanowania pracy poza aktywnym importem.
+
+Puste pola e-mail i hasła są zamierzone: aplikacja nie zapisuje hasła. Nowe pobieranie korzysta z zaszyfrowanej sesji, jeśli istnieje. Gdy sesji brak, aplikacja nadal może importować istniejące lokalne ZIP, a na pierwszym nowym dniu kończy operację z instrukcją logowania w Ustawieniach. Nie interpretuje braku pliku sesji jako odpowiedzi Garmin ani nie ponawia go trzy razy. Ustawienia pokazują, czy plik sesji istnieje; jego ważność sprawdza dopiero połączenie z usługą.
+
+Kontrola po poprawce: wszystkie 143 testy przeszły, coverage rdzenia i CLI z gałęziami wynosi 92,38%. Dodano regresje dla braku sesji, braku niepotrzebnych ponowień, informacji w UI i pomijania fikcyjnych przebiegów importu. Wyniki wcześniejszego odbioru pełnej historii pozostają powyżej.
+
 ## Operacje bez UI
 
 Do lokalnych sprawdzeń i przyszłego harmonogramu służy wspólny moduł CLI:

@@ -5,6 +5,7 @@ from email.utils import parsedate_to_datetime
 from io import BytesIO
 from zipfile import ZipFile
 
+from .auth import SessionRequired
 from .importer import Importer
 from .util import Cancelled, atomic_write, check_stop, dates, utc_now, writer_lock
 
@@ -178,11 +179,17 @@ class Sync:
                             )
                         progress(
                             text,
-                            f"Błąd {status or type(error).__name__}",
+                            str(error)
+                            if isinstance(error, SessionRequired)
+                            else f"Błąd {status or type(error).__name__}",
                             index,
                             len(requested),
                         )
-                        if status in {401, 403, 429}:
+                        if isinstance(error, SessionRequired) or status in {
+                            401,
+                            403,
+                            429,
+                        }:
                             return errors + 1
                         if status == 404 or status is not None and status < 500:
                             break

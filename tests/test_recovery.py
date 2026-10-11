@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from fixtures import archive, fit_bytes
 
-from garmin_database.auth import SessionStore
+from garmin_database.auth import GarminSource, SessionRequired, SessionStore
 from garmin_database.exporter import Exporter
 from garmin_database.importer import Importer
 from garmin_database.query import Queries
@@ -292,3 +292,60 @@ def test_retry_after_delays_the_next_request(tmp_path):
     assert Sync(db, Source(), 0).run(date(2024, 1, 1), date(2024, 1, 1), clock) == 0
     assert clock.delays == [0, 15]
     assert db.status()["files"] == 1
+
+
+@pytest.mark.unit
+def test_missing_session_has_actionable_error_without_api_login(tmp_path):
+    calls = []
+    api = SimpleNamespace(password=None, login=lambda token: calls.append(token))
+    source = GarminSource(SessionStore(tmp_path / "missing-session"), lambda **kw: api)
+    with pytest.raises(SessionRequired, match="Ustawienia"):
+        source.login()
+    assert calls == []
+
+
+@pytest.mark.integration
+def test_missing_session_is_not_retried_as_network_error(tmp_path):
+    class Source:
+        calls = 0
+
+        def download_health_snapshot(self, day):
+            self.calls += 1
+            raise SessionRequired()
+
+    source = Source()
+    db = Database(tmp_path)
+    progress = []
+    assert (
+        Sync(db, source, 0).run(
+            date(2024, 1, 1),
+            date(2024, 1, 2),
+            threading.Event(),
+            lambda day, stage, i, total: progress.append(stage),
+        )
+        == 1
+    )
+    assert source.calls == 1 and "Ustawienia" in progress[-1]
+    with db.connect(readonly=True) as c:
+        assert c.execute("SELECT attempts FROM import_days").fetchone()[0] == 1
+
+
+@pytest.mark.integration
+def test_reimport_does_not_add_fictitious_decode_history(tmp_path):
+    db = Database(tmp_path)
+    db.initialize()
+    importer = Importer(db)
+    path = archive(tmp_path)
+    importer.archive(path)
+    with db.connect(readonly=True) as c:
+        initial = c.execute("SELECT count(*) FROM decode_runs").fetchone()[0]
+    importer.archive(path)
+    with db.connect(readonly=True) as c:
+        assert c.execute("SELECT count(*) FROM decode_runs").fetchone()[0] == initial
+    assert db.status()["fields"] == 8
+    importer.archive(path, force=True)
+    with db.connect(readonly=True) as c:
+        assert (
+            c.execute("SELECT count(*) FROM decode_runs").fetchone()[0] == initial + 1
+        )
+    assert db.status()["fields"] == 8

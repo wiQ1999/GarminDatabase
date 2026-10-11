@@ -27,4 +27,10 @@ Odbiór 2026-10-11: 139 testów (102 jednostkowe, 32 integracyjne, 5 UI), 92,36%
 
 ## Dokumentacja procesu
 
+Diagnoza po próbach użytkownika: zwykłe wznowienie kompletnych ZIP nie tworzy już fikcyjnych `decode_runs`. Wymuszone przetwarzanie zastępuje istniejące wyniki FIT transakcyjnie; nie powiela pomiarów, ale reorganizacja stron tabel i indeksów oraz WAL może zwiększać fizyczny rozmiar SQLite. Nie uruchamiać automatycznie VACUUM na bazie używanej przez aplikację.
+
+Brak pliku sesji jest zgłaszany jako `SessionRequired` z instrukcją logowania w Ustawieniach i bez ponowień sieciowych. Import lokalnych ZIP nie wymaga logowania i nie dowodzi pobrania nowych danych. Podczas diagnostyki narzędzia sandbox mogą przekierować `LOCALAPPDATA` do katalogu sandboxa; dla aplikacji uruchomionej przez użytkownika sprawdzać także rzeczywistą lokalizację profilu Windows, raportując wyłącznie istnienie plików.
+
+Po tej poprawce: 143 testy (103 jednostkowe, 34 integracyjne, 6 UI), 92,38% coverage rdzenia i CLI z gałęziami. Budowanie pozwala wskazać `-Destination` w celu przygotowania osobnej paczki, gdy poprzedni EXE jest uruchomiony; nie zatrzymywać procesu użytkownika w celu jego nadpisania.
+
 Użytkowanie, budowanie paczki, piramida testów i odbiór rzeczywistej historii są w [docs/12-running-and-testing.md](docs/12-running-and-testing.md). Punktem wejścia dystrybucji jest `desktop.py`; operacje bez okna korzystają z `garmin_database/cli.py`. Specyfikacja UI pozostaje w `docs/11-desktop-ui.md`, a model danych i migracje opisuje `docs/10-sqlite-schema.md`.
