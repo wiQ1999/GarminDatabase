@@ -356,6 +356,7 @@ class Window(QMainWindow):
 
     def refresh(self):
         info = self.db.status()
+        self.parameters = Queries(self.db).parameters()
         unresolved = sum(
             v
             for k, v in info["days"].items()
@@ -364,7 +365,10 @@ class Window(QMainWindow):
         self.status.setText(
             f"Ostatni pobrany dzień: {info['last_downloaded'] or 'brak'}\nZakres zarejestrowany w bazie: {info['first_day'] or 'brak'} — {info['last_day'] or 'brak'}\nArchiwa w bazie: {info['archives']}   •   Zaimportowane FIT: {info['files']}\nWiadomości: {info['messages']:,}   •   Fizyczne pola: {info['fields']:,}\nDni czekające na rejestrację: {info['pending_days']}   •   Oczekujące FIT: {info['pending_files']}\nDni brakujące / nierozstrzygnięte: {unresolved}   •   Nieznane warianty pól: {info['unknown_variants']}\nZIP w bazie: {info['archive_bytes'] / 1024**2:.1f} MB   •   SQLite: {info['database_bytes'] / 1024**2:.1f} MB"
         )
-        self.parameters = Queries(self.db).parameters()
+        self.status.setText(
+            self.status.text()
+            + f"\nRozpoznane serie / właściwości: {len(self.parameters)}"
+        )
         selected = set(self.settings.parameters)
         self.parameter_list.blockSignals(True)
         self.parameter_list.clear()

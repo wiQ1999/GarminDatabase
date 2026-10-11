@@ -25,6 +25,7 @@ def window(qtbot, tmp_path):
 
 def test_navigation_and_chart(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
+    assert f"Rozpoznane serie / właściwości: {len(w.parameters)}" in w.status.text()
     for index in range(4):
         w.navigation.setCurrentRow(index)
         assert w.pages.currentIndex() == index
