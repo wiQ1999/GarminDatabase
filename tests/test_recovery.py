@@ -1,5 +1,6 @@
 import threading
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 from fixtures import archive, fit_bytes
@@ -9,7 +10,7 @@ from garmin_database.exporter import Exporter
 from garmin_database.importer import Importer
 from garmin_database.query import Queries
 from garmin_database.storage import Database
-from garmin_database.sync import Sync, error_status
+from garmin_database.sync import Sync, error_status, retry_after
 from garmin_database.util import Cancelled, atomic_json
 
 
@@ -235,3 +236,59 @@ def test_corrupt_encrypted_session_fails(tmp_path):
     store.path.write_bytes(b"not encrypted")
     with pytest.raises(OSError):
         store.load()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "header,expected",
+    [
+        ("15", 15),
+        ("Sun, 11 Oct 2026 12:01:00 GMT", 60),
+        ("invalid", 2),
+        ("-3", 2),
+        (None, 2),
+    ],
+)
+def test_retry_after_header(header, expected):
+    from datetime import datetime, timezone
+
+    error = RuntimeError("private response")
+    error.response = SimpleNamespace(headers={"Retry-After": header})
+    assert (
+        retry_after(error, 2, datetime(2026, 10, 11, 12, tzinfo=timezone.utc))
+        == expected
+    )
+
+
+@pytest.mark.integration
+def test_retry_after_delays_the_next_request(tmp_path):
+    from fixtures import zip_bytes
+
+    class Source:
+        calls = 0
+
+        def download_health_snapshot(self, day):
+            self.calls += 1
+            if self.calls == 1:
+                error = RuntimeError("private response")
+                error.response = SimpleNamespace(
+                    status_code=503, headers={"Retry-After": "15"}
+                )
+                raise error
+            return zip_bytes()
+
+    class Clock:
+        delays = []
+
+        def wait(self, delay):
+            self.delays.append(delay)
+            return False
+
+        def is_set(self):
+            return False
+
+    clock = Clock()
+    db = Database(tmp_path)
+    assert Sync(db, Source(), 0).run(date(2024, 1, 1), date(2024, 1, 1), clock) == 0
+    assert clock.delays == [0, 15]
+    assert db.status()["files"] == 1

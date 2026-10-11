@@ -1,5 +1,7 @@
 import json
 import re
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from io import BytesIO
 from zipfile import ZipFile
 
@@ -33,6 +35,30 @@ def validate_zip(payload):
         if z.testzip() is not None:
             raise ValueError("Nieprawidłowy CRC ZIP")
         return bool([x for x in z.infolist() if not x.is_dir()])
+
+
+def retry_after(error, fallback, now=None):
+    """Respect the server delay without persisting response headers or bodies."""
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        headers = getattr(getattr(error, "response", None), "headers", {}) or {}
+        value = headers.get("Retry-After")
+        if value is not None:
+            try:
+                delay = (
+                    int(value)
+                    if str(value).isdigit()
+                    else (
+                        parsedate_to_datetime(str(value))
+                        - (now or datetime.now(timezone.utc))
+                    ).total_seconds()
+                )
+                return max(fallback, delay)
+            except (TypeError, ValueError, OverflowError):
+                pass
+        error = error.__cause__ or error.__context__
+    return fallback
 
 
 class Sync:
@@ -121,10 +147,9 @@ class Sync:
                     "no_data_confirmed",
                 }:
                     continue
+                next_wait = self.delay
                 for attempt in range(3):
-                    if stop.wait(
-                        self.delay if attempt == 0 else max(self.delay, 2**attempt)
-                    ):
+                    if stop.wait(next_wait):
                         raise Cancelled()
                     with self.db.connect() as c:
                         c.execute(
@@ -163,6 +188,9 @@ class Sync:
                             break
                         if attempt == 2:
                             break
+                        next_wait = retry_after(
+                            error, max(self.delay, 2 ** (attempt + 1))
+                        )
                     else:
                         # Disk errors must never trigger another API request.
                         if path.exists():
