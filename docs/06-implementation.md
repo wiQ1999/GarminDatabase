@@ -34,6 +34,8 @@ Wybrać technologię UI, wykresów i pakowania zgodną z Pythonem oraz samodziel
 
 Połączyć „Pobierz dane” z pobieraniem i importem w tle, dodać postęp, zatrzymanie i wznowienie. Przeglądanie dotyczy zatwierdzonych danych podczas importu. Dla pojedynczego dnia pokazywać szczegółowe próbki, dla dłuższych zakresów tylko podsumowania Garmin; brak podsumowań nie uruchamia agregacji. Bez tabel rekordów i powiększania wykresu. Eksport zastępuje wcześniejsze wyniki i zapamiętuje ustawienia.
 
+Aktualizacja przeglądania: wykres ładuje się po zmianie parametru, zakresu i dat, bez dodatkowego przycisku. Podczas zapytania pokazuje spinner i rozmywa poprzedni obraz. Niedostępne zakresy są wyszarzone; wybór serii szczegółowej automatycznie przełącza na dzień. Checkbox włącza regresję liniową na wyświetlanych danych liczbowych, bez utrwalania obliczeń. Testować również szybkie zmiany filtrów, zakończenie ładowania po błędzie i brak trendu dla kategorii.
+
 Odbiór: kryteria ze specyfikacji UI, uruchomienie na Windows 11 bez osobnej instalacji Pythona, poprawne współbieżne przeglądanie i import oraz brak sekretów w ustawieniach i logach. Etapy rdzenia i UI można realizować częściowo równolegle, ale pierwszy produkt dla użytkownika ma interfejs okienkowy.
 
 ## Etap 5: codzienne uruchamianie i hub danych

@@ -3,7 +3,7 @@
 - Projekt roboczy: `D:/Projects/GarminDatabase`; wcześniejszy katalog C: nie jest głównym checkoutem.
 - Python 3.12, SQLite STRICT/JSON1. Zachowujemy fizyczne pola FIT raz, oryginalne ZIP bez zmian i wersjonowaną semantykę publicznego profilu. Nie zgadujemy prywatnych metryk.
 - Pierwszy produkt: polskie UI Windows 11, PySide6 Essentials/Qt Widgets, własny wykres QPainter, dystrybucja PyInstaller onedir bez konsoli. Rdzeń nie importuje Qt.
-- UI: Start/Dane/Eksport/Ustawienia; ciemny motyw. „Pobierz dane” pobiera tylko do wczoraj Europe/Warsaw i importuje. Szczegóły wykresu tylko dla dnia; dłuższe okresy tylko podsumowania Garmin. Zero własnych agregatów zdrowotnych.
+- UI: Start/Dane/Eksport/Ustawienia; ciemny motyw. „Pobierz dane” pobiera tylko do wczoraj Europe/Warsaw i importuje. Szczegóły wykresu tylko dla dnia; dłuższe okresy tylko podsumowania Garmin. Wyjątek od braku własnych obliczeń: opcjonalna regresja liniowa wyłącznie na wykresie, bez zapisu do SQLite lub JSON.
 - Sesja: DPAPI użytkownika, `%LOCALAPPDATA%/GarminDatabase/auth/session.bin`, bez hasła/MFA. Ustawienia JSON obok. Nie logować surowych wyjątków Garmin, tokenów ani pomiarów.
 - Dane, eksporty, logi, build/dist i raporty testów są ignorowane w Git. Testy używają syntetycznych FIT/ZIP, nigdy prywatnych fixture.
 - Testy: `.venv/Scripts/python.exe -m pytest`; piramida: wiele jednostkowych, mniej integracyjnych, kilka UI/smoke. Realne archiwa sprawdzamy lokalnie, raportując wyłącznie liczniki i błędy.
@@ -26,6 +26,12 @@ Ponowienia błędów przejściowych respektują `Retry-After` w sekundach i form
 Odbiór 2026-10-11: 139 testów (102 jednostkowe, 32 integracyjne, 5 UI), 92,36% coverage rdzenia i CLI z gałęziami. Pełna baza: 844 ZIP, 10 994 ukończone FIT, 8 307 429 wiadomości, 20 841 953 pola, 737 nieznanych wariantów; 56 serii/właściwości w UI. SQLite quick_check, klucze obce, kontekst katalogu i hashe oryginalnych ZIP — poprawne. Nie utrzymywać dodatkowych kopii prywatnych danych utworzonych do testów.
 
 ## Dokumentacja procesu
+
+Wykres odświeża się po wyborze parametru, zakresu lub dat; przycisku „Pokaż wykres” nie ma. Parametry bez reprezentacji `source_summary` blokują wszystkie zakresy poza „Dzień” i automatycznie korygują poprzedni filtr. Początek zakresu jest edytowalny tylko dla „Własnego zakresu” podsumowań. `ChartView` rozmywa sam wykres, a osobna warstwa z timerem pokazuje ostry spinner; stan ładowania kończy się po aktualnym wyniku lub błędzie. Numer żądania i jedno oczekujące zapytanie chronią przed publikacją starych wyników przy szybkiej zmianie filtrów. Nie odpinać spinnera w obsłudze zakończenia nieaktualnego żądania.
+
+`trend.linear_trend` dopasowuje regresję najmniejszych kwadratów względem rzeczywistego czasu, z czasem przesuniętym i skalowanym dla precyzji. Korzysta tylko z poprawnych skończonych wartości liczbowych; wymaga co najmniej dwóch różnych czasów. Checkbox jest domyślnie wyłączony, nieaktywny przy ładowaniu, kategoriach lub niewystarczających danych. Przerywana linia z podpisem jest osobną wskazówką wizualną, nie pomiarem Garmin; surowe punkty i eksport zachowują luki. Ta zmiana wymagań wynika z wyraźnej prośby użytkownika o trend w UI.
+
+Odbiór przeglądania: 157 testów (112 jednostkowych, 34 integracyjne, 11 UI), 92,50% coverage rdzenia i CLI z gałęziami, 100% modułu regresji. Wygląd spinnera, regresji i wyszarzonych zakresów sprawdzono na syntetycznych zrzutach w `test-results/ui-preview/`. ComboBox wymaga `QStyledItemDelegate`, żeby domyślny delegat menu Windows nie ignorował koloru nieaktywnych pozycji. Oczekujące zapytanie uruchamiać bezpośrednio po zakończeniu poprzedniego; timer z opóźnieniem zero tworzył chwilę pozornego zakończenia ładowania.
 
 Diagnoza po próbach użytkownika: zwykłe wznowienie kompletnych ZIP nie tworzy już fikcyjnych `decode_runs`. Wymuszone przetwarzanie zastępuje istniejące wyniki FIT transakcyjnie; nie powiela pomiarów, ale reorganizacja stron tabel i indeksów oraz WAL może zwiększać fizyczny rozmiar SQLite. Nie uruchamiać automatycznie VACUUM na bazie używanej przez aplikację.
 

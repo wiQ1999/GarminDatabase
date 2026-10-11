@@ -28,15 +28,19 @@ Lista rozpoznanych parametrów z ikonami i grupami: sen, serce i HRV, stres, odd
 
 Wybrany parametr jest prezentowany na prostym wykresie, bez tabeli rekordów i bez powiększania fragmentu. Najechanie kursorem pokazuje datę lub godzinę, wartość i jednostkę. Przerwy pozostają widoczne: brak interpolacji i łączenia linii przez rozpoznane luki. Podpis czasu określa strefę; niejednoznaczne czasy źródłowe nie otrzymują zgadywanej strefy.
 
-Zakresy: **Dzień**, **7 dni**, **30 dni**, **90 dni**, **Cała historia**, własny zakres. Domyślnie 30 dni; domyślny koniec to ostatni zakończony dzień. Zakres „Dzień” umożliwia wybór konkretnej daty i szczegółowych pomiarów tego dnia.
+Wybór parametru, zmiana zakresu lub dat automatycznie odświeżają wykres. Przycisk „Pokaż wykres” został usunięty. Podczas odczytu na pierwszym planie wykresu widać animowane koło i napis „Ładowanie wykresu…”, a poprzedni obraz jest rozmyty i nie pokazuje tooltipów. Filtry pozostają dostępne. Przy szybkich zmianach UI pokazuje wynik ostatniego wyboru, pomijając starsze wyniki i błędy. Po aktualnym wyniku albo błędzie animacja znika; błąd usuwa poprzedni obraz, żeby nie udawał danych aktualnego parametru.
+
+Zakresy: **Dzień**, **7 dni**, **30 dni**, **90 dni**, **Cała historia**, własny zakres. Początkowy zakres to 30 dni dla podsumowań; domyślny koniec to ostatni zakończony dzień. Zakres „Dzień” umożliwia wybór konkretnej daty i szczegółowych pomiarów tego dnia. Dla parametrów bez reprezentacji `source_summary` wszystkie opcje poza dniem są wyszarzone i niedostępne; poprzedni dłuższy zakres automatycznie przełącza się na „Dzień”. Przy powrocie do podsumowań dłuższe zakresy ponownie są dostępne. Datę początku można edytować tylko w „Własnym zakresie”; w pozostałych filtrach jest wyliczana z końca okresu.
 
 | Okres | Prezentowane dane |
 | --- | --- |
 | Pojedynczy dzień | Szczegółowe pomiary dostępne w źródle oraz podsumowania Garmin, jeśli istnieją |
 | Dłuższy okres | Wyłącznie podsumowania dostarczone przez Garmin |
-| Dłuższy okres bez podsumowań źródłowych | Informacja o braku tej reprezentacji i możliwość wyboru pojedynczego dnia |
+| Parametr bez podsumowań źródłowych | Tylko „Dzień”; pozostałe filtry są wyszarzone, a poprzedni dłuższy zakres jest automatycznie korygowany |
 
-Nie obliczać własnych średnich, minimów, maksimów, trendów, ocen ani interpretacji medycznych. Nie redukować próbek w bazie lub eksporcie na potrzeby UI. Zapytanie pobiera tylko wybrany parametr, reprezentację i okres, a nie całą bazę. Liczniki techniczne dostępności nie są wskaźnikami zdrowotnymi.
+Checkbox **„Linia trendu”** jest domyślnie odznaczony. Włącza przerywaną linię z podpisem „Trend liniowy (obliczony)”, dopasowaną metodą najmniejszych kwadratów względem rzeczywistego czasu. Obejmuje poprawne skończone wartości liczbowe aktualnego wykresu. Nie dodaje punktów w lukach ani nie zmienia próbek; sama prosta trendu jest wskazówką wizualną i może przebiegać przez okresy bez pomiarów. Checkbox jest niedostępny podczas ładowania, dla kategorii i przy braku co najmniej dwóch obserwacji z różnymi czasami. Wybór obowiązuje w bieżącym oknie, bez zapisu w ustawieniach.
+
+Linia trendu jest nowym, jawnie zamówionym wyjątkiem od wcześniejszego zakazu własnych trendów. Jest obliczana wyłącznie na wykresie i nie jest podsumowaniem Garmin. Nie trafia do SQLite lub JSON. Nadal nie obliczać własnych średnich, minimów, maksimów, ocen ani interpretacji medycznych. Nie redukować próbek w bazie lub eksporcie na potrzeby UI. Zapytanie pobiera tylko wybrany parametr, reprezentację i okres, a nie całą bazę. Liczniki techniczne dostępności nie są wskaźnikami zdrowotnymi.
 
 Nierozpoznane pola zachować w SQLite. UI pokazuje ich obecność i liczbę z jednoznaczną etykietą, że chodzi o warianty pól, a nie liczbę parametrów zdrowotnych; bez zgadywanych nazw i wykresów. Pełne rekordy można przeglądać zewnętrznym narzędziem SQLite, poza zakresem interfejsu.
 
@@ -80,6 +84,7 @@ Sposób udostępniania danych, uwierzytelnianie klientów, lokalizacja głównej
 - Aplikacja uruchamia się na Windows 11 bez instalacji Pythona i pokazuje cztery sekcje w ustalonym motywie.
 - Pobranie i import nie blokują okna; przeglądanie zatwierdzonych danych działa podczas pracy.
 - Zatrzymanie, zamknięcie i wznowienie nie gubią ukończonych dni ani nie zostawiają częściowego importu jako zakończonego.
-- Wykres używa wyłącznie źródłowych wartości właściwej reprezentacji i zachowuje luki; brak podsumowań nie uruchamia własnej agregacji.
+- Punkty wykresu używają źródłowych wartości właściwej reprezentacji i zachowują luki; brak podsumowań blokuje dłuższe zakresy. Obliczona linia trendu jest odrębną, oznaczoną warstwą bez zapisu wyników.
+- Parametr, zakres i daty odświeżają wykres automatycznie; spinner działa nad rozmytym obrazem i znika także po błędzie. Starsze zapytanie nie nadpisuje nowszego wyboru.
 - Logowanie obsługuje MFA i wygasłą sesję; zapisane tokeny są chronione DPAPI, a hasło i kod nie trafiają na dysk ani do logów.
 - Ustawienia eksportu przetrwają ponowne uruchomienie, a eksport zastępuje wyłącznie wyniki aplikacji.
