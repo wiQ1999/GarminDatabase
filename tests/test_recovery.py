@@ -42,7 +42,7 @@ def test_indexes_migration_and_crash_marker(tmp_path):
         )
     db.initialize()
     with db.connect() as c:
-        assert c.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert c.execute("PRAGMA user_version").fetchone()[0] == 3
         assert (
             c.execute("SELECT status FROM decode_runs").fetchone()[0] == "interrupted"
         )

@@ -21,9 +21,9 @@ Zapewnić pełne zachowanie danych dostępnych w dziennym eksporcie dobrostanu G
 3. Kolejne uruchomienia pobierają niepobrane dni, także zaległości. Nigdy nie pobierają dzisiejszego ani przyszłego dnia.
 4. Zachowanie oryginalnych archiwów oraz dekodowanie danych do SQLite bez utraty dostępnych pól.
 5. Ręczne generowanie JSON z wyborem parametrów i okresu.
-6. Dane źródłowe i SQLite stanowią trwałe zasoby. Eksporty są plikami wynikowymi tworzonymi na żądanie, nie kolejnym archiwum.
+6. Dane źródłowe i SQLite stanowią trwałe zasoby. Każdy eksport tworzy osobny folder z datą i czasem; starsze eksporty pozostają na dysku do ręcznego usunięcia przez użytkownika.
 7. Interfejs po polsku: Start, Dane, Eksport, Ustawienia; ciemny motyw z niebieskimi akcentami i ikonami wzorowanymi na Garmin Connect.
-8. Przeglądanie stanu importu, kompletności danych i wykresów rozpoznanych parametrów. Dłuższe okresy pokazują tylko podsumowania źródłowe Garmin; szczegółowe próbki są wyświetlane dla pojedynczego dnia. Wykres odświeża się automatycznie, sygnalizuje ładowanie i blokuje niedostępne zakresy. Checkbox umożliwia pokazanie obliczonej linii trendu wyłącznie w UI. Bez tabel rekordów, powiększania, interpolacji pomiarów i własnych agregatów w bazie lub eksporcie.
+8. Przeglądanie stanu importu, kompletności danych i wykresów rozpoznanych parametrów. Dłuższe okresy pokazują podsumowania Garmin albo oznaczone średnie dzienne aplikacji dla HRV, tętna, oddechu, saturacji i stresu. Szczegóły są wyświetlane dla pojedynczego dnia. Wykres odświeża się automatycznie, sygnalizuje ładowanie i blokuje niedostępne zakresy. Checkbox umożliwia pokazanie obliczonej linii trendu wyłącznie w UI. Bez tabel rekordów, powiększania i interpolacji pomiarów.
 9. Przycisk „Pobierz dane” uruchamia pobieranie i import; postęp, zatrzymanie i późniejsze wznowienie są widoczne w UI. Przeglądanie już zaimportowanych danych jest dostępne podczas pracy.
 
 Szczegóły uzgodnionego interfejsu i przechowywania ustawień: [specyfikacja UI](11-desktop-ui.md).
@@ -32,7 +32,7 @@ Szczegóły uzgodnionego interfejsu i przechowywania ustawień: [specyfikacja UI
 
 - Osobne pobieranie treningów i dodatkowych metryk z innych endpointów.
 - Automatyczne ponowne pobieranie zakończonych dni i przyrostowe aktualizacje dawnych danych.
-- Własne średnie, agregaty, anomalie, diagnozy i dodatkowe wskaźniki. Jedynym wyjątkiem jest opcjonalna linia trendu na wykresie, zgodnie z późniejszym wymaganiem użytkownika; nie trafia do bazy ani eksportu.
+- Anomalie, diagnozy i dodatkowe wskaźniki zdrowotne. Użytkownik rozszerzył zakres o jawne podsumowania w SQLite i eksporcie: dzienne średnie z minimum, maksimum i licznikami jakości oraz opcjonalne podsumowania miesięczne. Kategorie i liczniki mają osobne metody, opisane w [eksporcie](05-export.md). Linia trendu nadal pozostaje wyłącznie w UI.
 - Instrukcje lub interpretacje dla AI w plikach eksportu.
 - Automatyczny eksport, WebAPI aplikacji, MCP i bezpośrednie odpytywanie bazy przez model w pierwszej wersji. Przyszła rola Raspberry Pi jako huba wymaga osobnego projektu sposobu udostępniania danych.
 - Automatyczne kopie zapasowe i dodatkowe trwałe kopie danych.

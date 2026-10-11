@@ -45,6 +45,13 @@ def window(qtbot, tmp_path, summaries=False):
     db.initialize()
     Importer(db).archive(archive(db.root))
     if summaries:
+        Importer(db).archive(
+            archive(
+                db.root,
+                "2024-11-07",
+                fit_bytes(55, [(253, 4, 134), (2, 4, 134)], [(1100000000, 100)]),
+            )
+        )
         for day, value in [("2024-11-08", 70), ("2024-11-09", 72)]:
             Importer(db).archive(
                 archive(db.root, day, fit_bytes(346, [(6, 1, 2)], [(value,)]))
@@ -88,8 +95,8 @@ def test_navigation_and_chart(qtbot, tmp_path):
     )
     w.parameter_list.setCurrentRow(heart)
     qtbot.waitUntil(lambda: w.query_worker is None, timeout=5000)
-    assert w.range.currentText() == "Dzień"
-    assert all(not w.range.model().item(i).isEnabled() for i in range(1, 6))
+    assert all(w.range.model().item(i).isEnabled() for i in range(6))
+    w.range.setCurrentIndex(0)
     w.chart_to.setDate(QDate(2024, 11, 8))
     qtbot.waitUntil(lambda: w.query_worker is None, timeout=5000)
     assert w.chart.points and len(w.chart.points) == 2
@@ -105,7 +112,7 @@ def test_ranges_follow_parameter_and_dates_refresh_automatically(qtbot, tmp_path
     assert [point[1] for point in w.chart.points] == [70, 72]
     assert all(w.range.model().item(i).isEnabled() for i in range(6))
 
-    select_parameter(w, "monitoring.heart_rate")
+    select_parameter(w, "monitoring.distance")
     ready(qtbot, w)
     assert w.range.currentText() == "Dzień"
     assert w.chart_from.date() == w.chart_to.date()
@@ -116,7 +123,13 @@ def test_ranges_follow_parameter_and_dates_refresh_automatically(qtbot, tmp_path
     w.chart_to.setDate(QDate(2024, 11, 8))
     ready(qtbot, w)
     assert w.range.currentText() == "Dzień"
-    assert [point[1] for point in w.chart.points] == [62, 64]
+    assert [point[1] for point in w.chart.points] == [1]
+
+    select_parameter(w, "monitoring.heart_rate")
+    w.range.setCurrentIndex(2)
+    ready(qtbot, w)
+    assert [point[1] for point in w.chart.points] == [63]
+    assert "obliczone" in w.chart_message.text()
 
     select_parameter(w, "sleep_assessment.overall_sleep_score")
     w.range.setCurrentIndex(5)
@@ -141,6 +154,7 @@ def test_loading_animates_and_stale_results_do_not_replace_latest_selection(
     w = window(qtbot, tmp_path)
     w.navigation.setCurrentRow(1)
     select_parameter(w, "monitoring.heart_rate")
+    w.range.setCurrentIndex(0)
     ready(qtbot, w)
     started = threading.Event()
     release = threading.Event()
@@ -194,6 +208,7 @@ def test_trend_toggle_draws_overlay_without_changing_source_points(qtbot, tmp_pa
     w = window(qtbot, tmp_path)
     w.navigation.setCurrentRow(1)
     select_parameter(w, "monitoring.heart_rate")
+    w.range.setCurrentIndex(0)
     w.chart_to.setDate(QDate(2024, 11, 8))
     ready(qtbot, w)
     assert w.trend.isEnabled() and not w.trend.isChecked()
@@ -217,13 +232,22 @@ def test_ui_export_and_settings(qtbot, tmp_path):
         __import__("PySide6.QtCore", fromlist=["QDate"]).QDate(2024, 1, 1)
     )
     w.recent.setValue(1000)
+    w.summary_period.setCurrentIndex(1)
     w.export()
     qtbot.waitUntil(
         lambda: w.worker is not None and not w.worker.isRunning(), timeout=5000
     )
     qtbot.waitUntil(lambda: not w.stop_button.isEnabled())
-    assert (tmp_path / "exports/recent.json").exists()
+    assert w.last_export_dir.is_dir()
+    assert list((w.last_export_dir / "details").glob("*.json"))
+    assert list((w.last_export_dir / "history").glob("*.json"))
+    assert not (w.last_export_dir / "recent.json").exists()
     assert Settings.load(tmp_path / "settings.json").recent_days == 1000
+    assert Settings.load(tmp_path / "settings.json").summary_period == "month"
+    first = w.last_export_dir
+    w.export()
+    qtbot.waitUntil(lambda: not w.stop_button.isEnabled())
+    assert w.last_export_dir != first and first.is_dir()
     assert w.export_button.isEnabled()
 
 

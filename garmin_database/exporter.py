@@ -1,16 +1,18 @@
-"""Stream JSON without loading an entire history into memory."""
+"""Eksport podsumowań i szczegółów: docs/05-export.md."""
 
-import json
 import os
 import re
 import tempfile
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .fit import dumps
 from .query import Queries
-from .util import atomic_json, check_stop, dates
+from .summaries import ALGORITHM_VERSION, Summaries, monthly_summaries, summary_method
+from .util import Cancelled, atomic_json, check_stop, dates
 
 
 def parameter_filename(key):
@@ -20,18 +22,48 @@ def parameter_filename(key):
     return safe + "-" + sha256(key.encode()).hexdigest()[:12] + ".json"
 
 
+@dataclass
+class ExportResult:
+    directory: Path
+    files: dict[str, int]
+
+
+def export_directory(parent, now=None):
+    now = now or datetime.now(ZoneInfo("Europe/Warsaw"))
+    base = "GarminDatabase_" + now.strftime("%Y-%m-%d_%H-%M-%S_%f")
+    index = 0
+    while True:
+        candidate = parent / (base + (f"_{index:02d}" if index else ""))
+        try:
+            candidate.mkdir()
+            return candidate
+        except FileExistsError:
+            index += 1
+
+
 class Exporter:
     def __init__(self, db):
         self.db = db
         self.queries = Queries(db)
 
-    def series(self, stream, param, start, end, stop, conn):
+    def metadata(self, param, start, end, conn, kind):
         meta = dict(
-            schema_version=1,
+            schema_version=2,
             parameter=param["key"],
             unit=param["unit"],
             representation=param["representation"],
+            kind=kind,
             **{"from": start.isoformat(), "to": end.isoformat()},
+            timezone="Europe/Warsaw",
+            **self.queries.coverage(start, end, conn),
+        )
+        if param["enum"]:
+            meta["value_labels"] = param["enum"]
+        return meta
+
+    def series(self, stream, param, start, end, stop, conn, kind):
+        meta = self.metadata(param, start, end, conn, kind)
+        meta.update(
             columns=["time", "value", "source", "validity"],
             validity_labels={
                 "v": "valid",
@@ -39,10 +71,10 @@ class Exporter:
                 "p": "partial_invalid",
                 "e": "decode_error",
             },
-            **self.queries.coverage(start, end, conn),
+            summary_origin="garmin"
+            if param["representation"] == "source_summary"
+            else None,
         )
-        if param["enum"]:
-            meta["value_labels"] = param["enum"]
         stream.write(dumps(meta)[:-1] + ',"data":[')
         first = True
         sources = {}
@@ -74,6 +106,65 @@ class Exporter:
             )
         stream.write('],"sources":' + dumps(sources) + "}")
 
+    def history(self, stream, param, start, end, stop, conn, period):
+        method = summary_method(param)
+        if method == "garmin":
+            self.series(stream, param, start, end, stop, conn, "history")
+            return
+        daily = Summaries(self.db).daily(param, start, end, conn, stop)
+        rows = monthly_summaries(daily, start, end) if period == "month" else daily
+        columns = ["day"]
+        if method == "sample_mean":
+            columns += ["mean", "minimum", "maximum"]
+        elif method == "value_counts":
+            columns += ["value_counts"]
+        else:
+            columns += ["last_value"]
+        columns += [
+            "valid_count",
+            "invalid_count",
+            "excluded_count",
+            "untimed_count",
+            "first_time",
+            "last_time",
+            "day_basis",
+        ]
+        if period == "month":
+            columns[0] = "month"
+            columns += ["valid_days", "period_from", "period_to"]
+        meta = self.metadata(param, start, end, conn, "history")
+        meta.update(
+            representation="computed_summary",
+            source_representation=param["representation"],
+            summary_origin="application",
+            aggregation=dict(
+                method=method,
+                period=period,
+                algorithm_version=ALGORITHM_VERSION,
+                weighting="valid_sample_count" if method == "sample_mean" else None,
+                negative_stress_values_excluded=param["key"]
+                == "stress_level.stress_level_value",
+            ),
+            columns=columns,
+            data_revision=conn.execute(
+                "SELECT revision FROM dataset_state WHERE id=1"
+            ).fetchone()[0],
+        )
+        stream.write(dumps(meta)[:-1] + ',"data":[')
+        for index, row in enumerate(rows):
+            check_stop(stop)
+            if index:
+                stream.write(",")
+            stream.write(
+                dumps(
+                    [
+                        row["day"] if column == "month" else row[column]
+                        for column in columns
+                    ]
+                )
+            )
+        stream.write("]}")
+
     def generate(
         self,
         output,
@@ -82,36 +173,42 @@ class Exporter:
         end,
         recent_days=90,
         stop=None,
-        full_samples=False,
+        summary_period="day",
         progress=lambda *a: None,
     ):
         list(dates(start, end))
-        if recent_days < 1:
-            raise ValueError("Okres szczegółowy musi być dodatni")
-        output = Path(output).resolve()
-        output.mkdir(parents=True, exist_ok=True)
-        if output == self.db.root.resolve() or output.is_relative_to(
+        if recent_days < 1 or summary_period not in {"day", "month"}:
+            raise ValueError("Nieprawidłowy okres szczegółów lub podsumowań")
+        if not parameters or len({p["key"] for p in parameters}) != len(parameters):
+            raise ValueError("Wybierz niepowtarzające się parametry")
+        parent = Path(output).resolve()
+        if parent == self.db.root.resolve() or parent.is_relative_to(
             (self.db.root / "raw").resolve()
         ):
             raise ValueError("Eksport musi mieć osobny katalog")
-        manifest = output / ".garmin-export.json"
-        old = (
-            json.loads(manifest.read_text(encoding="utf-8"))
-            if manifest.exists()
-            else {"files": []}
-        )
-        generated = []
+        check_stop(stop)
+        parent.mkdir(parents=True, exist_ok=True)
+        directory = export_directory(parent)
         sizes = {}
+        manifest = dict(
+            schema_version=2,
+            created_at=datetime.now(ZoneInfo("Europe/Warsaw")).isoformat(),
+            status="running",
+            history_from=start.isoformat(),
+            history_to=end.isoformat(),
+            summary_period=summary_period,
+            recent_days=recent_days,
+            files=sizes,
+        )
+        atomic_json(directory / "manifest.json", manifest)
 
         def write(name, writer):
             check_stop(stop)
-            path = output / name
-            # Never replace an unrelated file occupying an application filename.
-            if path.exists() and name not in old.get("files", []):
-                raise FileExistsError(
-                    "Plik docelowy nie należy do poprzedniego eksportu"
-                )
-            fd, temp = tempfile.mkstemp(prefix=".export-", suffix=".tmp", dir=output)
+            path = directory / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fd, temp = tempfile.mkstemp(
+                prefix=".export-", suffix=".tmp", dir=path.parent
+            )
             try:
                 with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
                     writer(stream)
@@ -119,55 +216,41 @@ class Exporter:
                     os.fsync(stream.fileno())
                 check_stop(stop)
                 os.replace(temp, path)
-                generated.append(name)
                 sizes[name] = path.stat().st_size
-                # Track ownership after each completed file, including cancellation.
-                atomic_json(
-                    manifest,
-                    {
-                        "schema_version": 1,
-                        "files": sorted(set(old.get("files", []) + generated)),
-                    },
-                )
+                atomic_json(directory / "manifest.json", manifest)
             finally:
                 Path(temp).unlink(missing_ok=True)
 
-        with self.db.connect(readonly=True) as c:
-            c.execute("BEGIN")  # consistent snapshot while import continues
-            for index, param in enumerate(parameters, 1):
-                progress(param["key"], "eksport", index, len(parameters))
-                if param["representation"] == "source_summary" or full_samples:
-                    write(
-                        parameter_filename(param["key"]),
-                        lambda s, p=param: self.series(s, p, start, end, stop, c),
+        try:
+            with self.db.connect(readonly=True) as conn:
+                conn.execute("BEGIN")
+                conn.execute("SELECT revision FROM dataset_state").fetchone()
+                recent_start = max(start, end - timedelta(days=recent_days - 1))
+                for index, param in enumerate(parameters, 1):
+                    progress(
+                        param["key"], "podsumowania", 2 * index - 1, 2 * len(parameters)
                     )
-            recent_start = max(start, end - timedelta(days=recent_days - 1))
-
-            def recent(stream):
-                missing = [
-                    p["key"]
-                    for p in parameters
-                    if p["representation"] != "source_summary"
-                ]
-                stream.write(
-                    '{"schema_version":1,"missing_source_summaries":'
-                    + dumps(missing)
-                    + ',"series":['
-                )
-                for index, param in enumerate(parameters):
-                    if index:
-                        stream.write(",")
-                    self.series(stream, param, recent_start, end, stop, c)
-                stream.write("]}")
-
-            write("recent.json", recent)
-        for name in old.get("files", []):
-            # Only simple names recorded by this exporter can be cleaned up.
-            if (
-                name not in generated
-                and Path(name).name == name
-                and name.endswith(".json")
-            ):
-                (output / name).unlink(missing_ok=True)
-        atomic_json(manifest, {"schema_version": 1, "files": generated})
-        return sizes
+                    write(
+                        "history/" + parameter_filename(param["key"]),
+                        lambda s, p=param: self.history(
+                            s, p, start, end, stop, conn, summary_period
+                        ),
+                    )
+                    progress(param["key"], "szczegóły", 2 * index, 2 * len(parameters))
+                    write(
+                        "details/" + parameter_filename(param["key"]),
+                        lambda s, p=param: self.series(
+                            s, p, recent_start, end, stop, conn, "details"
+                        ),
+                    )
+        except BaseException as error:
+            manifest["status"] = (
+                "cancelled"
+                if isinstance(error, (Cancelled, KeyboardInterrupt))
+                else "failed"
+            )
+            atomic_json(directory / "manifest.json", manifest)
+            raise
+        manifest["status"] = "complete"
+        atomic_json(directory / "manifest.json", manifest)
+        return ExportResult(directory, sizes)

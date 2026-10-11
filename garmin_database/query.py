@@ -4,6 +4,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .fit import FIT_EPOCH
+from .summaries import Summaries, has_chart_summary, summary_method
 
 LABELS = {
     "heart_rate": "Tętno",
@@ -291,8 +292,28 @@ class Queries:
                 c.close()
 
     def chart(self, parameter, start, end):
-        if start != end and parameter["representation"] != "source_summary":
+        if start != end and not has_chart_summary(parameter):
             return [], "Brak podsumowań źródłowych Garmin. Wybierz pojedynczy dzień."
+        if start != end and summary_method(parameter) == "sample_mean":
+            with self.db.connect(readonly=True) as conn:
+                conn.execute("BEGIN")
+                rows = Summaries(self.db).daily(parameter, start, end, conn)
+            points = [
+                (
+                    bounds(
+                        date.fromisoformat(row["day"]), date.fromisoformat(row["day"])
+                    )[0],
+                    row["mean"],
+                    row["day"] + f" • średnia obliczona z {row['valid_count']} próbek",
+                )
+                for row in rows
+            ]
+            return (
+                points,
+                "Czas: Europe/Warsaw; średnie dzienne obliczone przez aplikację"
+                if points
+                else "Brak danych dla wybranego okresu",
+            )
         result = []
         for row in self.rows(parameter, start, end):
             if row["time"]:

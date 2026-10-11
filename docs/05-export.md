@@ -1,66 +1,106 @@
-# Eksport JSON
+# Eksport JSON: historia i szczegóły
 
-## Uzgodniony zakres
+Eksport jest uruchamiany ręcznie z UI lub CLI. Użytkownik wybiera parametry, zakres historii, liczbę ostatnich dni szczegółowych (domyślnie 90), okres obliczonych podsumowań i folder na eksporty. Dane służą odczytowi przez Claude lub ChatGPT; pliki nie zawierają instrukcji ani interpretacji medycznych.
 
-Eksport wykonywany ręcznie, dla Claude i ChatGPT. Jeden plik na parametr, bez automatycznego podziału według miesięcy lub rozmiaru. Podział można rozważyć dopiero po sprawdzeniu rzeczywistej wielkości eksportu.
+## Pakiet wynikowy
 
-Domyślny pakiet:
+Każde uruchomienie tworzy nowy folder w wybranej lokalizacji, np.:
 
-- `{parameter}.json`: historia dostępnych podsumowań dziennych danego parametru, tylko gdy takie wartości istnieją w źródle Garmin.
-- `recent.json`: szczegółowe pomiary wybranych parametrów z ostatnich 90 zakończonych dni.
+```text
+exports/
+  GarminDatabase_2026-10-11_21-30-45_123456/
+    manifest.json
+    history/
+      hrv_value.value.json
+      monitoring_hr_data.current_day_resting_heart_rate.json
+    details/
+      hrv_value.value.json
+      monitoring_hr_data.current_day_resting_heart_rate.json
+```
 
-Jeśli podsumowania dzienne parametru nie istnieją w źródle, aplikacja ich nie oblicza. Nie tworzy pustego pliku udającego historię; wpis w metadanych `recent.json` informuje o braku takiej reprezentacji. Pełne starsze próbki są dostępne w eksporcie okresu wskazanego przez użytkownika, po jednym pliku na parametr.
+Nazwa ma datę i czas Europe/Warsaw z mikrosekundami. W razie kolizji aplikacja atomowo tworzy folder z kolejnym sufiksem. Nigdy nie używa istniejącego folderu pakietu. Starsze eksporty, także dawne `recent.json` i `.garmin-export.json`, pozostają na miejscu; aplikacja ich nie usuwa. Użytkownik zarządza miejscem na dysku i usuwa zbędne pakiety ręcznie.
 
-`recent.json` jest plikiem z danymi, nie instrukcją dla modelu. „Krótki” oznacza ograniczenie zakresu czasu, a nie obcięcie próbek: szczegółowe 90 dni może nadal dać duży plik. Po zmierzeniu objętości użytkownik może zawęzić okres lub parametry. Bez automatycznej utraty szczegółów.
+`history/{parametr}.json` obejmuje podsumowania całego wybranego zakresu. Nie zawiera pełnej historii próbek parametru bez podsumowań. `details/{parametr}.json` zawiera wszystkie źródłowe rekordy wybranego parametru z ostatnich N dni, bez zmniejszania częstotliwości, uśredniania czy usuwania nieprawidłowych odczytów. Nie powstaje zbiorczy `recent.json` ani opcja dołączania pełnych próbek do historii. Aby otrzymać szczegóły całego zakresu, zwiększ N tak, by objęło ten zakres.
 
-## Zasady formatu
+Dla parametru będącego źródłowym podsumowaniem, np. tętna spoczynkowego, szczegóły oznaczają wszystkie oryginalne zapisy tego podsumowania. Aplikacja nie tworzy pomiarów chwilowych, których ta seria nie zawiera. Historia i szczegóły celowo nakładają się okresem; nie należy traktować ich jako rozłącznych zbiorów.
 
-Realizacja identyfikuje parametr nazwą `message_name.variant_name`, np. `monitoring.heart_rate`. Serie zachowują reprezentacje `sample`, `source_summary` lub `event` z katalogu, bez nazywania każdego podsumowania „dziennym”. Nazwy plików nie mogą zawierać ścieżek; niestandardowe nazwy są normalizowane i otrzymują hash zapobiegający kolizjom.
+`manifest.json` podaje datę utworzenia, zakres, wybór okresu podsumowań, liczbę dni szczegółowych, listę ukończonych plików i rozmiary. `status` jest `running`, `complete`, `cancelled` albo `failed`. Zapis każdego JSON jest strumieniowy i atomowy. Anulowanie usuwa plik tymczasowy, zachowuje ukończone pliki nowego pakietu i oznacza go jako nieukończony; starsze pakiety nie zmieniają się. Stan `running` pozostawiony po awarii oznacza nieukończone uruchomienie.
 
-Wynik ma kolumny `time`, `value`, `source`, `validity`. Ścieżki źródeł są zapisane raz w słowniku `sources` i zastąpione w wierszach krótkimi kluczami. `requested_day` jest metadanym źródła, nie zgadywanym czasem pomiaru. Brak czasu daje `null`. Kody `v`, `i`, `p`, `e` mają etykiety w `validity_labels`. `unimported_or_partial_days` rozróżnia dostępny ZIP od ukończonego importu do bazy.
+## Dobór podsumowań do obecnych danych
 
-- UTF-8, poprawny JSON, pola po angielsku, krótkie stabilne nazwy.
-- Tylko dane i konieczne etykiety: wersja formatu, parametr, jednostka, zakres, czas, status dostępności i pochodzenie.
-- Bez promptów, zaleceń, interpretacji, tekstu o tym jak AI ma analizować dane i własnych wskaźników.
-- Kolejność pomiarów deterministyczna. Nie pomijać rekordów o identycznym czasie, jeśli reprezentują różne wiadomości źródłowe.
-- Usuwać wyłącznie potwierdzone duplikaty źródłowe; nie łączyć różnych wartości przez średnią ani wybór „najlepszej”.
-- Opisy i jednostki podać raz dla serii, zamiast powtarzać przy każdej próbce.
-- Czas jednoznaczny w ISO 8601 z przesunięciem lub UTC; lokalny czas bez znanej strefy oznaczony jawnie.
-- Zachować wartości źródłowe; brak/nieprawidłowość nie staje się zerem. Nie emitować niedozwolonych w JSON `NaN` lub `Infinity`.
-- Wskazać brakujące dni, niepełne dekodowanie i faktyczny zakres dostępnych danych; nie wypełniać luk sztucznymi rekordami.
-- Nierozpoznane pola opisać identyfikatorem źródłowym, bez przypisywania niepotwierdzonej metryki.
+Domyślny okres to **dzień**. W historii kilku lat oznacza około tysiąca wierszy na parametr, zamiast setek tysięcy próbek. Zachowuje różnice między dniami, które miesięczna średnia mogłaby ukryć. Opcja **miesiąc** daje mniejszy pakiet dla szerokiego przeglądu; dotyczy tylko obliczonych podsumowań, a nie oryginalnych zapisów Garmin. Nie tworzymy kilku redundantnych plików tego samego podsumowania w jednym pakiecie.
 
-## Przykład struktury — dane demonstracyjne, nie odczyt próbki
+| Rodzaj serii | Historia | Szczegóły |
+| --- | --- | --- |
+| `source_summary` Garmin | Wszystkie oryginalne podsumowania Garmin; `summary_origin: garmin` | Te same źródłowe rekordy, ograniczone do N dni |
+| HRV, tętno chwilowe, oddech, saturacja, stres | Średnia, minimum, maksimum i liczniki jakości dla dnia lub miesiąca; `summary_origin: application` | Wszystkie oryginalne próbki z N dni |
+| Kategorie, np. fazy snu lub tryb saturacji | Liczba obserwacji każdego kodu (`value_counts`); bez średniej kodów | Wszystkie rekordy wraz z etykietami kodów |
+| Pozostałe liczniki, właściwości i zdarzenia | Ostatnia poprawna obserwacja oraz liczniki rekordów (`last_observed`) | Wszystkie oryginalne rekordy z N dni |
+
+Ostatnia obserwacja kroków, dystansu, kalorii lub czasu ruchu **nie jest dziennym bilansem ani sumą**. Różne rodzaje aktywności mogą mieć odrębne narastające liczniki. Liczności faz snu **nie są czasem trwania faz**. Licznik obserwacji zdarzenia nie potwierdza liczby odrębnych zdarzeń. Te metody nie zgadują znaczenia brakującego podsumowania Garmin.
+
+Średnie mają jawną listę parametrów: `hrv_value.value`, `monitoring.heart_rate`, `respiration_rate.respiration_rate`, `spo2_data.reading_spo2`, `stress_level.stress_level_value`. HRV z próbek zachowuje osobną nazwę od `hrv_status_summary.last_night_average` lub `weekly_average`: średnia próbek w dniu kalendarzowym nie jest średnią nocną Garmin.
+
+## Reguły obliczeń i kompletność
+
+Średnia dzienna jest arytmetyczną średnią poprawnych skończonych skalarnych próbek z rozpoznanym czasem UTC, przypisanych do dnia kalendarzowego Europe/Warsaw. Każda obserwacja ma jednakową wagę; to średnia **dostępnych próbek**, bez domniemania pełnego pokrycia doby i bez ważenia czasem lub interpolacji przez luki. Źródła często mają interwał około minuty, a HRV około pięciu minut, ale zachowują przerwy i różną częstotliwość. Dni przy zmianie czasu mają prawidłowe granice lokalne.
+
+Skan bieżącej bazy dla zakresu 2024-01-01–2026-10-10 obejmował wyłącznie liczniki i strukturę, bez publikowania wartości zdrowotnych. Wyniki uzasadniają dzienną podstawę i opcjonalną redukcję do miesiąca:
+
+| Parametr szczegółowy | Rekordy | Dni z rekordami | Nieprawidłowe wg FIT | Dodatkowo wykluczone ze średniej |
+| --- | ---: | ---: | ---: | ---: |
+| Oddech | 1 193 524 | 844 | 0 | 0 |
+| Saturacja | 400 646 | 841 | 712 | 0 |
+| Tętno | 974 247 | 844 | 0 | 0 |
+| HRV | 74 027 | 834 | 549 | 0 |
+| Stres | 1 188 232 | 844 | 0 | 174 389 ujemnych wartości |
+
+Żadna z tych pięciu serii nie miała nierozpoznanego czasu. Różna liczba dni i przerwy między odczytami pokazują, dlaczego liczba poprawnych próbek powinna być jawna, a braków nie można wypełniać zerem. Te liczniki są stanem konkretnego skanu, nie stałymi cechami parametru.
+
+Średnia miesięczna jest ważona liczbą poprawnych próbek dni: `sum(mean_day * valid_count_day) / sum(valid_count_day)`. Nie jest nieważoną średnią średnich dziennych. Minimum i maksimum obejmują te same poprawne próbki. Miesięczny rekord podaje `valid_days`, `period_from` i `period_to`, także dla niepełnego miesiąca. Brak jakiejkolwiek poprawnej próbki daje `null`, a nie zero.
+
+`valid_count` oznacza liczbę obserwacji użytych przez daną metodę, `invalid_count` — rekordy nieważne lub błędnie zdekodowane, `excluded_count` — poprawne wg FIT, ale nieprzydatne do średniej (np. tablica lub ujemna wartość stresu), `untimed_count` — rekordy bez rozpoznanego czasu. Te ostatnie nie biorą udziału w obliczeniu; są ewidencjonowane pod dniem żądania archiwum. `day_basis` odróżnia `measurement_time`, `requested_day` i `mixed`. `first_time` i `last_time` dotyczą tylko poprawnych obserwacji użytych w podsumowaniu. Liczniki są rozłączne.
+
+Nie odrzucamy nieprawidłowych rekordów ze szczegółów ani z SQLite. Ujemne wartości stresu nie są dodatnim pomiarem poziomu stresu i nie wchodzą do średniej; zachowujemy je w danych źródłowych. Nie przypisujemy im zgadywanej etykiety medycznej. Deduplikacja nadal dotyczy identycznych FIT po SHA-256, nie samej pary czas–wartość; różne wiadomości źródłowe z tym samym czasem pozostają osobnymi obserwacjami.
+
+Metadane każdego pliku obejmują `missing_days`, `unimported_or_partial_days` i `decode_status` ze spójnego obrazu SQLite. `missing_days` oznacza brak potwierdzonego archiwum, nie pewność braku pomiarów zegarka. `decode_status: complete` nie gwarantuje obecności każdego parametru każdego dnia. Brakujące dni nie są uzupełniane zerem lub sztucznym pomiarem.
+
+Podsumowania dzienne są zapisywane w osobnych tabelach SQLite, z metodą, wersją algorytmu, zakresem i rewizją danych. Powstają na żądanie eksportu lub wykresu. Import i ponowne przetwarzanie unieważniają cache; następny odczyt go odbudowuje. Podsumowania miesięczne są wyliczane z dziennych bez dodatkowej trwałej kopii. Szczegóły: [schemat v3](10-sqlite-schema.md).
+
+## Format JSON v2
+
+UTF-8, poprawny JSON, krótkie angielskie nazwy. Parametr ma nazwę `message_name.variant_name`. Nazwa pliku jest zabezpieczona przed ścieżkami i kolizjami po normalizacji. `schema_version: 2` odróżnia nowy pakiet od dawnego eksportu.
+
+Każda seria ma `parameter`, `unit`, `from`, `to`, `kind` (`history` albo `details`), `representation` i `columns`. Tablica `data` zawiera wiersze w kolejności z `columns`. Jednostka jest podana raz; wartości są już przeskalowane według profilu FIT.
+
+Szczegóły oraz źródłowe podsumowania mają kolumny `[time, value, source, validity]`. Kody `v`, `i`, `p`, `e` rozwija `validity_labels`; źródła `s1`, `s2` rozwija słownik `sources`. Każde źródło podaje ścieżkę FIT w ZIP i `requested_day`, który nie zastępuje czasu pomiaru. Nieznany czas to `null`. Czasy pomiarów są zapisane w UTC ISO 8601, a pole `timezone` określa lokalną granicę dni zestawień. Kody kategorii rozwija `value_labels`.
+
+Historia obliczona ma `representation: computed_summary`, `source_representation`, `summary_origin: application`, `data_revision` i `aggregation` z metodą, okresem i wersją algorytmu. Jej kolumny zależą od metody i są wymienione w pliku. Przykład demonstracyjny fragmentu średniej dziennej:
 
 ```json
 {
-  "schema_version": 1,
-  "parameter": "monitoring.heart_rate",
-  "unit": "bpm",
-  "representation": "sample",
-  "from": "2026-10-09",
-  "to": "2026-10-09",
-  "columns": ["time", "value", "source", "validity"],
-  "validity_labels": {"v": "valid", "i": "invalid", "p": "partial_invalid", "e": "decode_error"},
-  "sources": {"s1": {"path": "raw/2026-10-09.zip/example_WELLNESS.fit", "requested_day": "2026-10-09"}},
-  "data": [["2026-10-09T05:00:00Z", 62, "s1", "v"]],
-  "missing_days": [],
-  "unimported_or_partial_days": [],
-  "decode_status": "complete"
+  "parameter": "hrv_value.value",
+  "unit": "ms",
+  "representation": "computed_summary",
+  "summary_origin": "application",
+  "aggregation": {"method": "sample_mean", "period": "day", "algorithm_version": 1},
+  "columns": ["day", "mean", "minimum", "maximum", "valid_count", "invalid_count", "excluded_count", "untimed_count", "first_time", "last_time", "day_basis"],
+  "data": [["2026-10-09", 50, 40, 60, 2, 1, 0, 0, "2026-10-09T01:00:00+00:00", "2026-10-09T01:05:00+00:00", "measurement_time"]]
 }
 ```
 
-Wykryte nazwy i identyfikatory pól są w [katalogu pełnej historii](09-fit-field-catalog.md). Pole nieznane nie może być eksportowane pod zgadywaną nazwą metryki zdrowotnej. Katalog pól nie jest jeszcze finalnym katalogiem parametrów dla AI: trzeba wybrać reprezentacje źródłowe i rozróżnić metadane, próbki, przedziały oraz podsumowania. Przy wartościach o różnej semantyce, np. parametr dzienny i chwilowy, zachować osobne reprezentacje. Nie używać podpisu „daily_summary”, jeżeli Garmin nie dostarczył takiej wartości.
+To dwa poprawne pomiary o średniej 50 ms, minimum 40 i maksimum 60 oraz jeden nieprawidłowy rekord. Takie dane opisują dostępne obserwacje, a nie interpretację zdrowia.
 
-## Polecenia realizowane przez moduł CLI
+## Uruchamianie i ograniczanie rozmiaru
 
 ```text
-python -m garmin_database.cli export --recent-days 90 --output exports/current
-python -m garmin_database.cli export --from 2026-09-01 --to 2026-09-30 --parameters monitoring.heart_rate --full-samples --output exports/selected
+python -m garmin_database.cli export --recent-days 90 --output exports
+python -m garmin_database.cli export --parameters hrv_value.value --summary-period month --recent-days 30 --output exports
+python -m garmin_database.cli export --from 2026-09-01 --to 2026-09-30 --parameters monitoring.heart_rate --recent-days 30 --output exports
 ```
 
-Domyślnie koniec okresu to wczoraj; 90 dni obejmuje wczoraj i poprzednie 89 dat. Eksport na żądanie wskazanego okresu zawiera wszystkie dostępne próbki wybranych parametrów. Przed zapisem podać planowaną objętość lub po zapisie raportować rozmiar plików. Nie obiecywać zgodności z konkretnym limitem kontekstu modeli.
+Opcja `--full-samples` została usunięta. Początek szczegółów to późniejsza z dat: początek historii i koniec minus N−1 dni. Koniec domyślny to wczoraj. W UI „Podsumowania historii” wybiera dzień lub miesiąc, „Szczegółowe ostatnie dni” wybiera N, a „Folder na eksporty” jest katalogiem nadrzędnym nowych pakietów. „Otwórz folder eksportu” otwiera ostatni ukończony pakiet w bieżącym oknie. Wybory są zapisywane w `%LOCALAPPDATA%/GarminDatabase/settings.json`; dawny `full_samples` jest ignorowany.
 
-Eksporty są odtwarzalne z SQLite. Nie przechowywać ich jako dodatkowego stałego archiwum. Użytkownik zaakceptował zastępowanie poprzednich plików eksportu: kolejne generowanie zastępuje wyniki aplikacji w wybranym folderze, bez tworzenia kolejnych kopii i bez usuwania obcych plików. Zapis pliku powinien być atomowy, aby błąd nie pozostawił uciętego JSON. Jeżeli zmienia się zestaw parametrów, usuwać nieaktualne wyniki wyłącznie na podstawie ewidencji plików wygenerowanych przez aplikację.
+Pliki szczegółowe nadal mogą być duże: 90 dni nie oznacza limitu liczby tokenów. Można zawęzić liczbę dni lub parametrów, bez automatycznego obcinania danych. Nie dzielimy pojedynczego parametru na miesiące ani nie obiecujemy zgodności z konkretnym limitem modelu.
 
-W UI można wybrać parametry, zakres historii, okres szczegółowy (domyślnie 90 dni) i folder docelowy. Ostatnie ustawienia są zapisywane w `%LOCALAPPDATA%/GarminDatabase/settings.json`. Po eksporcie dostępny jest przycisk „Otwórz folder eksportu”. Ograniczenia zakresu wykresów nie ograniczają szczegółowego eksportu wskazanego okresu. Zobacz [specyfikację UI](11-desktop-ui.md).
+Punkt wejścia: `Exporter.generate` w `garmin_database/exporter.py`; obliczenia i cache: `garmin_database/summaries.py`. Eksport nie korzysta z dodatkowej usługi sieciowej.

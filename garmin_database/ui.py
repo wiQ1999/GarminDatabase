@@ -34,11 +34,12 @@ from PySide6.QtWidgets import (
 
 from .auth import GarminSource, SessionRequired, SessionStore
 from .chart import Chart, ChartView
-from .exporter import Exporter
+from .exporter import Exporter, ExportResult
 from .icons import icon, symbol
 from .query import Queries
 from .settings import Settings, application_dir
 from .storage import Database
+from .summaries import has_chart_summary
 from .sync import Sync
 from .util import Cancelled, check_stop, writer_lock, yesterday
 
@@ -140,6 +141,7 @@ class Window(QMainWindow):
         self.parameters = []
         self.query_pending = False
         self.query_serial = 0
+        self.last_export_dir = None
         self.setWindowTitle("GarminDatabase")
         self.resize(1180, 800)
         self.setMinimumSize(900, 650)
@@ -226,7 +228,7 @@ class Window(QMainWindow):
     def build_data(self):
         layout = self.page(
             "Dane",
-            "Wybierz parametr i okres. Podsumowania pochodzą wyłącznie z Garmin.",
+            "Wybierz parametr i okres. Podsumowania Garmin lub oznaczone średnie dzienne aplikacji.",
         )
         row = QHBoxLayout()
         self.parameter_list = QListWidget()
@@ -273,7 +275,7 @@ class Window(QMainWindow):
     def build_export(self):
         layout = self.page(
             "Eksport dla AI",
-            "JSON z wartościami źródłowymi. Kolejne generowanie zastępuje wyniki aplikacji.",
+            "Historia podsumowań i pełne szczegóły — osobne pliki dla każdego parametru. Każdy eksport ma nowy folder.",
         )
         self.export_list = QListWidget()
         layout.addWidget(self.export_list, 1)
@@ -298,14 +300,19 @@ class Window(QMainWindow):
         self.recent.setRange(1, 10000)
         self.recent.setValue(self.settings.recent_days)
         form.addRow("Szczegółowe ostatnie dni", self.recent)
-        self.output = QLineEdit(self.settings.export_dir)
-        form.addRow("Folder eksportu", self.output)
-        layout.addLayout(form)
-        self.full_samples = QCheckBox(
-            "Eksportuj także pełne szczegółowe serie wskazanego okresu"
+        self.summary_period = QComboBox()
+        self.summary_period.addItem("Dzienne (zalecane)", "day")
+        self.summary_period.addItem("Miesięczne", "month")
+        self.summary_period.setCurrentIndex(
+            0 if self.settings.summary_period == "day" else 1
         )
-        self.full_samples.setChecked(self.settings.full_samples)
-        layout.addWidget(self.full_samples)
+        self.summary_period.setToolTip(
+            "Dotyczy obliczonych podsumowań. Podsumowania Garmin zachowują oryginalną postać."
+        )
+        form.addRow("Podsumowania historii", self.summary_period)
+        self.output = QLineEdit(self.settings.export_dir)
+        form.addRow("Folder na eksporty", self.output)
+        layout.addLayout(form)
         buttons = QHBoxLayout()
         buttons.addWidget(
             button("Wybierz folder", lambda: self.pick_folder(self.output))
@@ -316,7 +323,7 @@ class Window(QMainWindow):
             button(
                 "Otwórz folder eksportu",
                 lambda: QDesktopServices.openUrl(
-                    QUrl.fromLocalFile(self.output.text())
+                    QUrl.fromLocalFile(str(self.last_export_dir or self.output.text()))
                 ),
             )
         )
@@ -433,7 +440,7 @@ class Window(QMainWindow):
 
     def parameter_changed(self):
         parameter = self.selected_parameter()
-        summaries = parameter and parameter["representation"] == "source_summary"
+        summaries = parameter and has_chart_summary(parameter)
         for index in range(self.range.count()):
             enabled = bool(summaries) or index == 0
             item = self.range.model().item(index)
@@ -449,7 +456,7 @@ class Window(QMainWindow):
     def update_range(self):
         """Przeglądanie i ograniczenia zakresów: docs/11-desktop-ui.md."""
         parameter = self.selected_parameter()
-        summaries = parameter and parameter["representation"] == "source_summary"
+        summaries = parameter and has_chart_summary(parameter)
         if not summaries and self.range.currentIndex() != 0:
             with QSignalBlocker(self.range):
                 self.range.setCurrentIndex(0)
@@ -573,10 +580,11 @@ class Window(QMainWindow):
             if not isinstance(result, int) or result == 0
             else f"Ukończono z błędami: {result}"
         )
-        if isinstance(result, dict):
+        if isinstance(result, ExportResult):
+            self.last_export_dir = result.directory
             self.export_result.setText(
-                "Wygenerowano: "
-                + ", ".join(f"{k} ({v / 1024:.1f} KB)" for k, v in result.items())
+                f"Folder: {result.directory}\nWygenerowano {len(result.files)} plików danych "
+                + f"({sum(result.files.values()) / 1024:.1f} KB). Historia: history; szczegóły: details."
             )
         if result == "login":
             self.session_status.setText(
@@ -655,14 +663,14 @@ class Window(QMainWindow):
         end = selected_date(self.export_to)
         output = self.output.text()
         recent = self.recent.value()
-        full = self.full_samples.isChecked()
+        period = self.summary_period.currentData()
         db = self.db
         self.settings.parameters = [p["key"] for p in params]
         self.settings.history_from = start.isoformat()
         self.settings.history_to = end.isoformat()
         self.settings.export_dir = output
         self.settings.recent_days = recent
-        self.settings.full_samples = full
+        self.settings.summary_period = period
         try:
             self.settings.save(self.settings_path)
         except Exception as e:
@@ -670,11 +678,13 @@ class Window(QMainWindow):
                 "Nie można zapisać ustawień: " + type(e).__name__
             )
             return
+        self.export_result.setText("Generowanie podsumowań i szczegółów…")
         self.start_work(
             lambda w: Exporter(db).generate(
-                output, params, start, end, recent, w.stop, full, w.progress.emit
+                output, params, start, end, recent, w.stop, period, w.progress.emit
             )
         )
+        self.worker.failure.connect(self.export_result.setText)
 
     def save_settings(self):
         old = self.settings.data_dir

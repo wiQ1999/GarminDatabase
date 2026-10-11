@@ -10,8 +10,8 @@ W checkoutcie projektu paczka automatycznie wybiera istniejący katalog `data/`.
 
 1. W Ustawieniach sprawdź folder danych, podaj e-mail i hasło Garmin, a następnie zaloguj się. Kod MFA jest wymagany tylko wtedy, gdy zażąda go Garmin. Sesja jest szyfrowana DPAPI; hasło i kod nie są zapisywane.
 2. „Pobierz dane” nadrabia dni od 2024-01-01 do wczoraj i importuje je do SQLite. „Importuj lokalne archiwa” wykorzystuje istniejące ZIP bez logowania i sieci. „Przetwórz ponownie” odbudowuje wyniki dekodowania z oryginałów.
-3. W Danych wybierz parametr i zakres. Wykres ładuje się automatycznie po zmianie parametru, zakresu lub dat; spinner na rozmytym tle sygnalizuje odczyt. Dla próbek chwilowych aplikacja sama wybiera „Dzień” i blokuje pozostałe zakresy. Dłuższe okresy pokazują tylko podsumowania Garmin. Checkbox „Linia trendu” dodaje oznaczoną regresję liniową tylko na wykresie liczbowym; nie zmienia pomiarów ani eksportów. Nie ma tabeli, zoomu lub interpolacji próbek.
-4. W Eksporcie wybierz parametry, okres i folder. Domyślnie powstaje historia źródłowych podsumowań i szczegółowy `recent.json` z ostatnich 90 dni. Opcja pełnych serii pozwala wyeksportować również starsze szczegółowe próbki. Ustawienia są zapamiętywane.
+3. W Danych wybierz parametr i zakres. Wykres ładuje się automatycznie; spinner na rozmytym tle sygnalizuje odczyt. Dzień pokazuje szczegóły. Dłuższe okresy pokazują podsumowania Garmin albo oznaczone średnie dzienne HRV, tętna, oddechu, saturacji i stresu. Pozostałe serie bez podsumowań Garmin mają tylko dzień. Checkbox „Linia trendu” dodaje oznaczoną regresję tylko na wykresie; nie trafia do eksportów. Nie ma tabeli, zoomu lub interpolacji próbek.
+4. W Eksporcie wybierz parametry, zakres historii, podsumowania dzienne lub miesięczne, liczbę dni szczegółów i folder nadrzędny. Powstaje nowy folder z datą i czasem, zawierający `history/{parametr}.json`, `details/{parametr}.json` i `manifest.json`. Domyślnie szczegóły obejmują ostatnie 90 dni. Nie powstaje zbiorczy `recent.json`; historia ma tylko podsumowania. Starsze eksporty pozostają na dysku. „Otwórz folder eksportu” otwiera nowy pakiet, a ustawienia są zapamiętywane.
 
 Stan Start rozdziela datę pobrania od rejestracji i dekodowania w bazie. Nieznane pola zachowują identyfikatory źródłowe w SQLite; UI nie przypisuje im zgadywanych metryk. Ścieżka ustawień to `%LOCALAPPDATA%/GarminDatabase/settings.json`, sesji — `auth/session.bin` w tym samym katalogu. Dotychczasowa sesja skryptu w `private/garmin-session` nie jest automatycznie kopiowana do magazynu aplikacji.
 
@@ -42,12 +42,12 @@ Skrypt budowania usuwa błędnie zebrane DLL ICU 78 z runtime deweloperskiego. Q
 
 ## Testy według piramidy
 
-Zestaw zawiera 166 testów: 118 jednostkowych, 34 integracyjne i 14 UI. Testy ze starych skryptów nadal są uruchamiane. Fixture FIT/ZIP są syntetyczne i mają poprawne CRC; nie zawierają danych użytkownika.
+Zestaw zawiera 195 testów: 137 jednostkowych, 44 integracyjne i 14 UI. Testy ze starych skryptów nadal są uruchamiane. Fixture FIT/ZIP są syntetyczne i mają poprawne CRC; nie zawierają danych użytkownika.
 
 | Warstwa | Sprawdzane zachowanie |
 | --- | --- |
-| Jednostkowe | Typy i precyzja wartości, sentinele, skrócone znaczniki czasu i przepełnienia, strefa i DST, walidacja ustawień, błędy HTTP, nazwy plików, brak zapisu hasła, regresja liniowa dla nieregularnego czasu, luk i stałych wartości |
-| Integracyjne | ZIP → SQLite → JSON, CRC i rollback, wznowienie i idempotencja, deduplikacja FIT w różnych ZIP, subpola i komponenty, zmiany definicji FIT, DPAPI, ochrona obcych plików eksportu, spójność odczytu podczas zapisu, ponowienia z Retry-After |
+| Jednostkowe | Typy i precyzja, sentinele, skrócone czasy, strefa i DST, ustawienia, HTTP, nazwy plików i kolizje folderów, regresja, średnie próbek i ważenie miesięczne, puste zestawienia, kategorie i liczniki bez niepoprawnego uśredniania |
+| Integracyjne | ZIP → SQLite → JSON, CRC i rollback, wznowienie i deduplikacja FIT, subpola i komponenty, DPAPI, zachowanie starych eksportów, pliki per parametr, anulowanie i stany manifestu, spójny eksport podczas nowego importu, migracja v2→v3, cache, unieważnianie po reprocess i rollback cache, ponowienia HTTP |
 | UI | Nawigacja, automatyczne odświeżanie, blokowanie zakresów i korekta dat, animacja ładowania, pomijanie starszych wyników i błędów, zakończenie ładowania po błędzie, przełączanie trendu, generowanie eksportu, zapis ustawień, zatrzymanie przy zamknięciu, obsługa żądania MFA |
 
 Coverage rdzenia i CLI obejmuje także rozgałęzienia; skrypt wymaga co najmniej 85%. UI, rysowanie i biblioteki Qt są sprawdzane w osobnej warstwie testów, a nie wliczane do tego progu. Wynik coverage nie jest dowodem, że dowolna przyszła odpowiedź Garmin będzie obsłużona bez błędu; nieznana semantyka pozostaje jawna i nie powoduje usuwania oryginału.
@@ -56,7 +56,7 @@ Odbiór z 2026-10-11: wszystkie 139 testów przeszły, coverage rdzenia i CLI z 
 
 ## Sprawdzenie rzeczywistej historii
 
-Do SQLite zaimportowano 844 archiwa i 10 994 FIT. Liczniki fizycznych danych są identyczne z wcześniejszym niezależnym skanowaniem: 8 307 429 wiadomości i 20 841 953 wystąpienia pól. Zachowano 737 publicznie nierozpoznanych wariantów pól; UI udostępnia 56 rozpoznanych serii i właściwości. Baza po dodaniu indeksów i ponownym przetworzeniu zajmuje około 3,11 GB; oryginalne archiwa 42,33 MB. Aktualna wersja migracji wynosi 2.
+We wcześniejszym odbiorze do SQLite zaimportowano 844 archiwa i 10 994 FIT. Liczniki fizycznych danych były identyczne z niezależnym skanowaniem: 8 307 429 wiadomości i 20 841 953 wystąpienia pól. Zachowano 737 publicznie nierozpoznanych wariantów pól; UI udostępnia 56 rozpoznanych serii i właściwości. Baza zajmowała około 3,11 GB, oryginalne archiwa 42,33 MB. Aktualna wersja migracji wynosi 3; nowsze pobrania mogą zwiększać liczniki historii.
 
 Walidacja z 2026-10-11 obejmuje CRC każdego FIT, kontrolę SQLite, kluczy obcych i porównanie współrzędnych katalogu semantyki z definicjami fizycznymi. Dodatkowa kontrola wykryła błąd cache opartego na adresach obiektów; cache używa teraz współrzędnych semantycznych, a objęte błędem 1314 FIT zostały ponownie przetworzone. Regresję sprawdza test 300 redefinicji wiadomości lokalnych.
 
@@ -78,6 +78,12 @@ Kontrola po poprawkach przeglądania: wszystkie 157 testów przeszły, coverage 
 
 Kontrola po dodaniu pośrednich podpisów osi czasu: 166 testów przeszło, coverage rdzenia i CLI z gałęziami wynosi 92,62%. Dodatkowe testy sprawdzają dobór godzin, sekund i dat, offset podczas zmiany DST oraz czytelność podpisów po zwężeniu wykresu. Sprawdzono także wygląd na syntetycznym wykresie.
 
+Kontrola eksportu v2 i podsumowań: 195 testów przeszło, coverage rdzenia i CLI z gałęziami wynosi **93,42%**. Same obliczenia i cache mają 97%, a eksport 98%. Testy sprawdzają także ważenie miesięcy różnymi liczbami próbek, nietimestampowane rekordy, anulowanie publikacji cache i niezmienność poprzednich pakietów. Nowe średnie są oznaczane na wykresach; dzień wciąż pokazuje źródłowe próbki. Raporty: `test-results/summary-tests-final.log` i standardowy raport HTML coverage.
+
+Walidacja rzeczywistego eksportu v2 objęła wszystkie 56 rozpoznanych parametrów i 112 plików danych: około 6,32 MB historii podsumowań i 30,62 MB szczegółów z 90 dni. Historia HRV ma 834 wiersze i 109 943 bajty, a szczegóły HRV 8 222 rekordy i 382 723 bajty. Źródłowe tętno spoczynkowe zachowało 7 929 oryginalnych podsumowań w historii. W SQLite powstało 17 726 dziennych rekordów cache dla 30 parametrów bez reprezentacji źródłowego podsumowania.
+
+Niezależna kontrola SQL porównała obliczone średnie, minima, maksima i liczności z fizycznymi polami FIT dla wszystkich 4 207 dni pięciu parametrów pomiarowych: brak niezgodności, tolerancja średniej 1e-7. Klucze obce są poprawne, a hashe wcześniejszych eksportów nie zmieniły się. Raporty `test-results/summary-real-validation.json` i `test-results/summary-independent-sql.log` zawierają tylko metadane i liczniki; testowe kopie prywatnych plików wynikowych usunięto po sprawdzeniu. Zbudowana paczka z migracją 003 przeszła smoke zarówno w osobnym folderze, jak i w zwykłym `dist/GarminDatabase/`. Wygląd formularza i oznaczonej średniej sprawdzono na danych syntetycznych.
+
 ## Operacje bez UI
 
 Do lokalnych sprawdzeń i przyszłego harmonogramu służy wspólny moduł CLI:
@@ -86,7 +92,7 @@ Do lokalnych sprawdzeń i przyszłego harmonogramu służy wspólny moduł CLI:
 .\.venv\Scripts\python.exe -m garmin_database.cli status --data-dir data
 .\.venv\Scripts\python.exe -m garmin_database.cli import-local --data-dir data
 .\.venv\Scripts\python.exe -m garmin_database.cli reprocess --data-dir data --from 2026-09-01
-.\.venv\Scripts\python.exe -m garmin_database.cli export --data-dir data --parameters monitoring.heart_rate --from 2026-09-01 --to 2026-09-30 --full-samples --output exports/selected
+.\.venv\Scripts\python.exe -m garmin_database.cli export --data-dir data --parameters monitoring.heart_rate --from 2026-09-01 --to 2026-09-30 --recent-days 30 --summary-period day --output exports
 ```
 
 `sync` wymaga dostępnej sesji aplikacji Windows. Mechanizm ochrony sesji na Linux i sieciowy hub Raspberry Pi pozostają późniejszym etapem, zgodnie z uzgodnionym zakresem.

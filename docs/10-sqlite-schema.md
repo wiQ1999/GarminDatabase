@@ -1,8 +1,18 @@
-# Kompletny schemat SQLite v1
+# Kompletny schemat SQLite
 
 Definicja wykonywalna: [schema/001_initial.sql](../schema/001_initial.sql). Schemat jest używany przez importer w aplikacji; baza lokalna została zasilona pełną pobraną historią. Testy i walidację opisano w [instrukcji](12-running-and-testing.md). Wyniki skanowania źródeł opisano w [analizie FIT](08-fit-analysis.md), a wszystkie wykryte pola w [katalogu](09-fit-field-catalog.md).
 
-Aktualna wersja migracji bazy to `user_version=2`. [Migracja 002](../schema/002_query_indexes.sql) dodaje indeksy odczytu katalogu i reguł oraz złożonego klucza obcego definicji pola. Ten ostatni umożliwia ponowne przetwarzanie FIT bez wielokrotnego skanowania ponad 20 mln pól. Model i zakres zachowanych danych v1 pozostają bez zmian. Aplikacja wykonuje migracje transakcyjnie i zapisuje ich SHA-256 w `schema_migrations`.
+Aktualna wersja migracji bazy to `user_version=3`. [Migracja 002](../schema/002_query_indexes.sql) dodaje indeksy, w tym złożony klucz obcy definicji pola, który umożliwia ponowne przetwarzanie bez skanowania ponad 20 mln pól. [Migracja 003](../schema/003_summaries.sql) dodaje osobną warstwę podsumowań, bez zmiany fizycznych danych FIT. Aplikacja wykonuje migracje transakcyjnie i zapisuje ich SHA-256 w `schema_migrations`.
+
+## Podsumowania aplikacji — migracja 003
+
+`dataset_state` zawiera pojedynczy numer rewizji. Triggery podnoszą go przy zmianie dekodowań lub powiązań FIT z archiwami. Wycofanie transakcji wycofuje również zmianę rewizji. `summary_cache` identyfikuje parametr, metodę, wersję algorytmu, rewizję źródeł, obliczony zakres i datę obliczenia.
+
+`daily_summaries` ma klucz `(parameter_key, day)` i przechowuje `mean`, `minimum`, `maximum`, ostatnią obserwację JSON, liczności kategorii JSON, liczniki poprawnych, nieprawidłowych, wykluczonych i nietimestampowanych rekordów, pierwszy/ostatni czas poprawnej obserwacji i podstawę przypisania dnia. Średnie istnieją tylko dla jawnej listy pomiarów; kody kategorii oraz liczniki ruchu nie są uśredniane. Metody i reguły czasu opisuje [eksport](05-export.md).
+
+`v_current_daily_summaries` udostępnia tylko cache o aktualnej rewizji i wersji algorytmu. Obliczenie jest wykonywane na żądanie wykresu lub eksportu. Wynik zastępuje cache parametru transakcyjnie; anulowanie zachowuje poprzedni zapis. Nowy import unieważnia cache, a kolejne użycie go odbudowuje. Zapis cache nie zmienia rewizji źródeł.
+
+Odczyt odbywa się w jednej transakcji WAL. Podsumowania można obliczyć podczas importu, ale zapis cache jest wtedy pomijany. Tak samo jest, gdy w trakcie obliczenia zmieniła się rewizja. Eksport wciąż zawiera spójny wcześniejszy stan źródeł i metadanych. Miesięczne zestawienia korzystają z dziennych bez dodatkowej tabeli; średnia miesiąca jest ważona liczbą poprawnych próbek. Nie wykonujemy ponownego pobrania ani dekodowania oryginałów w celu migracji.
 
 ## Decyzja
 

@@ -6,6 +6,8 @@ Prywatna aplikacja okienkowa dla Windows 11 do pobierania dziennych archiwów do
 
 Zaimplementowano aplikację Windows, importer SQLite, klienta Garmin z sesją DPAPI, wykresy i strumieniowy eksport JSON. Paczka jest w `dist/GarminDatabase/GarminDatabase.exe`; należy zachować cały folder dystrybucji. [Uruchamianie i testy](docs/12-running-and-testing.md).
 
+Eksport v2 tworzy osobny folder z datą i czasem, historię podsumowań oraz szczegóły w osobnych plikach każdego parametru. SQLite v3 zachowuje źródła i dodatkowy, odtwarzalny cache podsumowań dziennych; eksport może wybrać podsumowania miesięczne. [Format i reguły podsumowań](docs/05-export.md).
+
 Zaimportowano 844 archiwa: 10 994 FIT, 8 307 429 wiadomości i 20 841 953 pola fizyczne. Ciągła historia archiwów zaczyna się 2024-06-19; osobny METRICS pochodzi z 2024-02-17. Część pól pozostaje bez publicznie opisanej semantyki i jest zachowywana pod identyfikatorami źródłowymi. Testy obejmują piramidę jednostkowe/integracyjne/UI, uruchomienie paczki Windows i rzeczywisty eksport WebAPI.
 
 ## Dokumentacja
@@ -19,7 +21,7 @@ Zaimportowano 844 archiwa: 10 994 FIT, 8 307 429 wiadomości i 20 841 953 pola f
 7. [Pobranie surowej historii — uruchomienie i wznowienie](docs/07-history-collection.md)
 8. [Wyniki analizy pełnej historii FIT](docs/08-fit-analysis.md)
 9. [Kompletny katalog wykrytych pól](docs/09-fit-field-catalog.md)
-10. [Schemat SQLite v1](docs/10-sqlite-schema.md) — [DDL](schema/001_initial.sql)
+10. [Schemat SQLite i podsumowania](docs/10-sqlite-schema.md) — [DDL źródeł](schema/001_initial.sql), [podsumowania v3](schema/003_summaries.sql)
 11. [Interfejs Windows i ustawienia aplikacji](docs/11-desktop-ui.md)
 12. [Uruchamianie, budowanie i testy](docs/12-running-and-testing.md)
 

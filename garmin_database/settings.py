@@ -31,12 +31,10 @@ def project_dir():
 @dataclass
 class Settings:
     data_dir: str = field(default_factory=lambda: str(project_dir() / "data"))
-    export_dir: str = field(
-        default_factory=lambda: str(project_dir() / "exports/current")
-    )
+    export_dir: str = field(default_factory=lambda: str(project_dir() / "exports"))
     recent_days: int = 90
     parameters: list[str] = field(default_factory=list)
-    full_samples: bool = False
+    summary_period: str = "day"
     history_from: str = "2024-01-01"
     history_to: str = ""  # empty means yesterday, not a frozen relative date
     delay: float = 3.0
@@ -63,8 +61,8 @@ class Settings:
             isinstance(v, str) for v in self.parameters
         ):
             raise ValueError("Nieprawidłowa lista parametrów")
-        if not isinstance(self.full_samples, bool):
-            raise ValueError("Nieprawidłowy tryb eksportu")
+        if self.summary_period not in {"day", "month"}:
+            raise ValueError("Nieprawidłowy okres podsumowań")
         if not math.isfinite(self.delay) or self.delay < 0:
             raise ValueError("Nieprawidłowe opóźnienie")
         date.fromisoformat(self.history_from)

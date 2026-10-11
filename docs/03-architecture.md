@@ -20,7 +20,7 @@ data/
   raw/YYYY-MM-DD.zip
   garmin.sqlite3
 private/                 # sesja istniejącego skryptu historycznego; nie docelowego UI
-exports/                 # wynik eksportu na żądanie
+exports/GarminDatabase_DATA_CZAS/  # osobny pakiet: history/, details/, manifest.json
 logs/                    # log techniczny, bez wartości zdrowotnych i sekretów
 ```
 
@@ -30,7 +30,7 @@ Aplikacja Windows zapisuje ustawienia w `%LOCALAPPDATA%/GarminDatabase/settings.
 
 ## Interfejs i wspólna logika
 
-Okno Windows jest warstwą obsługi wspólnych operacji pobierania, importu, ponownego przetwarzania i eksportu. Długie operacje działają poza wątkiem UI. Odczyt wykresów dotyczy tylko wybranego parametru i okresu; szczegółowe pomiary są dostępne dla pojedynczego dnia, a dłuższe okresy wyłącznie jako podsumowania źródłowe Garmin.
+Okno Windows jest warstwą obsługi wspólnych operacji pobierania, importu, ponownego przetwarzania i eksportu. Długie operacje działają poza wątkiem UI. Szczegółowe pomiary są dostępne dla pojedynczego dnia; dłuższe okresy pokazują podsumowania Garmin albo oznaczone średnie dzienne pięciu obsługiwanych parametrów pomiarowych.
 
 Przeglądanie zatwierdzonych danych działa podczas importu przez oddzielne połączenia SQLite w trybie WAL. Qt uruchamia import i zapytania wykresu poza wątkiem UI. Transakcja jednego FIT nie udostępnia częściowego wyniku. Eksport czyta wartości i metadane kompletności z jednego obrazu bazy, także gdy inny proces importuje kolejne pliki.
 
@@ -43,6 +43,8 @@ Raspberry Pi będzie w przyszłości uruchamiać te same operacje bez UI, wedłu
 Po skanowaniu pełnej pobranej historii ustalono [kompletny schemat](10-sqlite-schema.md), zapisany jako [wykonywalny SQL](../schema/001_initial.sql). Zastępuje on wcześniejszy szkic sześciu tabel. Zaimplementowany importer zasilił lokalną bazę pełną historią; wyniki walidacji są w [instrukcji](12-running-and-testing.md).
 
 Model rozdziela daty pobrania, oryginalne archiwa, wystąpienia FIT w ZIP, unikatowe treści FIT, przebiegi dekodowania, definicje wiadomości i pól, wiadomości danych oraz wartości pól. Katalog profilu przechowuje rozpoznane nazwy, jednostki i reguły dekodowania; pola nieznane pozostają w bazie pod identyfikatorami źródłowymi. Wartości skalarne mają typowane kolumny, tablice i struktury — JSON. Nie powielamy wartości dla rozwiniętych komponentów.
+
+Migracja 003 dodaje odtwarzalną warstwę podsumowań. `summaries.py` liczy małe zestawienia dzienne na podstawie spójnego odczytu źródeł. Cache zapisuje osobnym połączeniem tylko wtedy, gdy nie trwa import i numer rewizji danych jest nadal ten sam. Zajęty writer albo nowy import nie unieważnia samego eksportu: wyniki odpowiadają jego wcześniejszemu obrazowi bazy. `v_current_daily_summaries` ukrywa nieaktualne cache; ponowny odczyt je odbudowuje. Podsumowania miesięczne powstają z dziennych i nie wymagają dodatkowej trwałej kopii.
 
 Identyczny FIT obecny w kilku archiwach ma jedną reprezentację danych i wiele powiązań pochodzenia. Wartość identyfikuje klucz `(message_id, field_definition_id)`; definicja zachowuje przestrzeń nazw i indeks deweloperski w kontekście pliku. Indeksy obejmują czas, parametr, kategorię i hash pliku. Szczegółowe reguły integralności, czasu, ponownego przetwarzania i widoki są opisane w specyfikacji schematu.
 

@@ -33,7 +33,7 @@ def main(argv=None):
         "--parameters", help="Nazwy message.field, oddzielone przecinkiem"
     )
     parser.add_argument("--recent-days", type=int, default=90)
-    parser.add_argument("--full-samples", action="store_true")
+    parser.add_argument("--summary-period", choices=["day", "month"], default="day")
     args = parser.parse_args(argv)
     settings = Settings.load()
     db = Database(args.data_dir or settings.data_dir)
@@ -72,10 +72,15 @@ def main(argv=None):
             args.end,
             args.recent_days,
             stop,
-            args.full_samples,
+            args.summary_period,
             progress,
         )
-        print(json.dumps(result, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"directory": str(result.directory), "files": result.files},
+                ensure_ascii=False,
+            )
+        )
         return 0
     except KeyboardInterrupt:
         stop.set()

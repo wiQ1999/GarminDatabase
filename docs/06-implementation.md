@@ -24,7 +24,7 @@ Odbiór: dzisiejsza data jest wykluczona; zakończone dni nie są ponownie pobie
 
 ## Etap 3: eksport
 
-Wprowadzić katalog parametrów oparty na dekodowanych danych. Zbudować pliki historii źródłowych podsumowań oraz `recent.json`, a także pełny eksport wskazanego okresu. Sprawdzić rozmiar pakietu dla rzeczywistego 90-dniowego zakresu i ręczny odczyt w Claude i ChatGPT. Nie dodawać instrukcji dla AI ani obliczanych agregatów.
+Wprowadzić katalog parametrów oparty na dekodowanych danych. Zbudować oddzielne pliki `history/{parametr}.json` z podsumowaniami i `details/{parametr}.json` z pełnymi danymi ostatnich wybranych dni. Średnie dzienne i miesięczne oraz podsumowania kategorii i liczników realizują późniejsze wymaganie użytkownika. Każde generowanie tworzy nowy folder z datą i czasem. Sprawdzić rozmiary i odczyt przez AI. Nie dodawać instrukcji dla AI ani interpretacji.
 
 Odbiór: poprawny JSON, wszystkie wybrane próbki zachowane, zgodne wartości i jednostki, brak interpretacji, zakres i luki widoczne. Jeden plik na parametr bez automatycznego dzielenia.
 
@@ -32,9 +32,9 @@ Odbiór: poprawny JSON, wszystkie wybrane próbki zachowane, zgodne wartości i 
 
 Wybrać technologię UI, wykresów i pakowania zgodną z Pythonem oraz samodzielnym `.exe` na Windows 11. Zrealizować Start, Dane, Eksport i Ustawienia, ciemny motyw z niebieskimi akcentami oraz ikony według referencji. Formularz logowania obsługuje MFA i sesję szyfrowaną DPAPI poza bazą; ustawienia są w `%LOCALAPPDATA%/GarminDatabase/settings.json`.
 
-Połączyć „Pobierz dane” z pobieraniem i importem w tle, dodać postęp, zatrzymanie i wznowienie. Przeglądanie dotyczy zatwierdzonych danych podczas importu. Dla pojedynczego dnia pokazywać szczegółowe próbki, dla dłuższych zakresów tylko podsumowania Garmin; brak podsumowań nie uruchamia agregacji. Bez tabel rekordów i powiększania wykresu. Eksport zastępuje wcześniejsze wyniki i zapamiętuje ustawienia.
+Połączyć „Pobierz dane” z pobieraniem i importem w tle, dodać postęp, zatrzymanie i wznowienie. Przeglądanie dotyczy zatwierdzonych danych podczas importu. Dla pojedynczego dnia pokazywać szczegółowe próbki, dla dłuższych zakresów podsumowania Garmin lub oznaczone średnie dzienne pięciu obsługiwanych pomiarów. Bez tabel rekordów i powiększania wykresu. Eksport zachowuje wcześniejsze wyniki i zapamiętuje ustawienia.
 
-Aktualizacja przeglądania: wykres ładuje się po zmianie parametru, zakresu i dat, bez dodatkowego przycisku. Podczas zapytania pokazuje spinner i rozmywa poprzedni obraz. Niedostępne zakresy są wyszarzone; wybór serii szczegółowej automatycznie przełącza na dzień. Checkbox włącza regresję liniową na wyświetlanych danych liczbowych, bez utrwalania obliczeń. Testować również szybkie zmiany filtrów, zakończenie ładowania po błędzie i brak trendu dla kategorii.
+Aktualizacja przeglądania: wykres ładuje się po zmianie parametru, zakresu i dat, bez dodatkowego przycisku. Podczas zapytania pokazuje spinner i rozmywa poprzedni obraz. Niedostępne zakresy są wyszarzone; wybór serii bez podsumowań Garmin i bez obsługiwanej średniej przełącza na dzień. Checkbox włącza regresję liniową na wyświetlanych danych liczbowych, bez utrwalania obliczeń. Testować również szybkie zmiany filtrów, zakończenie ładowania po błędzie i brak trendu dla kategorii.
 
 Odbiór: kryteria ze specyfikacji UI, uruchomienie na Windows 11 bez osobnej instalacji Pythona, poprawne współbieżne przeglądanie i import oraz brak sekretów w ustawieniach i logach. Etapy rdzenia i UI można realizować częściowo równolegle, ale pierwszy produkt dla użytkownika ma interfejs okienkowy.
 

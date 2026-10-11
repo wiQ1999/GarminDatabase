@@ -38,7 +38,7 @@ class Database:
         with self.connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version > 2:
+            if version > 3:
                 raise ValueError("Baza pochodzi z nowszej wersji aplikacji")
             if version == 0:
                 sql = (Path(__file__).parent / "resources/001_initial.sql").read_text(
@@ -62,6 +62,20 @@ class Database:
                     conn.executescript("BEGIN IMMEDIATE;\n" + sql)
                     conn.execute(
                         "INSERT INTO schema_migrations VALUES(2,?,?)",
+                        (utc_now(), sha256(sql.encode()).hexdigest()),
+                    )
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+            if version < 3:
+                sql = (Path(__file__).parent / "resources/003_summaries.sql").read_text(
+                    encoding="utf-8"
+                )
+                try:
+                    conn.executescript("BEGIN IMMEDIATE;\n" + sql)
+                    conn.execute(
+                        "INSERT INTO schema_migrations VALUES(3,?,?)",
                         (utc_now(), sha256(sql.encode()).hexdigest()),
                     )
                     conn.commit()
