@@ -23,3 +23,9 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+/build/
+/dist/
+/test-results/
+.coverage
+htmlcov/
+*.egg-info/
