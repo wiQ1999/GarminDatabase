@@ -1,0 +1,237 @@
+import threading
+from datetime import date
+
+import pytest
+from fixtures import archive, fit_bytes
+
+from garmin_database.auth import SessionStore
+from garmin_database.exporter import Exporter
+from garmin_database.importer import Importer
+from garmin_database.query import Queries
+from garmin_database.storage import Database
+from garmin_database.sync import Sync, error_status
+from garmin_database.util import Cancelled, atomic_json
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "type_name,status",
+    [
+        ("GarminAuthenticationError", 401),
+        ("TooManyRequestsError", 429),
+        ("ValueError", None),
+    ],
+)
+def test_safe_error_classification(type_name, status):
+    error = type(type_name, (Exception,), {})("sensitive body")
+    assert error_status(error) == status
+
+
+@pytest.mark.integration
+def test_indexes_migration_and_crash_marker(tmp_path):
+    db = Database(tmp_path)
+    db.initialize()
+    with db.connect() as c:
+        profile = c.execute(
+            "INSERT INTO decoder_profiles(parser_name,parser_version,profile_version,options_json) VALUES('test','1','1','{}')"
+        ).lastrowid
+        c.execute(
+            "INSERT INTO decode_runs(profile_id,started_at,status) VALUES(?,'test','running')",
+            (profile,),
+        )
+    db.initialize()
+    with db.connect() as c:
+        assert c.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert (
+            c.execute("SELECT status FROM decode_runs").fetchone()[0] == "interrupted"
+        )
+        plan = c.execute(
+            "EXPLAIN QUERY PLAN SELECT * FROM fit_fields WHERE field_definition_id=1 AND message_definition_id=1"
+        ).fetchall()
+        assert any(
+            "SEARCH" in x[3] and "fields_definition_context" in x[3] for x in plan
+        )
+
+
+@pytest.mark.unit
+def test_future_schema_is_refused(tmp_path):
+    db = Database(tmp_path)
+    with db.connect() as c:
+        c.execute("PRAGMA user_version=99")
+    with pytest.raises(ValueError):
+        db.initialize()
+
+
+@pytest.mark.integration
+def test_cancel_rolls_back_reprocessing(tmp_path, monkeypatch):
+    db = Database(tmp_path)
+    db.initialize()
+    path = archive(tmp_path)
+    importer = Importer(db)
+    importer.archive(path)
+    import garmin_database.importer as module
+
+    original = module.check_stop
+    calls = 0
+
+    def stop_midway(stop):
+        nonlocal calls
+        calls += 1
+        if calls == 5:
+            raise Cancelled()
+        original(stop)
+
+    monkeypatch.setattr(module, "check_stop", stop_midway)
+    with pytest.raises(Cancelled):
+        importer.archive(path, force=True)
+    assert db.status()["fields"] == 8
+    with db.connect(readonly=True) as c:
+        assert c.execute("SELECT status FROM file_decodes").fetchone()[0] == "complete"
+
+
+@pytest.mark.integration
+def test_decode_failure_keeps_previous_result(tmp_path, monkeypatch):
+    db = Database(tmp_path)
+    db.initialize()
+    path = archive(tmp_path)
+    importer = Importer(db)
+    importer.archive(path)
+
+    def fail(*args):
+        raise ValueError("unsafe response text")
+
+    monkeypatch.setattr(importer, "decode", fail)
+    assert importer.archive(path, force=True) == 1
+    assert db.status()["fields"] == 8
+
+
+@pytest.mark.integration
+def test_local_archive_change_is_refused(tmp_path):
+    db = Database(tmp_path)
+    db.initialize()
+    path = archive(tmp_path)
+    importer = Importer(db)
+    importer.archive(path)
+    archive(tmp_path, payload=fit_bytes(values=[(1100000000, 70, 0, 1)]))
+    with pytest.raises(ValueError):
+        importer.archive(path)
+    assert db.status()["fields"] == 8
+
+
+@pytest.mark.integration
+def test_legacy_metadata_recovery(tmp_path):
+    atomic_json(
+        tmp_path / "collection.json",
+        {
+            "days": {
+                "2024-01-01": {
+                    "status": "not_found_unverified",
+                    "attempts": 1,
+                    "http_status": 404,
+                }
+            }
+        },
+    )
+    db = Database(tmp_path)
+    assert (
+        Sync(db).run(
+            date(2024, 1, 1), date(2024, 1, 1), threading.Event(), local_only=True
+        )
+        == 0
+    )
+    assert db.status()["days"] == {"not_found_unverified": 1}
+
+
+@pytest.mark.integration
+def test_invalid_local_zip_does_not_download(tmp_path):
+    path = tmp_path / "raw/2024-01-01.zip"
+    path.parent.mkdir()
+    path.write_bytes(b"broken")
+    db = Database(tmp_path)
+    assert (
+        Sync(db, None, 0).run(date(2024, 1, 1), date(2024, 1, 1), threading.Event())
+        == 1
+    )
+    assert db.status()["days"] == {"local_invalid": 1}
+
+
+@pytest.mark.integration
+def test_network_retries_are_bounded_and_secret_free(tmp_path):
+    class Source:
+        calls = 0
+
+        def download_health_snapshot(self, day):
+            self.calls += 1
+            raise RuntimeError("HTTP 503 private-token")
+
+    class NoSleep:
+        def wait(self, duration):
+            return False
+
+        def is_set(self):
+            return False
+
+    source = Source()
+    db = Database(tmp_path)
+    assert Sync(db, source, 0).run(date(2024, 1, 1), date(2024, 1, 10), NoSleep()) == 5
+    assert source.calls == 15
+    with db.connect() as c:
+        assert all(
+            "private" not in str(dict(x))
+            for x in c.execute("SELECT * FROM import_days")
+        )
+
+
+@pytest.mark.integration
+def test_untimed_duplicate_uses_source_in_range(tmp_path):
+    db = Database(tmp_path)
+    db.initialize()
+    importer = Importer(db)
+    payload = fit_bytes(346, [(6, 1, 2)], [(70,)])
+    importer.archive(archive(tmp_path, "2024-06-19", payload))
+    importer.archive(archive(tmp_path, "2024-06-20", payload))
+    q = Queries(db)
+    p = q.parameters()[0]
+    rows = list(q.rows(p, date(2024, 6, 20), date(2024, 6, 20)))
+    assert (
+        len(rows) == 1
+        and rows[0]["time"] is None
+        and rows[0]["requested_day"] == "2024-06-20"
+    )
+    chart, _ = q.chart(p, date(2024, 6, 20), date(2024, 6, 20))
+    assert chart[0][1] == 70
+
+
+@pytest.mark.integration
+def test_export_cannot_write_into_originals(tmp_path):
+    db = Database(tmp_path)
+    db.initialize()
+    with pytest.raises(ValueError):
+        Exporter(db).generate(
+            tmp_path / "raw/subfolder", [], date(2024, 1, 1), date(2024, 1, 1)
+        )
+
+
+@pytest.mark.integration
+def test_export_coverage_uses_the_same_read_snapshot(tmp_path):
+    db = Database(tmp_path)
+    db.initialize()
+    q = Queries(db)
+    day = date(2024, 1, 1)
+    with db.connect(readonly=True) as snapshot:
+        snapshot.execute("BEGIN")
+        snapshot.execute("SELECT count(*) FROM import_days").fetchone()
+        with db.connect() as writer:
+            writer.execute(
+                "INSERT INTO import_days(day,download_status) VALUES('2024-01-01','empty_zip')"
+            )
+        assert q.coverage(day, day, snapshot)["missing_days"] == ["2024-01-01"]
+        assert q.coverage(day, day)["missing_days"] == []
+
+
+@pytest.mark.unit
+def test_corrupt_encrypted_session_fails(tmp_path):
+    store = SessionStore(tmp_path / "session")
+    store.path.write_bytes(b"not encrypted")
+    with pytest.raises(OSError):
+        store.load()
