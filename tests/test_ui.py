@@ -1,8 +1,12 @@
+import threading
+
 import pytest
-from fixtures import archive
-from PySide6.QtWidgets import QMessageBox
+from fixtures import archive, fit_bytes
+from PySide6.QtCore import QDate, Qt
+from PySide6.QtWidgets import QMessageBox, QPushButton
 
 from garmin_database.importer import Importer
+from garmin_database.query import Queries, bounds
 from garmin_database.settings import Settings
 from garmin_database.storage import Database
 from garmin_database.ui import Window, Worker
@@ -10,17 +14,38 @@ from garmin_database.ui import Window, Worker
 pytestmark = pytest.mark.ui
 
 
-def window(qtbot, tmp_path):
+def window(qtbot, tmp_path, summaries=False):
     db = Database(tmp_path / "data")
     db.initialize()
     Importer(db).archive(archive(db.root))
+    if summaries:
+        for day, value in [("2024-11-08", 70), ("2024-11-09", 72)]:
+            Importer(db).archive(
+                archive(db.root, day, fit_bytes(346, [(6, 1, 2)], [(value,)]))
+            )
     w = Window(
         Settings(data_dir=str(db.root), export_dir=str(tmp_path / "exports")),
         tmp_path / "settings.json",
     )
     qtbot.addWidget(w)
     w.show()
+    ready(qtbot, w)
     return w
+
+
+def ready(qtbot, w):
+    qtbot.waitUntil(
+        lambda: w.query_worker is None and not w.query_pending, timeout=5000
+    )
+
+
+def select_parameter(w, key):
+    for i in range(w.parameter_list.count()):
+        parameter = w.parameter_list.item(i).data(Qt.ItemDataRole.UserRole)
+        if parameter and parameter["key"] == key:
+            w.parameter_list.setCurrentRow(i)
+            return
+    raise AssertionError(f"Missing parameter: {key}")
 
 
 def test_navigation_and_chart(qtbot, tmp_path):
@@ -37,14 +62,127 @@ def test_navigation_and_chart(qtbot, tmp_path):
     )
     w.parameter_list.setCurrentRow(heart)
     qtbot.waitUntil(lambda: w.query_worker is None, timeout=5000)
-    assert "podsumowań" in w.chart_message.text()
-    w.chart_to.setDate(
-        __import__("PySide6.QtCore", fromlist=["QDate"]).QDate(2024, 11, 8)
-    )
-    w.range.setCurrentIndex(0)
+    assert w.range.currentText() == "Dzień"
+    assert all(not w.range.model().item(i).isEnabled() for i in range(1, 6))
+    w.chart_to.setDate(QDate(2024, 11, 8))
     qtbot.waitUntil(lambda: w.query_worker is None, timeout=5000)
     assert w.chart.points and len(w.chart.points) == 2
     assert w.chart.grab().width() > 0
+
+
+def test_ranges_follow_parameter_and_dates_refresh_automatically(qtbot, tmp_path):
+    w = window(qtbot, tmp_path, summaries=True)
+    select_parameter(w, "sleep_assessment.overall_sleep_score")
+    w.chart_to.setDate(QDate(2024, 11, 9))
+    w.range.setCurrentIndex(2)
+    ready(qtbot, w)
+    assert [point[1] for point in w.chart.points] == [70, 72]
+    assert all(w.range.model().item(i).isEnabled() for i in range(6))
+
+    select_parameter(w, "monitoring.heart_rate")
+    ready(qtbot, w)
+    assert w.range.currentText() == "Dzień"
+    assert w.chart_from.date() == w.chart_to.date()
+    assert not w.chart_from.isEnabled()
+    assert all(not w.range.model().item(i).isEnabled() for i in range(1, 6))
+    # Even a programmatic attempt to use a disabled range remains single-day.
+    w.range.setCurrentIndex(5)
+    w.chart_to.setDate(QDate(2024, 11, 8))
+    ready(qtbot, w)
+    assert w.range.currentText() == "Dzień"
+    assert [point[1] for point in w.chart.points] == [62, 64]
+
+    select_parameter(w, "sleep_assessment.overall_sleep_score")
+    w.range.setCurrentIndex(5)
+    w.chart_to.setDate(QDate(2024, 11, 9))
+    ready(qtbot, w)
+    assert w.chart_from.isEnabled()
+    assert len(w.chart.points) == 2
+    w.chart_from.setDate(QDate(2024, 11, 9))
+    ready(qtbot, w)
+    assert [point[1] for point in w.chart.points] == [72]
+    w.chart_to.setDate(QDate(2024, 11, 8))
+    ready(qtbot, w)
+    assert "późniejsza" in w.chart_message.text()
+    assert not w.chart.points and not w.chart_view.loading
+    assert not any(b.text() == "Pokaż wykres" for b in w.findChildren(QPushButton))
+
+
+@pytest.mark.parametrize("fail_first", [False, True])
+def test_loading_animates_and_stale_results_do_not_replace_latest_selection(
+    qtbot, tmp_path, monkeypatch, fail_first
+):
+    w = window(qtbot, tmp_path)
+    w.navigation.setCurrentRow(1)
+    select_parameter(w, "monitoring.heart_rate")
+    ready(qtbot, w)
+    started = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    def query(self, parameter, start, end):
+        calls.append((start, end))
+        if len(calls) == 1:
+            started.set()
+            assert release.wait(5)
+            if fail_first:
+                raise RuntimeError("Synthetic failure")
+        return [(bounds(start, end)[0], end.day, "synthetic")], "latest"
+
+    monkeypatch.setattr(Queries, "chart", query)
+    try:
+        w.chart_to.setDate(QDate(2024, 11, 8))
+        qtbot.waitUntil(started.is_set)
+        assert w.chart_view.loading and w.chart_view.overlay.isVisible()
+        assert w.chart_view.blur.isEnabled() and not w.chart.isEnabled()
+        angle = w.chart_view.overlay.angle
+        qtbot.waitUntil(lambda: w.chart_view.overlay.angle != angle)
+        w.chart_to.setDate(QDate(2024, 11, 10))
+        w.chart_to.setDate(QDate(2024, 11, 9))
+        assert w.chart_view.loading
+    finally:
+        release.set()
+    ready(qtbot, w)
+    assert len(calls) == 2 and calls[-1][1].day == 9
+    assert w.chart.points[0][1] == 9 and w.chart_message.text() == "latest"
+    assert not w.chart_view.loading and not w.chart_view.overlay.isVisible()
+    assert not w.chart_view.blur.isEnabled() and w.chart.isEnabled()
+    assert not w.chart_view.overlay.timer.isActive()
+
+
+def test_loading_ends_on_query_error(qtbot, tmp_path, monkeypatch):
+    w = window(qtbot, tmp_path)
+
+    def query(*args):
+        raise RuntimeError("Synthetic failure")
+
+    monkeypatch.setattr(Queries, "chart", query)
+    w.chart_to.setDate(QDate(2024, 11, 8))
+    ready(qtbot, w)
+    assert not w.chart_view.loading and not w.chart.points
+    assert not w.trend.isEnabled()
+    assert "RuntimeError" in w.chart_message.text()
+
+
+def test_trend_toggle_draws_overlay_without_changing_source_points(qtbot, tmp_path):
+    w = window(qtbot, tmp_path)
+    w.navigation.setCurrentRow(1)
+    select_parameter(w, "monitoring.heart_rate")
+    w.chart_to.setDate(QDate(2024, 11, 8))
+    ready(qtbot, w)
+    assert w.trend.isEnabled() and not w.trend.isChecked()
+    original = list(w.chart.points)
+    without = w.chart.grab().toImage()
+    w.trend.setChecked(True)
+    with_trend = w.chart.grab().toImage()
+    assert w.chart.trend_visible and without != with_trend
+    assert w.chart.points == original
+    w.trend.setChecked(False)
+    assert not w.chart.trend_visible
+    # Categorical series cannot acquire a numerical regression.
+    parameter = dict(w.selected_parameter(), enum={"1": "light", "2": "deep"})
+    w.show_chart(([(0, 1, "a"), (10, 2, "b")], "categories"), parameter)
+    assert not w.trend.isEnabled() and not w.chart.trend_points
 
 
 def test_ui_export_and_settings(qtbot, tmp_path):

@@ -5,8 +5,8 @@ import threading
 from datetime import date, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QDate, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QFontDatabase
+from PySide6.QtCore import QDate, QSignalBlocker, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtGui import QBrush, QColor, QDesktopServices, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -26,13 +26,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QStackedWidget,
+    QStyledItemDelegate,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from .auth import GarminSource, SessionRequired, SessionStore
-from .chart import Chart
+from .chart import Chart, ChartView
 from .exporter import Exporter
 from .icons import icon, symbol
 from .query import Queries
@@ -49,6 +50,9 @@ QPushButton:hover { background:#34445a; }
 QPushButton:disabled { color:#778393; }
 QPushButton[primary=true] { background:#1678c9; border-color:#268ddf; }
 QLineEdit,QDateEdit,QSpinBox,QComboBox { background:#1c2330; border:1px solid #354154; border-radius:5px; padding:7px; }
+QDateEdit:disabled { color:#778393; }
+QCheckBox:disabled { color:#778393; }
+QComboBox QAbstractItemView::item:disabled { color:#778393; }
 QListWidget,QTextEdit { background:#191e27; border:1px solid #303947; border-radius:6px; }
 QListWidget::item { padding:10px; }
 QListWidget::item:selected { background:#164e7c; }
@@ -232,6 +236,7 @@ class Window(QMainWindow):
         right = QVBoxLayout()
         controls = QHBoxLayout()
         self.range = QComboBox()
+        self.range.setItemDelegate(QStyledItemDelegate(self.range))
         self.range.addItems(
             ["Dzień", "7 dni", "30 dni", "90 dni", "Cała historia", "Własny zakres"]
         )
@@ -242,18 +247,28 @@ class Window(QMainWindow):
         controls.addWidget(self.chart_from)
         controls.addWidget(self.chart_to)
         right.addLayout(controls)
-        right.addWidget(button("Pokaż wykres", self.load_chart, True))
+        self.trend = QCheckBox("Linia trendu")
+        self.trend.setToolTip(
+            "Regresja liniowa względem czasu dla widocznych poprawnych wartości liczbowych. "
+            "Obliczana tylko na wykresie; nie jest podsumowaniem Garmin i nie trafia do eksportu."
+        )
+        self.trend.setEnabled(False)
+        right.addWidget(self.trend)
         self.chart_title = QLabel("Wybierz parametr")
         right.addWidget(self.chart_title)
         self.chart = Chart()
-        right.addWidget(self.chart, 1)
+        self.chart_view = ChartView(self.chart)
+        right.addWidget(self.chart_view, 1)
         self.chart_message = QLabel()
         self.chart_message.setWordWrap(True)
         right.addWidget(self.chart_message)
         row.addLayout(right, 1)
         layout.addLayout(row, 1)
-        self.parameter_list.currentItemChanged.connect(lambda *a: self.load_chart())
+        self.parameter_list.currentItemChanged.connect(self.parameter_changed)
         self.range.currentIndexChanged.connect(self.update_range)
+        self.chart_from.dateChanged.connect(self.update_range)
+        self.chart_to.dateChanged.connect(self.update_range)
+        self.trend.toggled.connect(self.chart.set_trend_visible)
 
     def build_export(self):
         layout = self.page(
@@ -377,6 +392,9 @@ class Window(QMainWindow):
             + f"\nRozpoznane serie / właściwości: {len(self.parameters)}"
         )
         selected = set(self.settings.parameters)
+        previous = self.selected_parameter()
+        previous_key = previous["key"] if previous else None
+        selected_row = None
         self.parameter_list.blockSignals(True)
         self.parameter_list.clear()
         self.export_list.clear()
@@ -391,6 +409,8 @@ class Window(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, param)
             item.setToolTip(param["original"])
             self.parameter_list.addItem(item)
+            if selected_row is None or param["key"] == previous_key:
+                selected_row = self.parameter_list.count() - 1
             ex = QListWidgetItem(
                 icon(symbol(param)), param["label"] + " — " + param["group"]
             )
@@ -402,43 +422,72 @@ class Window(QMainWindow):
                 else Qt.CheckState.Unchecked
             )
             self.export_list.addItem(ex)
+        if selected_row is not None:
+            self.parameter_list.setCurrentRow(selected_row)
         self.parameter_list.blockSignals(False)
+        self.parameter_changed()
+
+    def selected_parameter(self):
+        item = self.parameter_list.currentItem()
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    def parameter_changed(self):
+        parameter = self.selected_parameter()
+        summaries = parameter and parameter["representation"] == "source_summary"
+        for index in range(self.range.count()):
+            enabled = bool(summaries) or index == 0
+            item = self.range.model().item(index)
+            item.setEnabled(enabled)
+            item.setForeground(QBrush(QColor("#e9eef5" if enabled else "#778393")))
+        self.range.setToolTip(
+            ""
+            if summaries
+            else "Ten parametr ma tylko dane szczegółowe. Dostępny jest zakres Dzień."
+        )
+        self.update_range()
 
     def update_range(self):
+        """Przeglądanie i ograniczenia zakresów: docs/11-desktop-ui.md."""
+        parameter = self.selected_parameter()
+        summaries = parameter and parameter["representation"] == "source_summary"
+        if not summaries and self.range.currentIndex() != 0:
+            with QSignalBlocker(self.range):
+                self.range.setCurrentIndex(0)
         option = self.range.currentText()
-        if option in ["Dzień", "7 dni", "30 dni", "90 dni"]:
-            days = {"Dzień": 1, "7 dni": 7, "30 dni": 30, "90 dni": 90}[option]
-            self.chart_from.setDate(self.chart_to.date().addDays(-(days - 1)))
-        elif option == "Cała historia":
-            first = self.db.status()["first_day"]
-            if first:
-                d = date.fromisoformat(first)
-                self.chart_from.setDate(QDate(d.year, d.month, d.day))
+        self.chart_from.setEnabled(bool(summaries) and option == "Własny zakres")
+        with QSignalBlocker(self.chart_from):
+            if option in ["Dzień", "7 dni", "30 dni", "90 dni"]:
+                days = {"Dzień": 1, "7 dni": 7, "30 dni": 30, "90 dni": 90}[option]
+                self.chart_from.setDate(self.chart_to.date().addDays(-(days - 1)))
+            elif option == "Cała historia":
+                first = self.db.status()["first_day"]
+                if first:
+                    d = date.fromisoformat(first)
+                    self.chart_from.setDate(QDate(d.year, d.month, d.day))
         self.load_chart()
 
     def load_chart(self):
-        item = self.parameter_list.currentItem()
-        param = item.data(Qt.ItemDataRole.UserRole) if item else None
-        if not param:
-            return
+        param = self.selected_parameter()
         self.query_serial += 1
-        if self.query_worker and self.query_worker.isRunning():
-            self.query_pending = True
-            return
         serial = self.query_serial
-        if self.range.currentText() != "Własny zakres":
-            end = selected_date(self.chart_to)
-            name = self.range.currentText()
-            if name in ["Dzień", "7 dni", "30 dni", "90 dni"]:
-                days = {"Dzień": 1, "7 dni": 7, "30 dni": 30, "90 dni": 90}[name]
-                self.chart_from.setDate(self.chart_to.date().addDays(1 - days))
+        if not param:
+            self.query_pending = False
+            self.show_chart_error("Wybierz parametr")
+            self.chart_title.setText("Wybierz parametr")
+            return
         start = selected_date(self.chart_from)
         end = selected_date(self.chart_to)
         if start > end:
-            self.chart_message.setText("Data początkowa jest późniejsza niż końcowa")
+            self.query_pending = False
+            self.show_chart_error("Data początkowa jest późniejsza niż końcowa")
             return
         self.chart_title.setText(param["label"] + " • " + param["original"])
         self.chart_message.setText("Odczytywanie wybranego parametru…")
+        self.chart_view.set_loading(True)
+        self.trend.setEnabled(False)
+        if self.query_worker is not None:
+            self.query_pending = True
+            return
         db = self.db
         worker = Worker(lambda w: Queries(db).chart(param, start, end), self)
         self.query_worker = worker
@@ -447,7 +496,11 @@ class Window(QMainWindow):
                 self.show_chart(result, param) if serial == self.query_serial else None
             )
         )
-        worker.failure.connect(self.chart_message.setText)
+        worker.failure.connect(
+            lambda message: (
+                self.show_chart_error(message) if serial == self.query_serial else None
+            )
+        )
 
         def release_query():
             if self.query_worker is worker:
@@ -455,14 +508,25 @@ class Window(QMainWindow):
             worker.deleteLater()
             if self.query_pending:
                 self.query_pending = False
-                QTimer.singleShot(0, self.load_chart)
+                self.load_chart()
 
         worker.finished.connect(release_query)
         worker.start()
 
     def show_chart(self, result, param):
         self.chart.set_series(result[0], param["unit"], param["enum"])
+        self.chart_view.set_loading(False)
+        self.trend.setEnabled(bool(self.chart.trend_points))
+        if not self.chart.trend_points:
+            self.trend.setChecked(False)
         self.chart_message.setText(result[1])
+
+    def show_chart_error(self, message):
+        self.chart.set_series([])
+        self.chart_view.set_loading(False)
+        self.trend.setEnabled(False)
+        self.trend.setChecked(False)
+        self.chart_message.setText(message)
 
     def start_work(self, operation):
         if self.worker and self.worker.isRunning():

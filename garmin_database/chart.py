@@ -2,9 +2,79 @@ from bisect import bisect_left
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QToolTip, QWidget
+from PySide6.QtWidgets import QGraphicsBlurEffect, QStackedLayout, QToolTip, QWidget
+
+from .trend import linear_trend
+
+
+class LoadingOverlay(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.angle = 0
+        self.setStyleSheet("background: transparent;")
+        self.setAccessibleName("Ładowanie wykresu")
+        self.timer = QTimer(self)
+        self.timer.setInterval(40)
+        self.timer.timeout.connect(self.advance)
+
+    def advance(self):
+        self.angle = (self.angle + 16) % 360
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.fillRect(self.rect(), QColor(16, 20, 28, 150))
+        center = self.rect().center()
+        ring = QRectF(center.x() - 23, center.y() - 46, 46, 46)
+        pen = QPen(QColor("#354154"), 4)
+        p.setPen(pen)
+        p.drawEllipse(ring)
+        pen.setColor(QColor("#4fa4f3"))
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+        p.drawArc(ring, -self.angle * 16, 110 * 16)
+        p.setPen(QColor("#e9eef5"))
+        p.drawText(
+            QRectF(0, center.y() + 16, self.width(), 30),
+            Qt.AlignmentFlag.AlignCenter,
+            "Ładowanie wykresu…",
+        )
+
+
+class ChartView(QWidget):
+    """Blur only the plot; the foreground spinner stays sharp and interactive."""
+
+    def __init__(self, chart, parent=None):
+        super().__init__(parent)
+        self.chart = chart
+        self.loading = False
+        self.blur = QGraphicsBlurEffect(chart)
+        self.blur.setBlurRadius(7)
+        self.blur.setEnabled(False)
+        chart.setGraphicsEffect(self.blur)
+        self.overlay = LoadingOverlay(self)
+        layout = QStackedLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setStackingMode(QStackedLayout.StackingMode.StackAll)
+        layout.addWidget(chart)
+        layout.addWidget(self.overlay)
+        layout.setCurrentWidget(self.overlay)
+        self.overlay.hide()
+
+    def set_loading(self, loading):
+        self.loading = loading
+        self.blur.setEnabled(loading)
+        self.chart.setEnabled(not loading)
+        self.overlay.setVisible(loading)
+        if loading:
+            QToolTip.hideText()
+            self.overlay.raise_()
+            self.overlay.timer.start()
+        else:
+            self.overlay.timer.stop()
 
 
 class Chart(QWidget):
@@ -16,6 +86,8 @@ class Chart(QWidget):
         self.unit = ""
         self.labels = {}
         self.positions = []
+        self.trend_points = []
+        self.trend_visible = False
         self.setMinimumHeight(330)
         self.setMouseTracking(True)
         self.setAccessibleName("Wykres danych Garmin")
@@ -24,6 +96,11 @@ class Chart(QWidget):
         self.points = sorted(points, key=lambda p: p[0])
         self.unit = unit or ""
         self.labels = labels or {}
+        self.trend_points = linear_trend(self.points) if not self.labels else []
+        self.update()
+
+    def set_trend_visible(self, visible):
+        self.trend_visible = visible
         self.update()
 
     def paintEvent(self, event):
@@ -78,6 +155,21 @@ class Chart(QWidget):
             y = rect.bottom() - (point[1] - lo) / (hi - lo) * rect.height()
             p.drawPoint(QPointF(x, y))
             self.positions.append((x, y, point))
+        if self.trend_visible and self.trend_points:
+            p.save()
+            p.setClipRect(rect)
+            p.setPen(QPen(QColor("#ffbc70"), 2, Qt.PenStyle.DashLine))
+            fitted = [
+                QPointF(
+                    rect.left() + (stamp - xmin) / (xmax - xmin) * rect.width(),
+                    rect.bottom() - (value - lo) / (hi - lo) * rect.height(),
+                )
+                for stamp, value in self.trend_points
+            ]
+            p.drawLine(*fitted)
+            p.restore()
+            p.setPen(QColor("#ffbc70"))
+            p.drawText(rect, Qt.AlignmentFlag.AlignRight, "Trend liniowy (obliczony)")
 
     def mouseMoveEvent(self, event):
         if not self.positions:
