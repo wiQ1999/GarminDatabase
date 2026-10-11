@@ -5,6 +5,7 @@ from fixtures import archive, fit_bytes
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import QMessageBox, QPushButton
 
+from garmin_database.chart import Chart
 from garmin_database.importer import Importer
 from garmin_database.query import Queries, bounds
 from garmin_database.settings import Settings
@@ -12,6 +13,31 @@ from garmin_database.storage import Database
 from garmin_database.ui import Window, Worker
 
 pytestmark = pytest.mark.ui
+
+
+@pytest.mark.parametrize("span", [1000, 60000, 30 * 86400000])
+def test_time_axis_adds_readable_ticks_and_adapts_to_width(qtbot, span):
+    chart = Chart()
+    qtbot.addWidget(chart)
+    begin = 1_800_000_000_000
+    original = [(begin, 1, "synthetic"), (begin + span, 3, "synthetic")]
+    chart.set_series(original)
+    chart.resize(850, 400)
+    chart.show()
+    chart.grab()
+    wide_count = len(chart.time_labels)
+    assert (2 if span < 60000 else 3) <= wide_count <= 8
+    assert len({label for _, label, _, _ in chart.time_labels}) == wide_count
+    chart.resize(400, 400)
+    chart.grab()
+    assert 2 <= len(chart.time_labels) <= wide_count
+    if span >= 60000:
+        assert len(chart.time_labels) < wide_count
+    assert all(
+        a[3].right() + 12 <= b[3].left()
+        for a, b in zip(chart.time_labels, chart.time_labels[1:])
+    )
+    assert chart.points == original and len(chart.positions) == len(original)
 
 
 def window(qtbot, tmp_path, summaries=False):

@@ -42,7 +42,7 @@ Skrypt budowania usuwa błędnie zebrane DLL ICU 78 z runtime deweloperskiego. Q
 
 ## Testy według piramidy
 
-Zestaw zawiera 157 testów: 112 jednostkowych, 34 integracyjne i 11 UI. Testy ze starych skryptów nadal są uruchamiane. Fixture FIT/ZIP są syntetyczne i mają poprawne CRC; nie zawierają danych użytkownika.
+Zestaw zawiera 166 testów: 118 jednostkowych, 34 integracyjne i 14 UI. Testy ze starych skryptów nadal są uruchamiane. Fixture FIT/ZIP są syntetyczne i mają poprawne CRC; nie zawierają danych użytkownika.
 
 | Warstwa | Sprawdzane zachowanie |
 | --- | --- |
@@ -75,6 +75,8 @@ Puste pola e-mail i hasła są zamierzone: aplikacja nie zapisuje hasła. Nowe p
 Kontrola po poprawce: wszystkie 143 testy przeszły, coverage rdzenia i CLI z gałęziami wynosi 92,38%. Dodano regresje dla braku sesji, braku niepotrzebnych ponowień, informacji w UI i pomijania fikcyjnych przebiegów importu. Wyniki wcześniejszego odbioru pełnej historii pozostają powyżej.
 
 Kontrola po poprawkach przeglądania: wszystkie 157 testów przeszły, coverage rdzenia i CLI z gałęziami wynosi 92,50%, a sam moduł regresji jest pokryty w 100%. Testy UI sprawdzają opóźnione zapytanie, kilka zmian dat podczas odczytu oraz błąd nieaktualnego żądania. Dane testowe są syntetyczne; trend nie zmienia punktów źródłowych.
+
+Kontrola po dodaniu pośrednich podpisów osi czasu: 166 testów przeszło, coverage rdzenia i CLI z gałęziami wynosi 92,62%. Dodatkowe testy sprawdzają dobór godzin, sekund i dat, offset podczas zmiany DST oraz czytelność podpisów po zwężeniu wykresu. Sprawdzono także wygląd na syntetycznym wykresie.
 
 ## Operacje bez UI
 

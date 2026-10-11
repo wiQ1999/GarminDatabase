@@ -1,11 +1,10 @@
 from bisect import bisect_left
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QGraphicsBlurEffect, QStackedLayout, QToolTip, QWidget
 
+from .time_axis import time_axis_labels
 from .trend import linear_trend
 
 
@@ -88,6 +87,7 @@ class Chart(QWidget):
         self.positions = []
         self.trend_points = []
         self.trend_visible = False
+        self.time_labels = []
         self.setMinimumHeight(330)
         self.setMouseTracking(True)
         self.setAccessibleName("Wykres danych Garmin")
@@ -110,6 +110,7 @@ class Chart(QWidget):
         rect = QRectF(65, 20, max(1, self.width() - 90), max(1, self.height() - 65))
         valid = [x for x in self.points if x[1] is not None]
         self.positions = []
+        self.time_labels = []
         if not valid:
             p.setPen(QColor("#a3afbf"))
             p.drawText(
@@ -139,16 +140,26 @@ class Chart(QWidget):
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                 f"{lo + (hi - lo) * step / 4:.1f}",
             )
-        p.setPen(QColor("#a3afbf"))
-        fmt = "%H:%M" if xmax - xmin < 86400000 else "%d.%m.%Y"
-        for stamp, x, align in (
-            (xmin, rect.left(), Qt.AlignmentFlag.AlignLeft),
-            (xmax, rect.right() - 120, Qt.AlignmentFlag.AlignRight),
-        ):
-            label = datetime.fromtimestamp(
-                stamp / 1000, ZoneInfo("Europe/Warsaw")
-            ).strftime(fmt)
-            p.drawText(QRectF(x, rect.bottom() + 12, 120, 24), align, label)
+        # Measure actual text, including dates/offsets, before choosing density.
+        for count in range(8, 0, -1):
+            ticks = []
+            for stamp, label in time_axis_labels(xmin, xmax, count):
+                x = rect.left() + (stamp - xmin) / (xmax - xmin) * rect.width()
+                width = p.fontMetrics().horizontalAdvance(label) + 4
+                left = max(rect.left(), min(x - width / 2, rect.right() - width))
+                ticks.append(
+                    (stamp, label, x, QRectF(left, rect.bottom() + 12, width, 24))
+                )
+            if len({tick[1] for tick in ticks}) == len(ticks) and all(
+                a[3].right() + 12 <= b[3].left() for a, b in zip(ticks, ticks[1:])
+            ):
+                break
+        self.time_labels = ticks
+        for _, label, x, box in ticks:
+            p.setPen(QPen(QColor("#303947"), 1))
+            p.drawLine(QPointF(x, rect.bottom()), QPointF(x, rect.bottom() + 6))
+            p.setPen(QColor("#a3afbf"))
+            p.drawText(box, Qt.AlignmentFlag.AlignCenter, label)
         p.setPen(QPen(QColor("#4fa4f3"), 3))
         for point in valid:
             x = rect.left() + (point[0] - xmin) / (xmax - xmin) * rect.width()
