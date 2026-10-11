@@ -1,6 +1,8 @@
 # Kompletny schemat SQLite v1
 
-Definicja wykonywalna: [schema/001_initial.sql](../schema/001_initial.sql). Jest to schemat docelowy, sprawdzany na bazie w pamięci. Baza produkcyjna nie została jeszcze utworzona ani zasilona pomiarami. Wyniki skanowania źródeł opisano w [analizie FIT](08-fit-analysis.md), a wszystkie wykryte pola w [katalogu](09-fit-field-catalog.md).
+Definicja wykonywalna: [schema/001_initial.sql](../schema/001_initial.sql). Schemat jest używany przez importer w aplikacji; baza lokalna została zasilona pełną pobraną historią. Testy i walidację opisano w [instrukcji](12-running-and-testing.md). Wyniki skanowania źródeł opisano w [analizie FIT](08-fit-analysis.md), a wszystkie wykryte pola w [katalogu](09-fit-field-catalog.md).
+
+Aktualna wersja migracji bazy to `user_version=2`. [Migracja 002](../schema/002_query_indexes.sql) dodaje indeksy odczytu katalogu i reguł oraz złożonego klucza obcego definicji pola. Ten ostatni umożliwia ponowne przetwarzanie FIT bez wielokrotnego skanowania ponad 20 mln pól. Model i zakres zachowanych danych v1 pozostają bez zmian. Aplikacja wykonuje migracje transakcyjnie i zapisuje ich SHA-256 w `schema_migrations`.
 
 ## Decyzja
 

@@ -15,6 +15,10 @@ Jeśli podsumowania dzienne parametru nie istnieją w źródle, aplikacja ich ni
 
 ## Zasady formatu
 
+Realizacja identyfikuje parametr nazwą `message_name.variant_name`, np. `monitoring.heart_rate`. Serie zachowują reprezentacje `sample`, `source_summary` lub `event` z katalogu, bez nazywania każdego podsumowania „dziennym”. Nazwy plików nie mogą zawierać ścieżek; niestandardowe nazwy są normalizowane i otrzymują hash zapobiegający kolizjom.
+
+Wynik ma kolumny `time`, `value`, `source`, `validity`. Ścieżki źródeł są zapisane raz w słowniku `sources` i zastąpione w wierszach krótkimi kluczami. `requested_day` jest metadanym źródła, nie zgadywanym czasem pomiaru. Brak czasu daje `null`. Kody `v`, `i`, `p`, `e` mają etykiety w `validity_labels`. `unimported_or_partial_days` rozróżnia dostępny ZIP od ukończonego importu do bazy.
+
 - UTF-8, poprawny JSON, pola po angielsku, krótkie stabilne nazwy.
 - Tylko dane i konieczne etykiety: wersja formatu, parametr, jednostka, zakres, czas, status dostępności i pochodzenie.
 - Bez promptów, zaleceń, interpretacji, tekstu o tym jak AI ma analizować dane i własnych wskaźników.
@@ -31,26 +35,28 @@ Jeśli podsumowania dzienne parametru nie istnieją w źródle, aplikacja ich ni
 ```json
 {
   "schema_version": 1,
-  "parameter": "heart_rate",
+  "parameter": "monitoring.heart_rate",
   "unit": "bpm",
-  "representation": "samples",
+  "representation": "sample",
   "from": "2026-10-09",
   "to": "2026-10-09",
-  "columns": ["time", "value", "source"],
-  "sources": {"s1": "2026-10-09.zip/example_WELLNESS.fit"},
-  "data": [["2026-10-09T05:00:00Z", 62, "s1"]],
+  "columns": ["time", "value", "source", "validity"],
+  "validity_labels": {"v": "valid", "i": "invalid", "p": "partial_invalid", "e": "decode_error"},
+  "sources": {"s1": {"path": "raw/2026-10-09.zip/example_WELLNESS.fit", "requested_day": "2026-10-09"}},
+  "data": [["2026-10-09T05:00:00Z", 62, "s1", "v"]],
   "missing_days": [],
+  "unimported_or_partial_days": [],
   "decode_status": "complete"
 }
 ```
 
 Wykryte nazwy i identyfikatory pól są w [katalogu pełnej historii](09-fit-field-catalog.md). Pole nieznane nie może być eksportowane pod zgadywaną nazwą metryki zdrowotnej. Katalog pól nie jest jeszcze finalnym katalogiem parametrów dla AI: trzeba wybrać reprezentacje źródłowe i rozróżnić metadane, próbki, przedziały oraz podsumowania. Przy wartościach o różnej semantyce, np. parametr dzienny i chwilowy, zachować osobne reprezentacje. Nie używać podpisu „daily_summary”, jeżeli Garmin nie dostarczył takiej wartości.
 
-## Planowane polecenia — jeszcze niezaimplementowane
+## Polecenia realizowane przez moduł CLI
 
 ```text
-garmin-db export --recent-days 90 --output exports/current
-garmin-db export --from 2026-09-01 --to 2026-09-30 --parameters heart_rate,sleep --output exports/selected
+python -m garmin_database.cli export --recent-days 90 --output exports/current
+python -m garmin_database.cli export --from 2026-09-01 --to 2026-09-30 --parameters monitoring.heart_rate --full-samples --output exports/selected
 ```
 
 Domyślnie koniec okresu to wczoraj; 90 dni obejmuje wczoraj i poprzednie 89 dat. Eksport na żądanie wskazanego okresu zawiera wszystkie dostępne próbki wybranych parametrów. Przed zapisem podać planowaną objętość lub po zapisie raportować rozmiar plików. Nie obiecywać zgodności z konkretnym limitem kontekstu modeli.

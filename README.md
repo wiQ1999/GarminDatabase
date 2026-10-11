@@ -4,7 +4,9 @@ Prywatna aplikacja okienkowa dla Windows 11 do pobierania dziennych archiwów do
 
 ## Stan projektu
 
-Uzgodniono wymagania; aplikacja nie jest jeszcze zaimplementowana. Test użytkownika potwierdził identyczną zawartość wszystkich 20 plików FIT z WebAPI i ręcznego eksportu dla 2026-10-09. Pobrano i przeskanowano 844 archiwa: 10 994 FIT, 69 typów wiadomości i 1133 warianty pól. Ciągła historia archiwów zaczyna się 2024-06-19; osobny METRICS pochodzi z 2024-02-17. Ustalono kompletny schemat SQLite v1, ale baza nie jest jeszcze zasilona. Część pól pozostaje bez publicznie opisanej semantyki.
+Zaimplementowano aplikację Windows, importer SQLite, klienta Garmin z sesją DPAPI, wykresy i strumieniowy eksport JSON. Paczka jest w `dist/GarminDatabase/GarminDatabase.exe`; należy zachować cały folder dystrybucji. [Uruchamianie i testy](docs/12-running-and-testing.md).
+
+Zaimportowano 844 archiwa: 10 994 FIT, 8 307 429 wiadomości i 20 841 953 pola fizyczne. Ciągła historia archiwów zaczyna się 2024-06-19; osobny METRICS pochodzi z 2024-02-17. Część pól pozostaje bez publicznie opisanej semantyki i jest zachowywana pod identyfikatorami źródłowymi. Testy obejmują piramidę jednostkowe/integracyjne/UI, uruchomienie paczki Windows i rzeczywisty eksport WebAPI.
 
 ## Dokumentacja
 
@@ -19,6 +21,7 @@ Uzgodniono wymagania; aplikacja nie jest jeszcze zaimplementowana. Test użytkow
 9. [Kompletny katalog wykrytych pól](docs/09-fit-field-catalog.md)
 10. [Schemat SQLite v1](docs/10-sqlite-schema.md) — [DDL](schema/001_initial.sql)
 11. [Interfejs Windows i ustawienia aplikacji](docs/11-desktop-ui.md)
+12. [Uruchamianie, budowanie i testy](docs/12-running-and-testing.md)
 
 ## Pobranie historii do analizy
 

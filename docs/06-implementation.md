@@ -1,5 +1,7 @@
 # Plan realizacji i kryteria odbioru
 
+Stan 2026-10-11: zrealizowano rdzeń, importer, eksport i UI Windows. Historia jest w SQLite; testy jednostkowe, integracyjne, UI oraz uruchomienie paczki opisuje [instrukcja](12-running-and-testing.md). Poniższe etapy zachowują wymagania odbioru; etap Raspberry Pi/huba pozostaje przyszłym rozszerzeniem.
+
 ## Etap 0: próba źródła
 
 Uruchomić `scripts/probe_wellness.py` dla 2026-10-09 na koncie użytkownika. Porównać ZIP z ręcznym wzorcem; przy różnicach porównać zdekodowaną zawartość. Potwierdzić MFA, format odpowiedzi, starszą datę i sposób sygnalizowania braku danych. Zanotować wersję biblioteki. Jeśli źródła nie są równoważne, zatrzymać realizację importera i wyjaśnić ograniczenie użytkownikowi; nie dołączać innych endpointów bez zmiany zakresu.
@@ -8,7 +10,7 @@ Odbiór: dowód zgodności zawartości lub jednoznacznie opisane różnice zaakc
 
 ## Etap 1: dekoder i model danych
 
-Stan: przeskanowano całą pobraną historię i ustalono [schemat SQLite v1](10-sqlite-schema.md). Struktura jest odczytywana przez fitdecode 0.11.0, a aktualna semantyka korzysta z profilu Garmin FIT SDK 21.218.0. Wyniki, pokrycie i ograniczenia są w [analizie](08-fit-analysis.md). Pozostaje realizacja importera, poprawna obsługa kontekstu czasu i reguł komponentów oraz zapis danych do bazy.
+Stan: przeskanowano całą pobraną historię i ustalono [schemat SQLite v1](10-sqlite-schema.md). Struktura jest odczytywana przez fitdecode 0.11.0, a aktualna semantyka korzysta z profilu Garmin FIT SDK 21.218.0. Wyniki, pokrycie i ograniczenia są w [analizie](08-fit-analysis.md). Importer, kontekst czasu, reguły profilu i zapis do SQLite są zaimplementowane i testowane.
 
 Wybrać parser FIT na podstawie pokrycia wiadomości z próbki. Zidentyfikować wszystkie pola, szczegółowość, jednostki, znaczniki czasu i podsumowania dostarczane przez Garmin. Potwierdzić interpretację czasu na przykładzie pobudki około 07:00, traktując to jako orientacyjny punkt kontrolny, nie sposób przesuwania danych. Zbudować schemat SQLite z pochodzeniem rekordów i ewidencją pól nieznanych. Przypiąć zależności i wersję profilu FIT.
 
@@ -54,4 +56,6 @@ Aktualizacja pobranych dni, podział dużych eksportów, inne metryki lub trenin
 
 ## Pozostałe niewiadome
 
-Zgodność WebAPI z ręcznym eksportem została potwierdzona dla 2026-10-09; dostępność archiwów i katalog pól sprawdzono dla całego pobranego zakresu. Pozostają: znaczenie 169 odpowiedzi 404, semantyka 737 wariantów pól nieopisanych publicznie, weryfikacja czasu skróconego i reguł komponentów w importerze, zachowanie zapisanej sesji po wygaśnięciu oraz rzeczywisty rozmiar bazy i eksportów JSON. Nie są to brakujące decyzje produktowe, tylko pytania wymagające dalszych prób technicznych.
+Zgodność WebAPI z ręcznym eksportem została potwierdzona dla 2026-10-09; dostępność archiwów i katalog pól sprawdzono dla całego pobranego zakresu. Skrócone czasy, komponenty i subpola są pokryte testami. Zmierzono bazę i przykładowy eksport, a zapisanie i wznowienie sesji sprawdzono; [wyniki odbioru](12-running-and-testing.md).
+
+Nadal nie ustalono znaczenia 169 odpowiedzi 404 ani semantyki 737 wariantów pól nieopisanych publicznie. Aplikacja pokazuje te ograniczenia i zachowuje źródła. Przyszłe zmiany usługi Garmin, wygaśnięcie sesji na rzeczywistym koncie i wielkość eksportu przy innym wyborze parametrów wymagają kontroli w użytkowaniu. Nie są to brakujące funkcje pierwszej wersji.

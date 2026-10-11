@@ -1,6 +1,6 @@
 # Interfejs Windows i ustawienia aplikacji
 
-Uzgodnione wymagania z 2026-10-11. Dokument opisuje planowaną aplikację, nie istniejącą implementację. Zastępuje wcześniejsze założenie pierwszej wersji konsolowej. Zakres pozyskiwania i zachowania danych pozostaje bez zmian.
+Uzgodnione wymagania z 2026-10-11, zrealizowane w aplikacji opisanej w [instrukcji uruchamiania](12-running-and-testing.md). Dokument zastępuje wcześniejsze założenie pierwszej wersji konsolowej. Zakres pozyskiwania i zachowania danych pozostaje bez zmian.
 
 ## Uruchamianie i wygląd
 
@@ -10,7 +10,7 @@ Uzgodnione wymagania z 2026-10-11. Dokument opisuje planowaną aplikację, nie i
 - Ikony podstawowych parametrów odtworzyć na podstawie trzech zrzutów Garmin Connect dostarczonych przez użytkownika. Zachować charakterystyczne symbole i kolory: tętno — czerwone serce, kroki — niebieskie ślady stóp, stres — pomarańczowa postać z symbolem napięcia, oddech — turkusowy symbol przepływu powietrza, HRV — serce z linią pulsu i oznaczeniem snu, piętra — turkusowe schody ze strzałką, kalorie — zielony płomień, intensywność — pomarańczowy stoper. Brakujące ikony przygotować w podobnym stylu.
 - Pozostałe symbole na referencjach obejmują Body Battery, gotowość treningową, aklimatyzację saturacji, wiek sprawnościowy, stan wytrenowania, VO2 max, charakter obciążenia, ocenę wytrzymałości i próg mleczanowy. Referencje nie są dowodem dostępności tych parametrów w ZIP ani podstawą rozszerzenia źródła danych.
 
-Zrzuty pozostają referencją wyglądu, nie źródłem wartości pomiarowych ani elementem repozytorium. Nie kopiować do dokumentacji widocznych prywatnych pomiarów. Technologia UI, biblioteka wykresów, pakowanie i finalne zasoby ikon wymagają realizacji; nie zostały jeszcze wybrane ani utworzone.
+Zrzuty pozostają referencją wyglądu, nie źródłem wartości pomiarowych ani elementem repozytorium. Nie kopiować do dokumentacji widocznych prywatnych pomiarów. Realizacja używa PySide6 Essentials/Qt Widgets, wykresu QPainter, własnych symboli SVG wzorowanych na referencjach oraz PyInstaller onedir.
 
 ## Start
 

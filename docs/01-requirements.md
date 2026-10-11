@@ -11,7 +11,7 @@ Zapewnić pełne zachowanie danych dostępnych w dziennym eksporcie dobrostanu G
 - Jeden użytkownik, jedno prywatne konto Garmin.
 - Jeden zegarek: Garmin Epix gen 2, używany nieprzerwanie od nieustalonej daty w 2024 roku.
 - Pierwsza wersja: aplikacja okienkowa na Windows 11, uruchamiana ręcznie z pliku `.exe`, bez konsoli, przeglądarki, instalatora i osobnej instalacji Pythona.
-- Python i SQLite; technologia UI i pakowania nie została jeszcze wybrana.
+- Python i SQLite; realizacja UI: PySide6 Essentials/Qt Widgets i QPainter, pakowanie PyInstaller onedir.
 - W przyszłości Raspberry Pi jako automat importu według harmonogramu i hub dostępu do danych, bez UI, ze wspólną logiką aplikacji.
 
 ## Zakres pierwszej wersji

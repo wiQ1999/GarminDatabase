@@ -109,6 +109,8 @@ Tablice, nieważne wartości, subpola i komponenty wymagają reprezentacji bardz
 
 Rozmiar przyszłego eksportu JSON i bazy nie jest jeszcze zmierzony: raport obejmuje rozmiary źródeł. Baza i JSON będą miały narzut struktury; nie można utożsamić go z rozmiarem ZIP ani obiecać zmieszczenia szczegółowych 90 dni w kontekście AI.
 
+Uzupełnienie z 2026-10-11: aplikacja zaimportowała całą tę historię. Baza po migracji indeksów zajmuje około 3,11 GB; zmierzony szczegółowy eksport dwóch parametrów z 90 dni — około 4,96 MB. Walidację implementacji i zakres tych pomiarów opisuje [instrukcja uruchamiania i testów](12-running-and-testing.md).
+
 ## Odtworzenie analizy
 
 ```powershell
