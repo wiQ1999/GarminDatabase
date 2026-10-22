@@ -17,6 +17,8 @@ Stan Start rozdziela datę pobrania od rejestracji i dekodowania w bazie. Niezna
 
 ## Środowisko deweloperskie
 
+Główna gałąź repozytorium to `main`. Aktywna reguła GitHub [Prevent accidental master branch](https://github.com/wiQ1999/GarminDatabase/rules/25677104) blokuje tworzenie dokładnie `master`, bez wyjątków dla użytkowników lub aplikacji. Lokalny Git może utworzyć taką nazwę, ale GitHub nie przyjmie utworzenia zdalnej gałęzi. Pozostałe gałęzie nie są objęte tą regułą.
+
 W Pythonie 3.12 utwórz `.venv`, następnie zainstaluj `requirements-dev.txt`, np. przez pip lub uv. Zależności aplikacji i narzędzi testowych są przypięte w plikach wymagań.
 
 ```powershell

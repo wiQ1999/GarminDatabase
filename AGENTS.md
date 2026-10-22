@@ -15,6 +15,7 @@
 - Cache opisów FIT musi używać współrzędnych semantycznych (globalna wiadomość, pole, namespace/indeks, typ, wariant i referencje subpola), nigdy `id(field_def)`: Python odzyskuje adresy obiektów po redefinicjach lokalnych. Regresja: test 300 redefinicji; walidacja pełnej bazy porównuje `field_catalog.message_num/field_num` z fizycznymi definicjami.
 - Docelowe polecenia: `scripts/run_tests.ps1` (coverage rdzenia i CLI, z gałęziami, próg 85%) oraz `scripts/build_windows.ps1`. Testy GUI są osobną warstwą, bez sztucznego wliczania frameworka Qt do coverage rdzenia.
 - Po większych etapach Conventional Commits, jawne listy plików w staging, bez pytania — użytkownik zatwierdził taki workflow. Push nie jest automatycznie częścią kolejnych zleceń.
+- Główna gałąź to `main`. Nie tworzyć `master`; GitHub blokuje tworzenie dokładnie `refs/heads/master` aktywną regułą [Prevent accidental master branch](https://github.com/wiQ1999/GarminDatabase/rules/25677104), bez aktorów omijających regułę. Blokada nie obejmuje innych gałęzi.
 - Raspberry Pi: późniejszy automat/hub bez UI. Protokół dostępu i ochrona sesji Linux wymagają osobnego projektu.
 
 Migracja 002 podnosi `user_version` do 2. Indeks `fit_fields(field_definition_id, message_definition_id)` jest konieczny dla wydajnego sprawdzania klucza obcego podczas zastępowania dekodowania. Bez niego pojedyncza wymiana FIT skanuje miliony pól. Pliki SQL w `schema/` i `garmin_database/resources/` muszą mieć identyczną treść, aby kod i paczka wykonywały te same migracje.
