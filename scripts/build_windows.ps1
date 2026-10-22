@@ -14,6 +14,9 @@ try {
         $libraryPath = Join-Path $bundleDirectory $library
         if (Test-Path -LiteralPath $libraryPath) { Remove-Item -LiteralPath $libraryPath }
     }
+    & $Python -m PyInstaller --noconfirm --onedir --console --name GarminDatabaseMCP --distpath $Destination --specpath build --collect-data garmin_database --collect-data garmin_fit_sdk --collect-data tzdata --copy-metadata mcp --copy-metadata anyio --hidden-import anyio._backends._asyncio --exclude-module PySide6 --exclude-module garminconnect mcp_stdio.py
+    if ($LASTEXITCODE -ne 0) { throw 'Windows MCP build failed' }
     Write-Output (Join-Path $Destination 'GarminDatabase/GarminDatabase.exe')
+    Write-Output (Join-Path $Destination 'GarminDatabaseMCP/GarminDatabaseMCP.exe')
 }
 finally { Pop-Location }

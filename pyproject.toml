@@ -7,10 +7,11 @@ name = "garmin-database"
 version = "1.0.0"
 requires-python = ">=3.12"
 description = "Private Garmin wellness archive and desktop viewer"
-dependencies = ["fitdecode==0.11.0", "garmin-fit-sdk==21.218.0", "garminconnect==0.3.17", "tzdata==2026.5", "PySide6-Essentials==6.12.0"]
+dependencies = ["fitdecode==0.11.0", "garmin-fit-sdk==21.218.0", "garminconnect==0.3.17", "tzdata==2026.5", "PySide6-Essentials==6.12.0", "mcp==1.28.0"]
 
 [project.scripts]
 garmin-db = "garmin_database.cli:main"
+garmin-db-mcp = "garmin_database.mcp_server:main"
 
 [project.gui-scripts]
 garmin-database = "garmin_database.ui:main"

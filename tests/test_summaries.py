@@ -142,6 +142,22 @@ def test_untimed_observations_are_not_dated_measurements():
     assert month["mean"] is None and month["valid_days"] == 0
 
 
+def test_monthly_summary_accepts_unordered_daily_input():
+    rows = [
+        row(10, "2024-11-08T08:00:00+00:00"),
+        row(20, "2024-12-01T08:00:00+00:00"),
+        row(30, "2024-11-09T08:00:00+00:00"),
+    ]
+    days = aggregate_days(rows, parameter())
+    result = list(
+        monthly_summaries(
+            [days[0], days[2], days[1]], date(2024, 11, 1), date(2024, 12, 31)
+        )
+    )
+    assert [r["day"] for r in result] == ["2024-11", "2024-12"]
+    assert [r["mean"] for r in result] == [20, 20]
+
+
 def test_cancelled_aggregation_stops_before_reading_all_rows():
     class Stop:
         def is_set(self):

@@ -9,9 +9,11 @@ from hashlib import sha256
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from .data_access import DataAccess, aggregation, read_daily, summary_columns
 from .fit import dumps
 from .query import Queries
-from .summaries import ALGORITHM_VERSION, Summaries, monthly_summaries, summary_method
+from .settings import Settings
+from .summaries import monthly_summaries, summary_method
 from .util import Cancelled, atomic_json, check_stop, dates
 
 
@@ -42,9 +44,11 @@ def export_directory(parent, now=None):
 
 
 class Exporter:
-    def __init__(self, db):
+    def __init__(self, db, settings=None, settings_path=None):
         self.db = db
         self.queries = Queries(db)
+        self.settings = settings or Settings.load(settings_path)
+        self.settings_path = settings_path
 
     def metadata(self, param, start, end, conn, kind):
         meta = dict(
@@ -55,6 +59,8 @@ class Exporter:
             kind=kind,
             **{"from": start.isoformat(), "to": end.isoformat()},
             timezone="Europe/Warsaw",
+            calendar_timezone="Europe/Warsaw",
+            timestamp_timezone="UTC",
             **self.queries.coverage(start, end, conn),
         )
         if param["enum"]:
@@ -111,40 +117,15 @@ class Exporter:
         if method == "garmin":
             self.series(stream, param, start, end, stop, conn, "history")
             return
-        daily = Summaries(self.db).daily(param, start, end, conn, stop)
+        daily = read_daily(self.db, param, start, end, conn, stop, publish_cache=True)
         rows = monthly_summaries(daily, start, end) if period == "month" else daily
-        columns = ["day"]
-        if method == "sample_mean":
-            columns += ["mean", "minimum", "maximum"]
-        elif method == "value_counts":
-            columns += ["value_counts"]
-        else:
-            columns += ["last_value"]
-        columns += [
-            "valid_count",
-            "invalid_count",
-            "excluded_count",
-            "untimed_count",
-            "first_time",
-            "last_time",
-            "day_basis",
-        ]
-        if period == "month":
-            columns[0] = "month"
-            columns += ["valid_days", "period_from", "period_to"]
+        columns = summary_columns(param, period)
         meta = self.metadata(param, start, end, conn, "history")
         meta.update(
             representation="computed_summary",
             source_representation=param["representation"],
             summary_origin="application",
-            aggregation=dict(
-                method=method,
-                period=period,
-                algorithm_version=ALGORITHM_VERSION,
-                weighting="valid_sample_count" if method == "sample_mean" else None,
-                negative_stress_values_excluded=param["key"]
-                == "stress_level.stress_level_value",
-            ),
+            aggregation=aggregation(param, period),
             columns=columns,
             data_revision=conn.execute(
                 "SELECT revision FROM dataset_state WHERE id=1"
@@ -181,6 +162,36 @@ class Exporter:
             raise ValueError("Nieprawidłowy okres szczegółów lub podsumowań")
         if not parameters or len({p["key"] for p in parameters}) != len(parameters):
             raise ValueError("Wybierz niepowtarzające się parametry")
+        with DataAccess(self.db).snapshot(stop) as snapshot:
+            if self.settings.migrate(snapshot.catalog):
+                self.settings.save(self.settings_path)
+            parameters = snapshot.select(
+                self.settings, "export", [p["key"] for p in parameters]
+            )
+            return self._generate(
+                output,
+                parameters,
+                start,
+                end,
+                recent_days,
+                stop,
+                summary_period,
+                progress,
+                snapshot.conn,
+            )
+
+    def _generate(
+        self,
+        output,
+        parameters,
+        start,
+        end,
+        recent_days,
+        stop,
+        summary_period,
+        progress,
+        conn,
+    ):
         parent = Path(output).resolve()
         if parent == self.db.root.resolve() or parent.is_relative_to(
             (self.db.root / "raw").resolve()
@@ -222,27 +233,24 @@ class Exporter:
                 Path(temp).unlink(missing_ok=True)
 
         try:
-            with self.db.connect(readonly=True) as conn:
-                conn.execute("BEGIN")
-                conn.execute("SELECT revision FROM dataset_state").fetchone()
-                recent_start = max(start, end - timedelta(days=recent_days - 1))
-                for index, param in enumerate(parameters, 1):
-                    progress(
-                        param["key"], "podsumowania", 2 * index - 1, 2 * len(parameters)
-                    )
-                    write(
-                        "history/" + parameter_filename(param["key"]),
-                        lambda s, p=param: self.history(
-                            s, p, start, end, stop, conn, summary_period
-                        ),
-                    )
-                    progress(param["key"], "szczegóły", 2 * index, 2 * len(parameters))
-                    write(
-                        "details/" + parameter_filename(param["key"]),
-                        lambda s, p=param: self.series(
-                            s, p, recent_start, end, stop, conn, "details"
-                        ),
-                    )
+            recent_start = max(start, end - timedelta(days=recent_days - 1))
+            for index, param in enumerate(parameters, 1):
+                progress(
+                    param["key"], "podsumowania", 2 * index - 1, 2 * len(parameters)
+                )
+                write(
+                    "history/" + parameter_filename(param["key"]),
+                    lambda s, p=param: self.history(
+                        s, p, start, end, stop, conn, summary_period
+                    ),
+                )
+                progress(param["key"], "szczegóły", 2 * index, 2 * len(parameters))
+                write(
+                    "details/" + parameter_filename(param["key"]),
+                    lambda s, p=param: self.series(
+                        s, p, recent_start, end, stop, conn, "details"
+                    ),
+                )
         except BaseException as error:
             manifest["status"] = (
                 "cancelled"

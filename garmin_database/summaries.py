@@ -128,73 +128,76 @@ def aggregate_days(rows, parameter, stop=None):
     return [buckets[day] for day in sorted(buckets)]
 
 
-def monthly_summaries(days, start, end):
-    """Weight daily means by valid sample counts, including partially covered months."""
-    buckets = {}
-    counts = {}
-    for row in days:
-        month = row["day"][:7]
-        if month not in buckets:
-            buckets[month] = dict(
-                empty_day(month),
-                valid_days=0,
-                period_from=row["day"],
-                period_to=row["day"],
-            )
-            counts[month] = Counter()
-        bucket = buckets[month]
-        bucket["period_from"] = min(bucket["period_from"], row["day"])
-        bucket["period_to"] = max(bucket["period_to"], row["day"])
-        previous_count = bucket["valid_count"]
-        for key in ("valid_count", "invalid_count", "excluded_count", "untimed_count"):
-            bucket[key] += row[key]
-        if row["valid_count"]:
-            bucket["valid_days"] += 1
-            if row["mean"] is not None:
-                bucket["mean"] = (
-                    row["mean"]
-                    if bucket["mean"] is None
-                    else bucket["mean"]
-                    + (row["mean"] - bucket["mean"])
-                    * row["valid_count"]
-                    / (previous_count + row["valid_count"])
-                )
-                bucket["minimum"] = (
-                    row["minimum"]
-                    if bucket["minimum"] is None
-                    else min(row["minimum"], bucket["minimum"])
-                )
-                bucket["maximum"] = (
-                    row["maximum"]
-                    if bucket["maximum"] is None
-                    else max(row["maximum"], bucket["maximum"])
-                )
-            if bucket["first_time"] is None or row["first_time"] < bucket["first_time"]:
-                bucket["first_time"] = row["first_time"]
-            if bucket["last_time"] is None or row["last_time"] >= bucket["last_time"]:
-                bucket["last_time"] = row["last_time"]
-                bucket["last_value"] = row["last_value"]
-        for value, n in row["value_counts"]:
-            counts[month][dumps(value)] += n
-        bucket["day_basis"] = (
-            "mixed"
-            if bucket["untimed_count"] and bucket["valid_count"]
-            else "requested_day"
-            if bucket["untimed_count"]
-            else "measurement_time"
+def merge_numeric(bucket, row, previous_count):
+    if row["mean"] is None:
+        return
+    if bucket["mean"] is None:
+        bucket["mean"] = row["mean"]
+    else:
+        bucket["mean"] += (
+            (row["mean"] - bucket["mean"])
+            * row["valid_count"]
+            / (previous_count + row["valid_count"])
         )
-    from calendar import monthrange
+    for key, combine in (("minimum", min), ("maximum", max)):
+        bucket[key] = (
+            row[key] if bucket[key] is None else combine(bucket[key], row[key])
+        )
 
-    for month, bucket in sorted(buckets.items()):
+
+def merge_day(bucket, row, counts):
+    previous = bucket["valid_count"]
+    for key in ("valid_count", "invalid_count", "excluded_count", "untimed_count"):
+        bucket[key] += row[key]
+    if row["valid_count"]:
+        bucket["valid_days"] += 1
+        merge_numeric(bucket, row, previous)
+        if bucket["first_time"] is None or row["first_time"] < bucket["first_time"]:
+            bucket["first_time"] = row["first_time"]
+        if bucket["last_time"] is None or row["last_time"] >= bucket["last_time"]:
+            bucket["last_time"] = row["last_time"]
+            bucket["last_value"] = row["last_value"]
+    for value, n in row["value_counts"]:
+        counts[dumps(value)] += n
+    bucket["day_basis"] = merged_day_basis(bucket)
+
+
+def merged_day_basis(bucket):
+    if not bucket["untimed_count"]:
+        return "measurement_time"
+    return "mixed" if bucket["valid_count"] else "requested_day"
+
+
+def period_summary(days, start, end, stop=None):
+    """Merge unrounded daily observations; never average days with equal weights."""
+    bucket = dict(
+        empty_day(""),
+        valid_days=0,
+        period_from=start.isoformat(),
+        period_to=end.isoformat(),
+        requested_days=(end - start).days + 1,
+    )
+    counts = Counter()
+    for row in days:
+        check_stop(stop)
+        merge_day(bucket, row, counts)
+    bucket["value_counts"] = [[json.loads(k), n] for k, n in sorted(counts.items())]
+    return bucket
+
+
+def monthly_summaries(days, start, end):
+    """Use the same weighted reducer as arbitrary period reads."""
+    from calendar import monthrange
+    from datetime import date
+    from itertools import groupby
+
+    for month, rows in groupby(
+        sorted(days, key=lambda r: r["day"]), key=lambda r: r["day"][:7]
+    ):
         year, number = map(int, month.split("-"))
-        bucket["period_from"] = max(start.isoformat(), month + "-01")
-        bucket["period_to"] = min(
-            end.isoformat(), f"{month}-{monthrange(year, number)[1]:02d}"
-        )
-        bucket["value_counts"] = [
-            [json.loads(key), n] for key, n in sorted(counts[month].items())
-        ]
-        yield bucket
+        begin = max(start, date(year, number, 1))
+        finish = min(end, date(year, number, monthrange(year, number)[1]))
+        yield dict(period_summary(rows, begin, finish), day=month)
 
 
 class Summaries:
@@ -203,7 +206,7 @@ class Summaries:
     def __init__(self, db):
         self.db = db
 
-    def daily(self, parameter, start, end, conn, stop=None):
+    def daily(self, parameter, start, end, conn, stop=None, *, publish_cache=True):
         from .query import Queries
 
         check_stop(stop)
@@ -237,7 +240,8 @@ class Summaries:
         result = aggregate_days(
             Queries(self.db).rows(parameter, start, end, conn), parameter, stop
         )
-        self.publish(parameter, start, end, revision, result, stop)
+        if publish_cache:
+            self.publish(parameter, start, end, revision, result, stop)
         return result
 
     def publish(self, parameter, start, end, revision, result, stop=None):
