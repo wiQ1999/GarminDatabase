@@ -24,6 +24,7 @@ Zaimportowano 844 archiwa: 10 994 FIT, 8 307 429 wiadomości i 20 841 953 pola f
 10. [Schemat SQLite i podsumowania](docs/10-sqlite-schema.md) — [DDL źródeł](schema/001_initial.sql), [podsumowania v3](schema/003_summaries.sql)
 11. [Interfejs Windows i ustawienia aplikacji](docs/11-desktop-ui.md)
 12. [Uruchamianie, budowanie i testy](docs/12-running-and-testing.md)
+13. [Plan wspólnego eksportu i lokalnego MCP](docs/13-mcp-plan.md) — propozycja etapów, wyboru parametrów i pierwszych dwóch narzędzi; jeszcze bez implementacji MCP
 
 ## Pobranie historii do analizy
 
