@@ -96,3 +96,85 @@ Do lokalnych sprawdzeń i przyszłego harmonogramu służy wspólny moduł CLI:
 ```
 
 `sync` wymaga dostępnej sesji aplikacji Windows. Mechanizm ochrony sesji na Linux i sieciowy hub Raspberry Pi pozostają późniejszym etapem, zgodnie z uzgodnionym zakresem.
+
+## Lokalny MCP — konfiguracja i uruchomienie
+
+Budowanie tworzy dwa sąsiednie foldery: `GarminDatabase/` z okienkowym EXE i `GarminDatabaseMCP/` z serwerem mającym standardowe strumienie. Zachowaj oba foldery wraz z ich `_internal`. `build_windows.ps1 -Destination ...` buduje oba we wskazanym miejscu. Nie zatrzymuj wcześniejszej aplikacji użytkownika w celu nadpisania plików.
+
+1. Przygotuj bazę przez aplikację. MCP nie pobiera, nie importuje i nie migruje danych; nie wymaga logowania Garmin.
+2. W Ustawieniach włącz „Zezwalaj na odczyt przez lokalny MCP”, wybierz metryki w kolumnie MCP i zapisz ustawienia.
+3. Skopiuj konfigurację klienta przyciskiem w tej sekcji i wklej ją do klienta obsługującego lokalne `stdio` i `mcpServers`. Klient wymagający wyłącznie URL/HTTP wymaga innej integracji, poza tym wydaniem.
+4. Klient uruchomi proces. Wywołaj `garmin_catalog`, a następnie metodę odczytu. Okno GarminDatabase może być zamknięte. Wyłączenie dostępu w zapisanych ustawieniach działa także dla już uruchomionego klienta.
+
+Przykład standardowej dystrybucji (przy innym `-Destination` użyj ścieżek skopiowanych z tej paczki):
+
+```json
+{
+  "mcpServers": {
+    "garmin_database": {
+      "command": "D:/Projects/GarminDatabase/dist/GarminDatabaseMCP/GarminDatabaseMCP.exe",
+      "args": ["--settings-file", "C:/Users/wikto/AppData/Local/GarminDatabase/settings.json"]
+    }
+  }
+}
+```
+
+W źródłach odpowiednikiem jest `.venv/Scripts/python.exe mcp_stdio.py --settings-file ŚCIEŻKA`. Serwer czeka na protokół na standardowym wejściu; nie jest interaktywną konsolą. Konfiguracja z UI wskazuje bezwzględny skrypt i działa również z innego katalogu. Dla instalacji pakietu dostępne jest `garmin-db-mcp`.
+
+### Narzędzia MCP v1
+
+| Narzędzie | Argumenty | Wynik |
+| --- | --- | --- |
+| `garmin_catalog` | opcjonalny `cursor`; katalog v1 mieści pięć metryk w jednej odpowiedzi | Włączone metryki, etykiety, jednostki, dostępny zakres rozpoznanych czasów, precyzja i limity |
+| `get_daily` | `date_from`, `date_to`, wymagane `metrics`, opcjonalny `cursor` | Dzienne średnie, min/max, liczniki jakości i pierwszy/ostatni czas; do 92 dni na stronę |
+| `get_period_stats` | `date_from`, `date_to`, wymagane `metrics` | Jeden wiersz całego okresu na metrykę, średnia ważona próbkami, min/max, liczby próbek i dni |
+
+Wymagany jest wybór 1–5 różnych kluczy z katalogu: `monitoring.heart_rate`, `hrv_value.value`, `respiration_rate.respiration_rate`, `spo2_data.reading_spo2`, `stress_level.stress_level_value`, jeśli są obecne i włączone. Są to średnie próbek dni, bez zgadywania znaczenia nocnego HRV czy tętna spoczynkowego. Zakres katalogu nie gwarantuje ciągłości ani pełnego pokrycia doby.
+
+Przykładowe argumenty metod odczytu:
+
+```json
+{"date_from":"2026-09-01","date_to":"2026-09-30","metrics":["monitoring.heart_rate","hrv_value.value"]}
+```
+
+Zakres obejmuje obie daty w Warszawie i kończy się najpóźniej wczoraj. Wynik jest w `structuredContent.series`; seria podaje `parameter`, `unit`, `aggregation`, `precision`, `columns` i tablicę wierszy `data`. Krótka część tekstowa nie powiela JSON. Czas jest lokalny z pełną datą i offsetem, np. `2026-10-22T13:30:00+02:00`. Dni zmiany czasu mają rzeczywiste granice 23/25 godzin; SQLite i eksport v2 zachowują momenty UTC.
+
+Kolumny dzienne to `day`, `mean`, `minimum`, `maximum`, `valid_count`, `invalid_count`, `excluded_count`, `untimed_count`, `first_time`, `last_time`, `day_basis`. W okresie zamiast `day` są `period_from` i `period_to`, a dodatkowo `valid_days` i `requested_days`. Średnia okresowa używa niezaokrąglonych średnich dziennych z wagą liczby poprawnych próbek, tak jak eksport miesięczny. Nie jest średnią ważoną czasem ani nieważoną średnią dni. Zakres dłuższy niż 92 dni jest przetwarzany wewnętrznymi odcinkami na jednym obrazie SQLite; klient dostaje wynik całego okresu. Brak poprawnych próbek daje `null`.
+
+### Limity, kompletność i błędy
+
+Wynik narzędzia ma najwyżej 16 KiB wraz z blokami treści i metadanymi. Nie jest to obietnica stałej liczby tokenów dowolnego modelu. Odczyt ma budżet 60 s i reaguje na anulowanie, również przez kontrolę postępu SQLite. Nie zwraca częściowej średniej jako pełnej. Dane i kompletność jednej odpowiedzi odnoszą się do tej samej `data_revision`, także podczas importu.
+
+`get_daily` może zmniejszyć stronę poniżej 92 dni, aby zmieścić wynik. Podaje żądany i faktyczny zakres, `truncated` oraz `next_cursor`; kontynuacja powtarza pierwotne daty i metryki z kursorem. Strony przesuwają się również przez puste dni. Zmiana bazy, rewizji, polityki lub restart procesu unieważnia kursor i wymaga rozpoczęcia zapytania od nowa.
+
+`gaps` odróżnia `missing_archive`, `partial_decode` i `no_valid_samples` konkretnej metryki. Dzienny `gaps_format: date_ranges` grupuje daty; okresowy `gaps_format: day_counts` podaje liczby dni według przyczyn. Dokładne daty można odczytać przez `get_daily`. Przyczyny mogą się pokrywać i nie są rozłącznym bilansem dni. Braki nie są zerami, a `wear_pct` nie jest zgadywany z liczby próbek.
+
+Nieznana/wyłączona metryka, zły zakres, uszkodzone ustawienia, brak obsługiwanej bazy i nieaktualny kursor dają zwięzły `isError`. Nie są udanym pustym wynikiem. MCP sprawdza politykę również przed publikacją, nie czyta sesji Garmin, nie zapisuje cache i nie udostępnia SQL, FIT, eksportu na dysk ani metod zapisu. Szczegóły: [architektura](03-architecture.md), [eksport](05-export.md), [ustawienia](11-desktop-ui.md).
+
+### Smoke test procesu i dystrybucji
+
+```powershell
+.venv/Scripts/python.exe scripts/smoke_mcp.py
+.venv/Scripts/python.exe scripts/smoke_mcp.py --executable dist/GarminDatabaseMCP/GarminDatabaseMCP.exe
+```
+
+Skrypt tworzy izolowaną syntetyczną bazę i ustawienia w `test-results/mcp-smoke`, uruchamia rzeczywisty proces klientem SDK i sprawdza inicjalizację, trzy narzędzia, limit rozmiaru, średnią dwuletniego okresu oraz odcięcie dostępu bez restartu. Weryfikuje również 10 pytań z `tests/mcp_evaluation.xml`: średnie, rozpiętość, liczniki, brak danych, rok przestępny, lokalny czas i stronicowanie. Raport zawiera wyłącznie status i liczniki. Dodatkowo wykonaj `scripts/smoke_windows.ps1` dla GUI. Sandbox Windows może blokować wewnętrzne `socketpair` pętli asyncio; w tym środowisku testy protokołu wymagają uruchomienia z uprawnieniami pozwalającymi na utworzenie tej pętli. Nie oznacza to otwierania serwera HTTP.
+
+## Odbiór lokalnego MCP — 2026-10-22
+
+Pełny zestaw: **244 testy**, coverage rdzenia i CLI z gałęziami **93,43%**. Nowe testy obejmują migrację wyboru, niezależne listy kanałów, walidację eksportu GUI/CLI/bezpośrednio, zgodność średnich okresowych z eksportem, brak połączeń zapisujących z MCP, zakres dwóch lat bez cache, DST, anulowanie, limit bajtów, puste dni, zmianę rewizji i odcięcie dostępu przed odpowiedzią. Test protokołu uruchamia osobny proces z innego katalogu roboczego i wywołuje trzy narzędzia klientem SDK. Wszystkie ustawienia testów są izolowane od profilu użytkownika.
+
+Paczki odbiorowe są w `dist/mcp-release/GarminDatabase/` oraz `dist/mcp-release/GarminDatabaseMCP/`. Build obu paczek, smoke GUI oraz źródeł i EXE MCP zakończyły się poprawnie; oba warianty MCP przeszły 10 ewaluacji i kontrolę pustego stderr. Serwer korzysta z istniejących strumieni Python z ustawionym UTF-8; dodatkowe opakowanie tego samego bufora zamykało go przed flush przy kończeniu PyInstaller. Raporty lokalne: `test-results/results.xml`, `test-results/coverage/index.html`, `test-results/mcp-source-verified/mcp-smoke.json`, `test-results/mcp-packaged-verified/mcp-smoke.json` i `test-results/mcp-build-final.log`. Dane, raporty i paczki pozostają poza Git.
+
+Pomiar złożoności Radon przed i po wydzieleniu odpowiedzialności:
+
+| Funkcja | Przed | Po |
+| --- | ---: | ---: |
+| `monthly_summaries` | 19 | 2 |
+| `Exporter.history` | 11 | 7 |
+| `Exporter.generate` | 11 | 8 |
+| `Settings.validate` | 12 | 9 |
+| `cli.main` | 15 | 3 |
+| `Window.refresh` | 14 | 2 |
+
+Wydzielono reduktor okresów, wspólny opis podsumowań, walidację udostępniania oraz obsługę poleceń i elementów UI. Zgodność zachowania potwierdza pełny zestaw testów, w tym miesięczny odczyt nieuporządkowanych dni. Nowe funkcje MCP mają złożoność najwyżej 8. Raport jest w ignorowanym `test-results/mcp-complexity.json`.

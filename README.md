@@ -4,9 +4,11 @@ Prywatna aplikacja okienkowa dla Windows 11 do pobierania dziennych archiwów do
 
 ## Stan projektu
 
-Zaimplementowano aplikację Windows, importer SQLite, klienta Garmin z sesją DPAPI, wykresy i strumieniowy eksport JSON. Paczka jest w `dist/GarminDatabase/GarminDatabase.exe`; należy zachować cały folder dystrybucji. [Uruchamianie i testy](docs/12-running-and-testing.md).
+Zaimplementowano aplikację Windows, importer SQLite, klienta Garmin z sesją DPAPI, wykresy, strumieniowy eksport JSON oraz lokalny MCP tylko do odczytu. Budowanie tworzy paczki `GarminDatabase` i `GarminDatabaseMCP`; należy zachować oba foldery dystrybucji. [Uruchamianie i testy](docs/12-running-and-testing.md).
 
 Eksport v2 tworzy osobny folder z datą i czasem, historię podsumowań oraz szczegóły w osobnych plikach każdego parametru. SQLite v3 zachowuje źródła i dodatkowy, odtwarzalny cache podsumowań dziennych; eksport może wybrać podsumowania miesięczne. [Format i reguły podsumowań](docs/05-export.md).
+
+W Ustawieniach można niezależnie wybrać parametry eksportu i MCP. MCP ma trzy narzędzia: `garmin_catalog`, `get_daily` i `get_period_stats`, obsługujące pięć istniejących średnich próbek. Dostęp jest domyślnie wyłączony; konfigurację lokalnego klienta `stdio` można skopiować z aplikacji. [Wspólne reguły odczytu](docs/03-architecture.md).
 
 Zaimportowano 844 archiwa: 10 994 FIT, 8 307 429 wiadomości i 20 841 953 pola fizyczne. Ciągła historia archiwów zaczyna się 2024-06-19; osobny METRICS pochodzi z 2024-02-17. Część pól pozostaje bez publicznie opisanej semantyki i jest zachowywana pod identyfikatorami źródłowymi. Testy obejmują piramidę jednostkowe/integracyjne/UI, uruchomienie paczki Windows i rzeczywisty eksport WebAPI.
 
@@ -24,7 +26,6 @@ Zaimportowano 844 archiwa: 10 994 FIT, 8 307 429 wiadomości i 20 841 953 pola f
 10. [Schemat SQLite i podsumowania](docs/10-sqlite-schema.md) — [DDL źródeł](schema/001_initial.sql), [podsumowania v3](schema/003_summaries.sql)
 11. [Interfejs Windows i ustawienia aplikacji](docs/11-desktop-ui.md)
 12. [Uruchamianie, budowanie i testy](docs/12-running-and-testing.md)
-13. [Plan wspólnego eksportu i lokalnego MCP](docs/13-mcp-plan.md) — propozycja etapów, wyboru parametrów i pierwszych trzech narzędzi: katalogu, podsumowań dziennych i średnich okresowych; jeszcze bez implementacji MCP
 
 ## Pobranie historii do analizy
 

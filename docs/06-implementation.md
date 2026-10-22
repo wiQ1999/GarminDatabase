@@ -44,7 +44,7 @@ Po stabilizacji wprowadzić harmonogram na Raspberry Pi bez UI. Wspólna operacj
 
 ## Późniejsze rozszerzenia
 
-Aktualizacja pobranych dni, podział dużych eksportów, inne metryki lub treningi, bezpośredni dostęp agenta, API/MCP. Każde wymaga osobnego doprecyzowania zakresu. UI jest już częścią pierwszej wersji; przyszły hub danych wymaga ustalenia sposobu dostępu. Dodatkowe kopie zapasowe nie są obecnie planowane.
+Aktualizacja pobranych dni, podział dużych eksportów, inne metryki lub treningi i sieciowy hub danych wymagają osobnego doprecyzowania zakresu. Lokalny MCP tylko do odczytu jest już zaimplementowany w ograniczonym zakresie: katalog, podsumowania dzienne i średnie całego okresu dla pięciu istniejących metryk. Korzysta ze wspólnych reguł eksportu i niezależnych list parametrów w Ustawieniach. Kolejne funkcje MCP, HTTP i Raspberry Pi są późniejszym etapem. Dodatkowe kopie zapasowe nie są obecnie planowane. Kontrakt, dystrybucję i odbiór opisuje [instrukcja](12-running-and-testing.md).
 
 ## Konieczne sprawdzenia implementacji
 
