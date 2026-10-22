@@ -2,7 +2,7 @@
 
 Data: 2026-10-22. Status: propozycja wdrożenia na podstawie wstępnych wymagań użytkownika. Dokument opisuje przyszłe zmiany; serwer MCP i nowe ustawienia nie są jeszcze zaimplementowane.
 
-Celem jest jeden zestaw reguł doboru parametrów, obliczeń, dat i jakości danych, używany przez eksport plików oraz lokalny MCP. Pierwsze wydanie MCP ma umożliwić przegląd katalogu i pobranie podsumowań dziennych. Bardziej złożone analizy będą dodawane po sprawdzeniu tego przepływu.
+Celem jest jeden zestaw reguł doboru parametrów, obliczeń, dat i jakości danych, używany przez eksport plików oraz lokalny MCP. Pierwsze wydanie MCP ma umożliwić przegląd katalogu, pobranie podsumowań dziennych oraz średnich z całego wskazanego okresu. Bardziej złożone analizy będą dodawane po sprawdzeniu tego przepływu.
 
 ## Stan obecny i zmiany potrzebne przed MCP
 
@@ -61,16 +61,23 @@ Nowe ustawienia zawierają wersję oraz jawne listy `export_parameters` i `mcp_p
 
 Ustawienia zapisuje się atomowo. MCP odczytuje politykę przed każdym żądaniem i sprawdza ją ponownie przed wysłaniem odpowiedzi. Zmiana listy metryk, wyłączenie MCP albo zmiana folderu danych unieważnia rozpoczętą odpowiedź i kursory; wyłączenie działa bez restartowania klienta. Niepoprawny plik ustawień nie może przywrócić domyślnego udostępniania wszystkich danych. Eksport korzysta z wyboru zatwierdzonego przy rozpoczęciu zadania; zmiana ustawień nie usuwa wcześniej wygenerowanych pakietów.
 
-## Pierwsza wersja MCP: dwa narzędzia
+## Pierwsza wersja MCP: trzy narzędzia
 
 | Narzędzie | Parametry | Odpowiedź |
 | --- | --- | --- |
 | `garmin_catalog` | opcjonalny `cursor` | Tylko włączone i obsługiwane metryki: klucz, etykieta, jednostka, metoda, dostępny zakres rozpoznanych czasów, limity |
 | `get_daily` | `date_from`, `date_to`, wymagane `metrics[]`, opcjonalny `cursor` | Dzienne podsumowania wybranych metryk, liczności i jakość danych |
+| `get_period_stats` | `date_from`, `date_to`, wymagane `metrics[]` | Jedno podsumowanie całego wskazanego okresu dla każdej metryki: średnia, minimum, maksimum, liczby próbek i dni z poprawnymi pomiarami |
 
 Pierwszy katalog obejmuje pięć parametrów z obecnego `MEAN_PARAMETERS`: `hrv_value.value`, `monitoring.heart_rate`, `respiration_rate.respiration_rate`, `spo2_data.reading_spo2` i `stress_level.stress_level_value`, o ile są obecne w bazie i włączone. Są to średnie próbek w dniu kalendarzowym. Nie należy nazywać ich nocnym HRV, tętnem spoczynkowym ani nocnym oddechem.
 
 `get_daily` zwraca średnią, minimum, maksimum, liczności jakości i pierwszy/ostatni poprawny czas. To wykorzystuje istniejące obliczenia bez dodawania median, odchylenia standardowego i nowego sposobu agregacji. Każda metryka ma własną tabelę kolumnową z tym samym układem co odpowiadająca jej historia eksportu. Takie rozwiązanie zachowuje znaczenie danych, a klient może łączyć tabele po dniu bez obliczania statystyk z próbek. Nie wymaga się jednej szerokiej tabeli dla różnych rodzajów źródeł.
+
+`get_period_stats` obejmuje te same pięć metryk i zwraca średnią dostępnych poprawnych próbek z całego żądanego zakresu dat, bez ich wysyłania do klienta. Korzysta z niezaokrąglonych podsumowań dziennych: `mean = sum(mean_day * valid_count_day) / sum(valid_count_day)`. To ta sama zasada co w obecnym miesięcznym eksporcie; dzień z większą liczbą próbek ma większą wagę. Nie jest to średnia ważona czasem ani nieważona średnia dni. Wspólna funkcja łączenia podsumowań powinna obsługiwać zarówno miesiące eksportu, jak i dowolny okres MCP, bez zmiany wyników obecnego eksportu.
+
+Każda metryka otrzymuje tabelę kolumnową z jednym wierszem: `period_from`, `period_to`, `mean`, `minimum`, `maximum`, `valid_count`, `invalid_count`, `excluded_count`, `untimed_count`, `valid_days`, `requested_days`, `first_time`, `last_time`, `day_basis`. `valid_days` to liczba dni z co najmniej jedną poprawną próbką, a `requested_days` obejmuje wszystkie lokalne daty żądanego okresu. `aggregation` opisuje `method: sample_mean`, `period: range` i `weighting: valid_sample_count`. Brak poprawnych próbek daje `null` dla średniej, minimum, maksimum i czasów poprawnych obserwacji, przy zachowaniu liczników. Reguły wykluczania próbek, strefa i wybór parametrów są identyczne jak w `get_daily` i eksporcie.
+
+Przykładowe wywołanie: `get_period_stats(date_from="2026-09-01", date_to="2026-09-30", metrics=["monitoring.heart_rate", "hrv_value.value"])`. Wynik września musi zgadzać się z odpowiadającym mu miesięcznym eksportem przed zaokrągleniem prezentacji. W pierwszej wersji metoda zwraca podsumowanie całego okresu; grupowanie na tygodnie/miesiące oraz wybór mediany lub odchylenia standardowego pozostają późniejszym rozszerzeniem.
 
 Nie ma domyślnego wyboru wszystkich metryk. Puste `metrics[]` jest błędem. Początkowo można wybrać od jednej do pięciu metryk; limit odpowiada rzeczywistemu zakresowi pierwszego wydania. Katalog nie skanuje całych próbek przy każdym wywołaniu: zakres dostępności wynika z indeksowanych czasów wiadomości i powiązań katalogu; plan zapytania oraz opóźnienie trzeba zmierzyć. Nie pobiera listy wszystkich brakujących dni całej historii — szczegóły braków dotyczą stron żądanego zakresu.
 
@@ -128,11 +135,15 @@ Nie obliczamy `wear_pct` z liczby próbek: zmienny interwał, ładowanie i brak 
 
 ## Limity, stronicowanie i błędy
 
-Pierwsza wersja ma maksymalnie 92 dni na stronę i maksymalnie pięć wybranych metryk. Szerszy poprawny zakres jest przetwarzany kolejnymi stronami; 92 dni oznacza limit pracy pojedynczego wywołania, a nie odrzucenie całego zapytania. Nie zmieniamy samoczynnie dnia na tydzień lub miesiąc, ponieważ zmieniłoby to znaczenie odpowiedzi.
+`get_daily` ma maksymalnie 92 dni na stronę, a obie metody odczytu wymagają maksymalnie pięciu wybranych metryk. Szerszy poprawny zakres dzienny jest przetwarzany kolejnymi stronami; 92 dni oznacza limit zakresu pojedynczej strony dziennej, a nie odrzucenie całego zapytania. Nie zmieniamy samoczynnie dnia na tydzień lub miesiąc, ponieważ zmieniłoby to znaczenie odpowiedzi.
+
+W `get_period_stats` limit 92 dni nie ogranicza całego okresu, ponieważ klient dostaje tylko jeden wiersz na metrykę. Podsumowania można odczytywać wewnętrznie w odcinkach do 92 dni i łączyć w jednej transakcji odczytu. Końcowa średnia zawsze obejmuje cały żądany okres; nie wolno publikować średniej pierwszego odcinka jako wyniku pełnego zakresu ani wymagać od klienta samodzielnego łączenia średnich. Obowiązują limit czasu wykonania, anulowanie i budżet bajtów. Test wydajności obejmie co najmniej dwuletni zakres, także bez aktualnego cache.
 
 Proponowany dodatkowy limit to 16 KiB zserializowanego wyniku narzędzia, obejmujący wszystkie bloki treści, metadane, luki i kursor. To mierzalny limit bajtów; cel 6–8 tys. tokenów należy sprawdzić na reprezentatywnych odpowiedziach, ponieważ nie ma stałego przelicznika dla wszystkich klientów i modeli. Nie można bez kontroli powielać całego dużego JSON w kilku reprezentacjach wyniku SDK.
 
-Strony dzieli się na granicach dni, równocześnie dla wszystkich wybranych metryk. Limit bajtów może zmniejszyć liczbę dni poniżej 92. Także dni bez pomiarów przesuwają granicę strony. Metadane i luki podlegają temu samemu budżetowi; długie listy luk są grupowane. Graniczny przypadek, w którym nawet jeden dzień nie mieści się w limicie, musi być obsłużony i sprawdzony testem, np. mniejszym wyborem metryk, bez nieskończonego zwracania tego samego kursora.
+Strony `get_daily` dzieli się na granicach dni, równocześnie dla wszystkich wybranych metryk. Limit bajtów może zmniejszyć liczbę dni poniżej 92. Także dni bez pomiarów przesuwają granicę strony. Metadane i luki podlegają temu samemu budżetowi; długie listy luk są grupowane. Graniczny przypadek, w którym nawet jeden dzień nie mieści się w limicie, musi być obsłużony i sprawdzony testem, np. mniejszym wyborem metryk, bez nieskończonego zwracania tego samego kursora.
+
+`get_period_stats` ma stałą liczbę wierszy, dlatego zwraca całość z `truncated: false` i `next_cursor: null`. Aby metadane nie rosły z długością okresu, jego `gaps` podaje liczbę dni dla poszczególnych przyczyn i metryk, z oznaczeniem `gaps_format: day_counts`; `get_daily` zachowuje zakresy dat z `gaps_format: date_ranges`. Dokładne daty braków można odczytać przez `get_daily`. Nie powstają długie listy wszystkich brakujących dni ani rekordy dzienne w odpowiedzi okresowej. Anulowanie lub upływ czasu obliczeń daje jawny błąd, zamiast częściowej średniej.
 
 Każda strona podaje żądany zakres, zakres zwrócony, `truncated` oraz `next_cursor`. Kursor wiąże oryginalne zapytanie, następny dzień, tożsamość bazy, rewizję danych i wersję polityki udostępniania. Serwer sprawdza te warunki przy kontynuacji. Zmiana danych lub polityki unieważnia kursor i wymaga rozpoczęcia zapytania od nowa; nie utrzymujemy długiej transakcji WAL pomiędzy żądaniami. Kursor nie zastępuje walidacji uprawnień.
 
@@ -153,14 +164,16 @@ MCP otwiera SQLite tylko do odczytu i nie udostępnia arbitralnego SQL, ścieże
 | Etap | Zakres | Warunek ukończenia |
 | --- | --- | --- |
 | 1. Kontrakt i zgodność klienta | Potwierdzenie `stdio`, schematy odpowiedzi, opis pięciu metryk, czasu, braków i limitów | Przykłady syntetyczne oraz ustalona wersja SDK i format konfiguracji klienta |
-| 2. Wspólna usługa | Katalog na przekazanym połączeniu, współdzielony odczyt, oddzielenie publikacji cache, metadane czasu i jakości | Eksport zachowuje wyniki v2; zgodność odczytu bez zapisu i spójność WAL potwierdzone testami |
+| 2. Wspólna usługa | Katalog na przekazanym połączeniu, współdzielony odczyt, łączenie podsumowań dziennych dla miesięcy i dowolnego okresu, oddzielenie publikacji cache, metadane czasu i jakości | Eksport zachowuje wyniki v2; zgodność średnich okresowych, odczytu bez zapisu i spójność WAL potwierdzone testami |
 | 3. Wybór parametrów | Migracja ustawień, tabela UI z dwiema listami, podzbiór pakietu, ta sama walidacja w GUI/CLI/eksporterze | Wyłączonego parametru nie można udostępnić przez inny punkt wejścia; pusty wybór pozostaje pusty po restarcie |
-| 4. Dwa narzędzia MCP | Katalog, dzienne podsumowania, limit stron i bajtów, kursory, anulowanie, przeładowanie polityki | Klient odczytuje wynik, duży zakres stronicuje się bez utraty dni, brak zapisów do bazy i pobrań Garmin |
+| 4. Trzy narzędzia MCP | Katalog, podsumowania dzienne i całego okresu, limit stron i bajtów, kursory, anulowanie, przeładowanie polityki | Klient odczytuje wynik, duży zakres dzienny stronicuje się bez utraty dni, średnia okresowa obejmuje cały żądany zakres, brak zapisów do bazy i pobrań Garmin |
 | 5. Dystrybucja i odbiór | Oddzielny EXE, konfiguracja klienta, pomiar czasu/rozmiaru, instrukcja i testy końcowe | Zbudowane GUI i MCP działają na Windows 11, a proces serwera zachowuje protokół i wszystkie ograniczenia |
 
 W etapach 2–3 należy utrzymać działający eksport przed dołączeniem MCP. Każdy większy etap kończy osobny Conventional Commit z jawną listą plików; push wymaga osobnego zlecenia.
 
 Testy jednostkowe obejmą wybór parametrów, migrację pustej listy, semantykę metryk, format czasu i DST, zaokrąglenia wyłącznie na wyjściu oraz limitowanie odpowiedzi. Integracyjne porównają podsumowania eksportu i MCP z tej samej rewizji, sprawdzą brak zapisów po zimnym odczycie MCP, spójność podczas importu, brak wycieku po odznaczeniu metryki i ciągłość stron także przez puste dni. Próby złego kursora, zmiany bazy i ustawień, limitu z długą listą luk oraz anulowania są częścią kontraktu.
+
+Testy `get_period_stats` obejmą dni o różnej liczbie próbek, zakres jednego dnia, część miesiąca, przełom miesiąca/roku i DST, dni bez danych oraz okres bez poprawnych próbek. Wynik należy porównać z bezpośrednią średnią syntetycznych próbek i z miesięcznym eksportem dla tego samego okresu. Podział pracy na odcinki nie może zmieniać wyniku ani rewizji odczytu, a sumaryczne metadane braków muszą mieścić się w budżecie także dla długiej historii.
 
 Testy UI sprawdzą niezależność wyborów i ich zapis. Testy protokołu oraz zbudowanego EXE obejmą inicjalizację MCP, listę narzędzi i wywołania przez prawdziwe strumienie, również gdy GUI jest zamknięte. Wymagany pozostaje próg coverage rdzenia i CLI z gałęziami co najmniej 85%; GUI jest osobną warstwą. Dokumentacja planu nie wymaga uruchamiania całego zestawu aplikacji — te kryteria dotyczą późniejszej implementacji.
 
@@ -168,7 +181,7 @@ Testy UI sprawdzą niezależność wyborów i ich zapis. Testy protokołu oraz z
 
 1. Źródłowe podsumowania Garmin przez jawny kontrakt zachowujący wiele rekordów i ich znaczenie okresu. Dopiero po weryfikacji wprowadzać nazwy tętna spoczynkowego lub nocnego HRV.
 2. `get_window`: jeden dzień/ograniczona liczba godzin, jawne metryki, koszyki czasu i liczności próbek; surowe obserwacje tylko na wyraźne żądanie z osobnym limitem. Rozdzielić agregację czasową od odczytu surowego, bo interwał jednej minuty nie oznacza pojedynczej surowej próbki.
-3. `get_period_stats` i `compare_periods`: jawny wybór statystyk, definicja tygodnia oraz rozróżnienie statystyk próbek od statystyk dni. Obecne miesięczne średnie są ważone liczbą próbek; nie należy zastąpić ich nieważoną średnią dni.
+3. Rozbudowa `get_period_stats` o tygodnie/miesiące i dodatkowe statystyki oraz dodanie `compare_periods`: jawny wybór statystyk, definicja tygodnia oraz rozróżnienie statystyk próbek od statystyk dni. Obecne miesięczne i planowane okresowe średnie są ważone liczbą próbek; nie należy zastąpić ich nieważoną średnią dni.
 4. `get_sleep`, `get_activities` i `find_outliers`: po potwierdzeniu dostępności źródeł i reguł przypisania czasu. Obecne archiwa dobrostanu nie gwarantują pełnej historii aktywności ani wszystkich metryk z przykładu użytkownika.
 5. Streamable HTTP, Raspberry Pi i dostęp z innych urządzeń jako osobny projekt transportu, uwierzytelniania i utrzymania procesu.
 
