@@ -38,3 +38,5 @@ cd D:\Projects\GarminDatabase
 Zakres domyślny: 2024-01-01 do wczoraj. Skrypt zapisuje oryginalne ZIP-y i raport metadanych, zachowuje postęp i może korzystać z lokalnie zapisanej sesji. Nie dekoduje jeszcze FIT ani nie buduje bazy. Szczegóły w instrukcji powyżej.
 
 Pierwszy etap realizacji opisano w dokumencie źródła danych. Dane prywatne, sesje logowania i eksporty są wykluczone z Git przez `.gitignore`. Wykluczenie z Git nie szyfruje plików i nie tworzy kopii zapasowej.
+
+Lokalny serwer MCP udostępnia jawnie wybrane metryki tylko do odczytu przez stdio, z tego samego PostgreSQL co UI i eksport. Konfiguracja i odbiór: [uruchamianie](docs/12-running-and-testing.md).

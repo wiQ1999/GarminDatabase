@@ -74,7 +74,17 @@ Tokeny sesji w `auth/session.bin` szyfrować Windows DPAPI w zakresie użytkowni
 
 Istniejący skrypt historyczny nadal korzysta z sesji w `private/garmin-session`; ten dokument nie zmienia jego implementacji ani nie oznacza, że sesja skryptu została zaszyfrowana. Docelowa aplikacja ma zapewnić własne bezpieczne logowanie. Wszystkie archiwa, baza, eksporty, logi i sesje pozostają poza Git.
 
-## Raspberry Pi — późniejszy etap
+## Udostępnianie danych i lokalny MCP
+
+Ustawienia zawierają przewijaną sekcję „Udostępnianie danych” i tabelę Parametr/Jednostka/Eksport/MCP/Podsumowanie. Wybory eksportu i MCP są niezależne, nie ograniczają importu ani przeglądania w Danych. Można filtrować grupę, zaznaczać/odznaczać ją w danym kanale i kopiować wybór między kanałami. Nieobsługiwane parametry MCP mają nieaktywny checkbox z wyjaśnieniem. Zmiany stosuje przycisk „Zapisz ustawienia”.
+
+Ustawienia wersji 2 mają `export_parameters`, `mcp_parameters`, `mcp_enabled` oraz dotychczasowe `parameters` jako ostatni podzbiór pakietu. Pusta lista oznacza brak wyboru i pozostaje pusta po restarcie. Migracja starszych ustawień zachowuje zapisany podzbiór eksportu; dawny pusty wybór „wszystko” zamienia na aktualny jawny katalog. W nowej pustej bazie brak parametrów do włączenia; po imporcie użytkownik wybiera nowo rozpoznane serie. MCP początkowo jest wyłączony i niczego nie udostępnia.
+
+Ekran Eksport pokazuje tylko parametry dozwolone na liście eksportowej. Dostęp MCP obejmuje pięć obecnie obsługiwanych średnich próbek i wymaga osobnego włączenia. „Skopiuj konfigurację klienta MCP” kopiuje JSON `mcpServers` z bezwzględnymi ścieżkami serwera i ustawień, bez danych pomiarowych. W konfiguracji źródłowej używa Pythona i `mcp_stdio.py`, a w dystrybucji sąsiedniego folderu `GarminDatabaseMCP`.
+
+Proces uruchamia zgodny klient `stdio`; okno aplikacji nie musi działać. Nie ma osobnego przycisku startu serwera. Serwer ponownie sprawdza zapisane ustawienia przy odczycie i przed odpowiedzią, więc wyłączenie dostępu działa również dla już uruchomionego klienta. Zmiana folderu danych lub listy MCP unieważnia kursory. Uszkodzony plik ustawień zamyka dostęp zamiast włączać wszystkie parametry. Eksport korzysta z wyboru rozpoczętego zadania; stare pakiety użytkownika nie są usuwane.
+
+## Raspberry Pi i dostęp sieciowy — późniejszy etap
 
 Wspólny rdzeń Python obsługuje pobieranie, import, ponowne przetwarzanie i eksport niezależnie od UI. Raspberry Pi ma działać bez okna jako automat importu według harmonogramu oraz hub dostępu do danych. Eksport nie staje się automatyczny bez osobnej zmiany wymagań.
 

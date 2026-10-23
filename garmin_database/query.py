@@ -129,8 +129,12 @@ class Queries:
     def __init__(self, db):
         self.db = db
 
-    def parameters(self):
-        with self.db.connect(readonly=True) as c:
+    def parameters(self, conn=None):
+        with (
+            nullcontext(conn)
+            if conn is not None
+            else self.db.connect(readonly=True) as c
+        ):
             rows = c.execute("""SELECT * FROM field_catalog c WHERE semantics_status<>'unknown'
                 AND representation IN ('sample','source_summary','event') AND time_role IN ('none','duration')
                 AND EXISTS(SELECT 1 FROM fit_fields f JOIN fit_messages m ON m.id=f.message_id

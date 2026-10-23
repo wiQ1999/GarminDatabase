@@ -17,7 +17,12 @@ def isolated_postgresql(request, monkeypatch, tmp_path):
     disposable test database, with permission to create/drop schemas.
     """
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
-    if not any(request.node.get_closest_marker(m) for m in ("integration", "ui")):
+    needs_database = (
+        "source" in request.fixturenames and request.node.module.__name__ == "test_mcp"
+    )
+    if not needs_database and not any(
+        request.node.get_closest_marker(m) for m in ("integration", "ui")
+    ):
         yield
         return
     dsn = os.environ.get("GARMIN_TEST_DATABASE_DSN")

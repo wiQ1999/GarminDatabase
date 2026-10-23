@@ -72,6 +72,46 @@ def ready(qtbot, w):
     )
 
 
+def test_sharing_policy_is_independent_and_survives_restart(qtbot, tmp_path):
+    w = window(qtbot, tmp_path, summaries=True)
+    w.navigation.setCurrentRow(3)
+    heart = next(
+        i for i, p in enumerate(w.parameters) if p["key"] == "monitoring.heart_rate"
+    )
+    other = next(
+        i for i, p in enumerate(w.parameters) if p["key"] == "monitoring.distance"
+    )
+    w.select_sharing(2, False)
+    w.sharing_table.item(heart, 3).setCheckState(Qt.CheckState.Checked)
+    w.mcp_enabled.setChecked(True)
+    assert not w.sharing_table.item(other, 3).flags() & Qt.ItemFlag.ItemIsEnabled
+    w.save_settings()
+    saved = Settings.load(tmp_path / "settings.json")
+    assert saved.export_parameters == []
+    assert saved.mcp_parameters == ["monitoring.heart_rate"] and saved.mcp_enabled
+    assert w.export_list.count() == 0
+    w.refresh()
+    ready(qtbot, w)
+    assert w.sharing_keys(2) == [] and w.sharing_keys(3) == ["monitoring.heart_rate"]
+    w.copy_sharing(3, 2)
+    w.save_settings()
+    assert w.export_list.count() == 1
+    w.copy_mcp_config()
+    from PySide6.QtWidgets import QApplication
+
+    assert "mcpServers" in QApplication.clipboard().text()
+
+
+def test_sharing_group_actions_respect_filter(qtbot, tmp_path):
+    w = window(qtbot, tmp_path, summaries=True)
+    w.sharing_group.setCurrentIndex(w.sharing_group.findData("Serce i HRV"))
+    w.select_sharing(2, False)
+    assert "monitoring.heart_rate" not in w.sharing_keys(2)
+    assert "monitoring.distance" in w.sharing_keys(2)
+    w.select_sharing(3, True)
+    assert w.sharing_keys(3) == ["monitoring.heart_rate"]
+
+
 def select_parameter(w, key):
     for i in range(w.parameter_list.count()):
         parameter = w.parameter_list.item(i).data(Qt.ItemDataRole.UserRole)
@@ -351,9 +391,10 @@ def test_postgresql_connection_change_persists_and_reads_new_database(
 def test_postgresql_password_is_not_persisted_from_ui(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
     original_db = w.db
+    previous = (tmp_path / "settings.json").read_bytes()
     w.database_dsn.setText("host=localhost dbname=garmin password=private-secret")
     w.save_settings()
     assert w.db is original_db
     assert "ValueError" in w.session_status.text()
     assert "private-secret" not in w.session_status.text()
-    assert not (tmp_path / "settings.json").exists()
+    assert (tmp_path / "settings.json").read_bytes() == previous

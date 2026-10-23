@@ -53,7 +53,42 @@ def main():
         internal = Path(args.destination).resolve() / "GarminDatabase/_internal"
         for library in ("icuuc.dll", "icudt78.dll"):
             (internal / library).unlink(missing_ok=True)
-    return 0
+    mcp_command = [
+        sys.executable,
+        "-m",
+        "PyInstaller",
+        "--noconfirm",
+        "--onedir",
+        "--console",
+        "--name",
+        "GarminDatabaseMCP",
+        "--distpath",
+        str(Path(args.destination).resolve()),
+        "--specpath",
+        str(root / "build"),
+        "--collect-all",
+        "psycopg_binary",
+        "--hidden-import",
+        "psycopg_binary",
+        "--collect-data",
+        "garmin_database",
+        "--collect-data",
+        "garmin_fit_sdk",
+        "--collect-data",
+        "tzdata",
+        "--copy-metadata",
+        "mcp",
+        "--copy-metadata",
+        "anyio",
+        "--hidden-import",
+        "anyio._backends._asyncio",
+        "--exclude-module",
+        "PySide6",
+        "--exclude-module",
+        "garminconnect",
+        str(root / "mcp_stdio.py"),
+    ]
+    return subprocess.call(mcp_command, cwd=root)
 
 
 if __name__ == "__main__":

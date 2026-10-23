@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Wyłącznie syntetyczna baza scripts/smoke_mcp.py. Każde pytanie wymaga katalogu i odczytu danych. -->
+<evaluation>
+  <qa_pair><question>Ustal z katalogu metrykę chwilowego tętna. Jaka jest średnia dostępnych próbek w całym okresie 2024–2025, mimo dni bez zegarka w danych syntetycznych?</question><answer>70</answer></qa_pair>
+  <qa_pair><question>Znajdź metrykę tętna w katalogu i porównaj dzień dostępności z podsumowaniem 2024–2025. Ile poprawnych próbek tworzy podsumowanie?</question><answer>2</answer></qa_pair>
+  <qa_pair><question>Sprawdź katalog i podsumowanie tętna 2024–2025. Ile dni naprawdę zawiera poprawne próbki, zamiast zakładać pełne pokrycie okresu?</question><answer>1</answer></qa_pair>
+  <qa_pair><question>Dobierz metrykę z katalogu i odczytaj podsumowanie obu pełnych lat 2024 i 2025. Ile lokalnych dni obejmuje żądanie, uwzględniając rok przestępny?</question><answer>731</answer></qa_pair>
+  <qa_pair><question>Sprawdź dostępność metryki w katalogu, następnie podsumowanie tętna za grudzień 2023. Czy średnia ma zero czy null?</question><answer>null</answer></qa_pair>
+  <qa_pair><question>Ustal z katalogu dzień dostępności tętna. Jaka jest rozpiętość poprawnych próbek tego dnia według minimum i maksimum?</question><answer>20</answer></qa_pair>
+  <qa_pair><question>Odszukaj w katalogu dzień dostępności metryki tętna i odczytaj pierwszy czas pomiaru w Warszawie z pełną datą i offsetem.</question><answer>2024-01-02T09:00:00+01:00</answer></qa_pair>
+  <qa_pair><question>Po sprawdzeniu katalogu porównaj średnią dnia z pomiarami oraz całego okresu 2024–2025. Czy obie średnie są zgodne?</question><answer>true</answer></qa_pair>
+  <qa_pair><question>Sprawdź katalog i odczyt dzienny obu lat 2024–2025. Czy po pierwszej odpowiedzi trzeba kontynuować przez kursor, nawet jeśli dane są tylko w jednym dniu?</question><answer>true</answer></qa_pair>
+  <qa_pair><question>Na podstawie katalogu i podsumowania tętna 1–3 stycznia 2024 ustal liczbę dni bez poprawnych próbek. Nie zastępuj ich zerami.</question><answer>2</answer></qa_pair>
+</evaluation>

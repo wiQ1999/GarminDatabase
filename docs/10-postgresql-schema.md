@@ -90,6 +90,8 @@ Rozróżniamy pełny timestamp UTC, timestamp z nagłówka skompresowanego, skr�
 
 `local_timestamp` nie jest UTC; nie przesuwamy go mechanicznie o strefę Warszawy. `Europe/Warsaw` służy granicy zakresu importu i ewentualnej prezentacji czasu UTC. Sen może obejmować przedział i mieć kilka pól czasu; `time_unix_ms` nie zastępuje tych pól ani nie ustala sztucznie dnia snu.
 
+Lokalny MCP nie zmienia schematu v3. `DataAccess.snapshot` odczytuje katalog, rewizję, wartości i kompletność na jednym połączeniu `mode=ro`. `Summaries.daily` ma przełącznik `publish_cache`: eksport może publikować cache zgodnie z rewizją, a MCP zawsze podaje `False`. Zimny odczyt MCP liczy wynik w pamięci i nie otwiera dodatkowego połączenia zapisującego. Serwer wymaga już przygotowanej bazy v3; nie wywołuje migracji ani napraw stanu importu. Podsumowanie dowolnego okresu jest odtwarzalne z dziennych i nie tworzy dodatkowej trwałej tabeli.
+
 ## Pola producenta
 
 Natywne nieznane pola i pola Developer Data to różne przypadki. `developer_data_index` jest lokalny dla pliku; nie identyfikuje globalnie aplikacji. Oryginalne wiadomości opisujące Developer Data są przechowywane jak pozostałe. Katalog deweloperski wiąże opis pola z identyfikatorem aplikacji oraz odciskiem opisu; brak identyfikatora oznacza klucz ograniczony do pliku. Nie łączyć pól różnych aplikacji tylko dlatego, że używają tego samego indeksu.

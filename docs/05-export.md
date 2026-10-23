@@ -104,3 +104,13 @@ Opcja `--full-samples` została usunięta. Początek szczegółów to późniejs
 Pliki szczegółowe nadal mogą być duże: 90 dni nie oznacza limitu liczby tokenów. Można zawęzić liczbę dni lub parametrów, bez automatycznego obcinania danych. Nie dzielimy pojedynczego parametru na miesiące ani nie obiecujemy zgodności z konkretnym limitem modelu.
 
 Punkt wejścia: `Exporter.generate` w `garmin_database/exporter.py`; obliczenia i cache: `garmin_database/summaries.py`. Eksport nie korzysta z dodatkowej usługi sieciowej.
+
+## Wspólne reguły z MCP i wybór parametrów
+
+Lista `export_parameters` w zapisanych Ustawieniach określa dostępność w plikach. Ekran Eksport i `--parameters` wybierają jej podzbiór. CLI bez `--parameters` używa tej listy; bezpośrednie wywołanie `Exporter` także ją sprawdza i ponownie pobiera kanoniczne opisy parametrów. Pusta lista niczego nie udostępnia. Migracja ustawień sprzed wersji 2 zamienia dawny pusty wybór „wszystko” jednorazowo na jawne klucze aktualnego katalogu. Nowe parametry nie włączają się automatycznie. MCP ma osobną listę i przełącznik, opisane w [UI](11-desktop-ui.md).
+
+Wszystkie pliki v2 zachowują dotychczasowe kolumny i precyzję. Nagłówki mają dodatkowo `calendar_timezone: Europe/Warsaw` oraz `timestamp_timezone: UTC`; dawne `timezone` nadal oznacza granice dni. Rozpoznane momenty, również `first_time` i `last_time`, pozostają w UTC. MCP pokazuje te same momenty w Warszawie z pełną datą i offsetem i zaokrągla wyłącznie prezentację: HRV/tętno do liczb całkowitych, oddech/saturację/stres do jednego miejsca. Nie zmienia PostgreSQL ani cache.
+
+Średnia okresowa MCP i miesięczna średnia eksportu korzystają ze wspólnego `period_summary`: `sum(mean_day * valid_count_day) / sum(valid_count_day)`. Obliczenie używa niezaokrąglonych danych. Dni bez poprawnych próbek nie są zerami i nie mają wagi. Średnie nie są ważone czasem. Wynik dla tego samego okresu i rewizji jest zgodny przed formatowaniem.
+
+Limit 92 dni na stronę i 16 KiB wyniku dotyczy MCP. Eksport nadal strumieniowo zapisuje cały wybrany zakres do nowego pakietu, bez cichego obcinania i bez usuwania poprzednich eksportów. Oba kanały jawnie rozróżniają brak archiwum, częściowy import oraz brak poprawnych próbek metryki. Nie wyliczamy `wear_pct` z liczby próbek, ponieważ nie jest to wiarygodny czas noszenia zegarka.

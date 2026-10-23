@@ -6,6 +6,7 @@ import threading
 from datetime import date
 
 from .auth import GarminSource
+from .data_access import select_parameters
 from .exporter import Exporter
 from .query import Queries
 from .settings import Settings
@@ -14,7 +15,7 @@ from .sync import Sync
 from .util import Cancelled, yesterday
 
 
-def main(argv=None):
+def parse_args(argv):
     parser = argparse.ArgumentParser(
         description="GarminDatabase — import, status i eksport"
     )
@@ -35,58 +36,68 @@ def main(argv=None):
     )
     parser.add_argument("--recent-days", type=int, default=90)
     parser.add_argument("--summary-period", choices=["day", "month"], default="day")
-    args = parser.parse_args(argv)
-    stop = threading.Event()
+    return parser.parse_args(argv)
 
-    def progress(day, stage, index, total):
-        print(f"{index}/{total} {day}: {stage}", flush=True)
 
-    try:
-        settings = Settings.load(args.settings_file)
-        db = Database(args.data_dir or settings.data_dir, settings.database_dsn)
-        if args.command in {"sync", "import-local", "reprocess"}:
-            errors = Sync(db, GarminSource() if args.command == "sync" else None).run(
-                args.start,
-                args.end,
-                stop,
-                progress,
-                local_only=args.command != "sync",
-                force=args.command == "reprocess",
-            )
-            print(json.dumps(db.status(), ensure_ascii=False), flush=True)
-            return 2 if errors else 0
-        with db.writer_lock():
-            db.initialize()
-        if args.command == "status":
-            print(json.dumps(db.status(), ensure_ascii=False, indent=2))
-            return 0
-        params = Queries(db).parameters()
-        if args.parameters:
-            requested = set(args.parameters.split(","))
-            params = [p for p in params if p["key"] in requested]
-            if requested - {p["key"] for p in params}:
-                raise ValueError("Nieznany parametr eksportu")
-        result = Exporter(db).generate(
-            args.output or settings.export_dir,
-            params,
+def progress(day, stage, index, total):
+    print(f"{index}/{total} {day}: {stage}", flush=True)
+
+
+def export_files(args, settings, db, stop):
+    catalog = Queries(db).parameters()
+    if settings.migrate(catalog):
+        settings.save(args.settings_file)
+    requested = (
+        args.parameters.split(",") if args.parameters else settings.export_parameters
+    )
+    params = select_parameters(catalog, settings.export_parameters, requested)
+    result = Exporter(db, settings, args.settings_file).generate(
+        args.output or settings.export_dir,
+        params,
+        args.start,
+        args.end,
+        args.recent_days,
+        stop,
+        args.summary_period,
+        progress,
+    )
+    print(
+        json.dumps(
+            {"directory": str(result.directory), "files": result.files},
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+def run_command(args, settings, stop):
+    db = Database(args.data_dir or settings.data_dir, settings.database_dsn)
+    if args.command in {"sync", "import-local", "reprocess"}:
+        errors = Sync(db, GarminSource() if args.command == "sync" else None).run(
             args.start,
             args.end,
-            args.recent_days,
             stop,
-            args.summary_period,
             progress,
+            local_only=args.command != "sync",
+            force=args.command == "reprocess",
         )
-        print(
-            json.dumps(
-                {"directory": str(result.directory), "files": result.files},
-                ensure_ascii=False,
-            )
-        )
+        print(json.dumps(db.status(), ensure_ascii=False), flush=True)
+        return 2 if errors else 0
+    with db.writer_lock():
+        db.initialize()
+    if args.command == "status":
+        print(json.dumps(db.status(), ensure_ascii=False, indent=2))
         return 0
-    except KeyboardInterrupt:
+    return export_files(args, settings, db, stop)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    stop = threading.Event()
+    try:
+        return run_command(args, Settings.load(args.settings_file), stop)
+    except (KeyboardInterrupt, Cancelled):
         stop.set()
-        return 130
-    except Cancelled:
         return 130
     except Exception as error:
         print(

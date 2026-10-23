@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import sys
 import threading
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QHeaderView,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -24,9 +26,12 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QStackedWidget,
     QStyledItemDelegate,
+    QTableWidget,
+    QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -36,10 +41,11 @@ from .auth import GarminSource, SessionRequired, SessionStore
 from .chart import Chart, ChartView
 from .exporter import Exporter, ExportResult
 from .icons import icon, symbol
+from .mcp_config import client_config
 from .query import Queries
 from .settings import Settings, application_dir
 from .storage import Database
-from .summaries import has_chart_summary
+from .summaries import MEAN_PARAMETERS, has_chart_summary, summary_method
 from .sync import Sync
 from .util import Cancelled, check_stop, yesterday
 
@@ -333,7 +339,15 @@ class Window(QMainWindow):
         layout.addWidget(self.export_result)
 
     def build_settings(self):
-        layout = self.page("Ustawienia", "Dane lokalne i połączenie z kontem Garmin.")
+        outer = self.page(
+            "Ustawienia", "Dane lokalne, udostępnianie i połączenie z Garmin."
+        )
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
         form = QFormLayout()
         self.data_path = QLineEdit(self.settings.data_dir)
         form.addRow("Folder danych", self.data_path)
@@ -375,7 +389,150 @@ class Window(QMainWindow):
         label.setWordWrap(True)
         layout.addWidget(label)
         layout.addWidget(QLabel("Strefa zakresu importu i wykresów: Europe/Warsaw"))
+        self.build_sharing(layout)
         layout.addStretch()
+
+    def build_sharing(self, layout):
+        layout.addWidget(QLabel("Udostępnianie danych — niezależny wybór parametrów"))
+        self.mcp_enabled = QCheckBox("Zezwalaj na odczyt przez lokalny MCP")
+        self.mcp_enabled.setChecked(self.settings.mcp_enabled)
+        layout.addWidget(self.mcp_enabled)
+        self.sharing_group = QComboBox()
+        self.sharing_group.addItem("Wszystkie grupy", "")
+        self.sharing_group.currentIndexChanged.connect(self.filter_sharing)
+        layout.addWidget(self.sharing_group)
+        self.sharing_table = QTableWidget(0, 5)
+        self.sharing_table.setHorizontalHeaderLabels(
+            ["Parametr", "Jednostka", "Eksport", "MCP", "Podsumowanie"]
+        )
+        self.sharing_table.setMinimumHeight(210)
+        self.sharing_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.sharing_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        layout.addWidget(self.sharing_table)
+        for column, name in [(2, "Eksport"), (3, "MCP")]:
+            actions = QHBoxLayout()
+            actions.addWidget(
+                button(
+                    name + ": zaznacz grupę",
+                    lambda checked=False, c=column: self.select_sharing(c, True),
+                )
+            )
+            actions.addWidget(
+                button(
+                    name + ": odznacz grupę",
+                    lambda checked=False, c=column: self.select_sharing(c, False),
+                )
+            )
+            layout.addLayout(actions)
+        actions = QHBoxLayout()
+        actions.addWidget(
+            button("Kopiuj Eksport → MCP", lambda: self.copy_sharing(2, 3))
+        )
+        actions.addWidget(
+            button("Kopiuj MCP → Eksport", lambda: self.copy_sharing(3, 2))
+        )
+        layout.addLayout(actions)
+        layout.addWidget(
+            button("Skopiuj konfigurację klienta MCP", self.copy_mcp_config)
+        )
+        layout.addWidget(
+            QLabel(
+                "Zapisz ustawienia, aby zastosować wybór. Proces MCP uruchamia klient."
+            )
+        )
+
+    def refresh_sharing(self):
+        groups = sorted({p["group"] for p in self.parameters})
+        with QSignalBlocker(self.sharing_group):
+            self.sharing_group.clear()
+            self.sharing_group.addItem("Wszystkie grupy", "")
+            for group in groups:
+                self.sharing_group.addItem(group, group)
+        self.sharing_table.setRowCount(len(self.parameters))
+        methods = {
+            "sample_mean": "Średnia próbek",
+            "garmin": "Źródłowe Garmin",
+            "value_counts": "Liczności kategorii",
+            "last_observed": "Ostatnia obserwacja",
+        }
+        for row, param in enumerate(self.parameters):
+            label = QTableWidgetItem(param["label"])
+            label.setData(Qt.ItemDataRole.UserRole, param)
+            label.setToolTip(param["key"])
+            self.sharing_table.setItem(row, 0, label)
+            self.sharing_table.setItem(row, 1, QTableWidgetItem(param["unit"] or "—"))
+            self.sharing_table.setItem(
+                row, 4, QTableWidgetItem(methods[summary_method(param)])
+            )
+            for column, channel in [(2, "export"), (3, "mcp")]:
+                self.sharing_table.setItem(
+                    row, column, self.sharing_checkbox(param, channel)
+                )
+            for column in (0, 1, 4):
+                self.sharing_table.item(row, column).setFlags(Qt.ItemFlag.ItemIsEnabled)
+        self.filter_sharing()
+
+    def sharing_checkbox(self, param, channel):
+        item = QTableWidgetItem()
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+        supported = channel == "export" or param["key"] in MEAN_PARAMETERS
+        if not supported:
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            item.setToolTip(
+                "Ten parametr nie jest obsługiwany przez pierwszą wersję MCP."
+            )
+        selected = param["key"] in (
+            getattr(self.settings, channel + "_parameters") or []
+        )
+        item.setCheckState(
+            Qt.CheckState.Checked if selected and supported else Qt.CheckState.Unchecked
+        )
+        return item
+
+    def filter_sharing(self):
+        group = self.sharing_group.currentData()
+        for row in range(self.sharing_table.rowCount()):
+            param = self.sharing_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+            self.sharing_table.setRowHidden(
+                row, bool(group and param["group"] != group)
+            )
+
+    def select_sharing(self, column, selected):
+        for row in range(self.sharing_table.rowCount()):
+            item = self.sharing_table.item(row, column)
+            if (
+                not self.sharing_table.isRowHidden(row)
+                and item.flags() & Qt.ItemFlag.ItemIsEnabled
+            ):
+                item.setCheckState(
+                    Qt.CheckState.Checked if selected else Qt.CheckState.Unchecked
+                )
+
+    def copy_sharing(self, source, target):
+        for row in range(self.sharing_table.rowCount()):
+            item = self.sharing_table.item(row, target)
+            if (
+                not self.sharing_table.isRowHidden(row)
+                and item.flags() & Qt.ItemFlag.ItemIsEnabled
+            ):
+                item.setCheckState(self.sharing_table.item(row, source).checkState())
+
+    def sharing_keys(self, column):
+        return [
+            self.sharing_table.item(row, 0).data(Qt.ItemDataRole.UserRole)["key"]
+            for row in range(self.sharing_table.rowCount())
+            if self.sharing_table.item(row, column).checkState()
+            == Qt.CheckState.Checked
+        ]
+
+    def copy_mcp_config(self):
+        QApplication.clipboard().setText(
+            json.dumps(client_config(self.settings_path), ensure_ascii=False, indent=2)
+        )
 
     def toggle_details(self):
         self.details.setVisible(not self.details.isVisible())
@@ -394,6 +551,13 @@ class Window(QMainWindow):
     def refresh(self):
         info = self.db.status()
         self.parameters = Queries(self.db).parameters()
+        if self.settings.migrate(self.parameters):
+            self.settings.save(self.settings_path)
+        self.refresh_sharing()
+        self.update_status(info)
+        self.populate_parameters()
+
+    def update_status(self, info):
         unresolved = sum(
             v
             for k, v in info["days"].items()
@@ -406,6 +570,8 @@ class Window(QMainWindow):
             self.status.text()
             + f"\nRozpoznane serie / właściwości: {len(self.parameters)}"
         )
+
+    def populate_parameters(self):
         selected = set(self.settings.parameters)
         previous = self.selected_parameter()
         previous_key = previous["key"] if previous else None
@@ -426,21 +592,26 @@ class Window(QMainWindow):
             self.parameter_list.addItem(item)
             if selected_row is None or param["key"] == previous_key:
                 selected_row = self.parameter_list.count() - 1
-            ex = QListWidgetItem(
-                icon(symbol(param)), param["label"] + " — " + param["group"]
-            )
-            ex.setData(Qt.ItemDataRole.UserRole, param)
-            ex.setFlags(ex.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            ex.setCheckState(
-                Qt.CheckState.Checked
-                if not selected or param["key"] in selected
-                else Qt.CheckState.Unchecked
-            )
-            self.export_list.addItem(ex)
+            self.add_export_parameter(param, selected)
         if selected_row is not None:
             self.parameter_list.setCurrentRow(selected_row)
         self.parameter_list.blockSignals(False)
         self.parameter_changed()
+
+    def add_export_parameter(self, param, selected):
+        if param["key"] not in self.settings.export_parameters:
+            return
+        item = QListWidgetItem(
+            icon(symbol(param)), param["label"] + " — " + param["group"]
+        )
+        item.setData(Qt.ItemDataRole.UserRole, param)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(
+            Qt.CheckState.Checked
+            if param["key"] in selected
+            else Qt.CheckState.Unchecked
+        )
+        self.export_list.addItem(item)
 
     def selected_parameter(self):
         item = self.parameter_list.currentItem()
@@ -688,7 +859,7 @@ class Window(QMainWindow):
             return
         self.export_result.setText("Generowanie podsumowań i szczegółów…")
         self.start_work(
-            lambda w: Exporter(db).generate(
+            lambda w: Exporter(db, self.settings, self.settings_path).generate(
                 output, params, start, end, recent, w.stop, period, w.progress.emit
             )
         )
@@ -708,15 +879,16 @@ class Window(QMainWindow):
                 data_dir=self.data_path.text(),
                 database_dsn=self.database_dsn.text(),
                 export_dir=self.output.text(),
+                export_parameters=self.sharing_keys(2),
+                mcp_parameters=self.sharing_keys(3),
+                mcp_enabled=self.mcp_enabled.isChecked(),
             )
             candidate.validate()
             db = Database(candidate.data_dir, candidate.database_dsn)
             with db.writer_lock():
                 db.initialize()
-            self.settings.data_dir = candidate.data_dir
-            self.settings.database_dsn = candidate.database_dsn
-            self.settings.export_dir = candidate.export_dir
-            self.settings.save(self.settings_path)
+            candidate.save(self.settings_path)
+            self.settings = candidate
             self.db = db
             self.refresh()
             self.session_status.setText("Ustawienia zapisane")
