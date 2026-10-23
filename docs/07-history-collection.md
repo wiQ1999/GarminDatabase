@@ -1,6 +1,6 @@
 # Pobranie surowej historii do analizy
 
-`scripts/download_history.py` jest skryptem przygotowawczym. Pobiera wyłącznie oryginalne dzienne ZIP-y z potwierdzonego endpointu dobrostanu. Nie pobiera osobnych treningów, nie dekoduje FIT, nie buduje jeszcze SQLite i nie analizuje zdrowia.
+`scripts/download_history.py` jest skryptem przygotowawczym. Pobiera wyłącznie oryginalne dzienne ZIP-y z potwierdzonego endpointu dobrostanu. Nie pobiera osobnych treningów, nie dekoduje FIT, nie buduje jeszcze PostgreSQL i nie analizuje zdrowia.
 
 ## Uruchomienie na Windows
 

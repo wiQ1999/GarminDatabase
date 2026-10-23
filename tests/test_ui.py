@@ -310,3 +310,50 @@ def test_missing_session_is_explained_in_settings_and_worker(
         worker.start()
     worker.wait()
     assert "Ustawienia" in result.args[0] and "RuntimeError" not in result.args[0]
+
+
+def test_postgresql_connection_change_persists_and_reads_new_database(
+    qtbot, tmp_path, monkeypatch
+):
+    import os
+    from uuid import uuid4
+
+    import psycopg
+    from psycopg import sql
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    w = window(qtbot, tmp_path)
+    original_db = w.db
+    schema = "garmin_ui_" + uuid4().hex
+    with psycopg.connect(
+        os.environ["GARMIN_TEST_DATABASE_DSN"], autocommit=True
+    ) as admin:
+        admin.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        try:
+            options = conninfo_to_dict(os.environ["GARMIN_DATABASE_DSN"])
+            password = options.pop("password", None)
+            if password is not None:
+                monkeypatch.setenv("PGPASSWORD", password)
+            options["options"] = f"-c search_path={schema}"
+            dsn = make_conninfo(**options)
+            w.database_dsn.setText(dsn)
+            w.save_settings()
+            ready(qtbot, w)
+            assert Settings.load(tmp_path / "settings.json").database_dsn == dsn
+            assert w.db.status()["fields"] == 0
+            assert original_db.status()["fields"] == 8
+        finally:
+            admin.execute(
+                sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema))
+            )
+
+
+def test_postgresql_password_is_not_persisted_from_ui(qtbot, tmp_path):
+    w = window(qtbot, tmp_path)
+    original_db = w.db
+    w.database_dsn.setText("host=localhost dbname=garmin password=private-secret")
+    w.save_settings()
+    assert w.db is original_db
+    assert "ValueError" in w.session_status.text()
+    assert "private-secret" not in w.session_status.text()
+    assert not (tmp_path / "settings.json").exists()

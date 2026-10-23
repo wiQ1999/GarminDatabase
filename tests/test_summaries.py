@@ -1,4 +1,5 @@
 from datetime import date
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,7 @@ from garmin_database.summaries import (
     monthly_summaries,
     summary_method,
 )
-from garmin_database.util import Cancelled, writer_lock
+from garmin_database.util import Cancelled
 
 pytestmark = pytest.mark.unit
 
@@ -162,7 +163,6 @@ def test_daily_cache_reuse_reprocessing_invalidation_and_chart(tmp_path, monkeyp
     p = q.parameters()[0]
     start, end = date(2024, 11, 1), date(2024, 11, 30)
     with db.connect(readonly=True) as c:
-        c.execute("BEGIN")
         result = Summaries(db).daily(p, start, end, c)
     assert result[0]["mean"] == 63
     with db.connect(readonly=True) as c:
@@ -174,7 +174,6 @@ def test_daily_cache_reuse_reprocessing_invalidation_and_chart(tmp_path, monkeyp
         Queries, "rows", lambda *a: pytest.fail("cache should avoid source scan")
     )
     with db.connect(readonly=True) as c:
-        c.execute("BEGIN")
         assert Summaries(db).daily(p, date(2024, 11, 8), date(2024, 11, 8), c) == result
     importer.archive(path, force=True)
     with db.connect(readonly=True) as c:
@@ -196,7 +195,6 @@ def test_summary_snapshot_survives_new_import_without_publishing_stale_cache(tmp
     importer.archive(archive(tmp_path))
     p = Queries(db).parameters()[0]
     with db.connect(readonly=True) as snapshot:
-        snapshot.execute("BEGIN")
         snapshot.execute("SELECT revision FROM dataset_state").fetchone()
         importer.archive(
             archive(
@@ -217,8 +215,7 @@ def test_busy_writer_does_not_block_readonly_summary(tmp_path):
     db.initialize()
     Importer(db).archive(archive(tmp_path))
     p = Queries(db).parameters()[0]
-    with writer_lock(db.root), db.connect(readonly=True) as c:
-        c.execute("BEGIN")
+    with db.writer_lock(), db.connect(readonly=True) as c:
         assert (
             Summaries(db).daily(p, date(2024, 11, 8), date(2024, 11, 8), c)[0]["mean"]
             == 63
@@ -234,7 +231,6 @@ def test_cache_publication_cancel_rolls_back_existing_cache(tmp_path):
     p = Queries(db).parameters()[0]
     start = end = date(2024, 11, 8)
     with db.connect(readonly=True) as c:
-        c.execute("BEGIN")
         original = Summaries(db).daily(p, start, end, c)
         revision = c.execute("SELECT revision FROM dataset_state").fetchone()[0]
 
@@ -258,16 +254,22 @@ def test_migration_from_version_two_preserves_source_records(tmp_path):
     db = Database(tmp_path)
     root = Path(__file__).resolve().parents[1]
     with db.connect() as c:
-        c.executescript((root / "schema/001_initial.sql").read_text())
-        c.executescript((root / "schema/002_query_indexes.sql").read_text())
+        for version, name in enumerate(("001_initial.sql", "002_query_indexes.sql"), 1):
+            sql = (root / "schema" / name).read_text(encoding="utf-8")
+            c.execute(sql)
+            c.execute(
+                "INSERT INTO schema_migrations VALUES(%s,'test',%s)",
+                (version, sha256(sql.encode()).hexdigest()),
+            )
         c.execute(
             "INSERT INTO import_days(day,download_status) VALUES('2024-01-01','empty_zip')"
         )
     db.initialize()
     with db.connect(readonly=True) as c:
-        assert c.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert (
+            c.execute("SELECT max(version) FROM schema_migrations").fetchone()[0] == 3
+        )
         assert c.execute("SELECT count(*) FROM import_days").fetchone()[0] == 1
-        assert c.execute("PRAGMA foreign_key_check").fetchall() == []
     assert (root / "schema/003_summaries.sql").read_bytes() == (
         root / "garmin_database/resources/003_summaries.sql"
     ).read_bytes()

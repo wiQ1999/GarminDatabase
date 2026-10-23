@@ -11,7 +11,7 @@ from .query import Queries
 from .settings import Settings
 from .storage import Database
 from .sync import Sync
-from .util import Cancelled, writer_lock, yesterday
+from .util import Cancelled, yesterday
 
 
 def main(argv=None):
@@ -22,6 +22,7 @@ def main(argv=None):
         "command", choices=["sync", "import-local", "reprocess", "status", "export"]
     )
     parser.add_argument("--data-dir")
+    parser.add_argument("--settings-file")
     parser.add_argument(
         "--from", dest="start", type=date.fromisoformat, default=date(2024, 1, 1)
     )
@@ -35,14 +36,14 @@ def main(argv=None):
     parser.add_argument("--recent-days", type=int, default=90)
     parser.add_argument("--summary-period", choices=["day", "month"], default="day")
     args = parser.parse_args(argv)
-    settings = Settings.load()
-    db = Database(args.data_dir or settings.data_dir)
     stop = threading.Event()
 
     def progress(day, stage, index, total):
         print(f"{index}/{total} {day}: {stage}", flush=True)
 
     try:
+        settings = Settings.load(args.settings_file)
+        db = Database(args.data_dir or settings.data_dir, settings.database_dsn)
         if args.command in {"sync", "import-local", "reprocess"}:
             errors = Sync(db, GarminSource() if args.command == "sync" else None).run(
                 args.start,
@@ -54,7 +55,7 @@ def main(argv=None):
             )
             print(json.dumps(db.status(), ensure_ascii=False), flush=True)
             return 2 if errors else 0
-        with writer_lock(db.root):
+        with db.writer_lock():
             db.initialize()
         if args.command == "status":
             print(json.dumps(db.status(), ensure_ascii=False, indent=2))

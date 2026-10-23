@@ -7,7 +7,7 @@ from zipfile import ZipFile
 
 from .auth import SessionRequired
 from .importer import Importer
-from .util import Cancelled, atomic_write, check_stop, dates, utc_now, writer_lock
+from .util import Cancelled, atomic_write, check_stop, dates, utc_now
 
 
 def error_status(error):
@@ -89,7 +89,7 @@ class Sync:
                 }:
                     continue
                 c.execute(
-                    "INSERT OR IGNORE INTO import_days(day,download_status,attempts,checked_at,http_status,error_type) VALUES(?,?,?,?,?,?)",
+                    "INSERT INTO import_days(day,download_status,attempts,checked_at,http_status,error_type) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                     (
                         day,
                         status,
@@ -104,7 +104,7 @@ class Sync:
         self, start, end, stop, progress=lambda *a: None, local_only=False, force=False
     ):
         requested = list(dates(start, end))
-        with writer_lock(self.db.root):
+        with self.db.writer_lock():
             self.db.initialize()
             self.restore_manifest()
             raw = self.db.root / "raw"
@@ -119,7 +119,7 @@ class Sync:
                 progress(text, "dzień", index, len(requested))
                 with self.db.connect() as c:
                     old = c.execute(
-                        "SELECT * FROM import_days WHERE day=?", (text,)
+                        "SELECT * FROM import_days WHERE day=%s", (text,)
                     ).fetchone()
                 if path.exists():
                     try:
@@ -129,7 +129,7 @@ class Sync:
                     except Exception as error:
                         with self.db.connect() as c:
                             c.execute(
-                                "INSERT INTO import_days(day,download_status,error_type) VALUES(?,'local_invalid',?) ON CONFLICT(day) DO UPDATE SET download_status='local_invalid',error_type=excluded.error_type",
+                                "INSERT INTO import_days(day,download_status,error_type) VALUES(%s,'local_invalid',%s) ON CONFLICT(day) DO UPDATE SET download_status='local_invalid',error_type=excluded.error_type",
                                 (text, type(error).__name__),
                             )
                         progress(
@@ -154,7 +154,7 @@ class Sync:
                         raise Cancelled()
                     with self.db.connect() as c:
                         c.execute(
-                            "INSERT INTO import_days(day,download_status,attempts) VALUES(?,'pending',1) ON CONFLICT(day) DO UPDATE SET attempts=attempts+1",
+                            "INSERT INTO import_days(day,download_status,attempts) VALUES(%s,'pending',1) ON CONFLICT(day) DO UPDATE SET attempts=import_days.attempts+1",
                             (text,),
                         )
                     try:
@@ -166,7 +166,7 @@ class Sync:
                         status = error_status(error)
                         with self.db.connect() as c:
                             c.execute(
-                                "UPDATE import_days SET download_status=?,checked_at=?,http_status=?,error_type=? WHERE day=?",
+                                "UPDATE import_days SET download_status=%s,checked_at=%s,http_status=%s,error_type=%s WHERE day=%s",
                                 (
                                     "not_found_unverified"
                                     if status == 404

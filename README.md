@@ -4,11 +4,13 @@ Prywatna aplikacja okienkowa dla Windows 11 do pobierania dziennych archiwów do
 
 ## Stan projektu
 
-Zaimplementowano aplikację Windows, importer SQLite, klienta Garmin z sesją DPAPI, wykresy i strumieniowy eksport JSON. Paczka jest w `dist/GarminDatabase/GarminDatabase.exe`; należy zachować cały folder dystrybucji. [Uruchamianie i testy](docs/12-running-and-testing.md).
+Zaimplementowano aplikację Windows, importer PostgreSQL, klienta Garmin z sesją DPAPI, wykresy i strumieniowy eksport JSON. Paczka jest w `dist/GarminDatabase/GarminDatabase.exe`; należy zachować cały folder dystrybucji. [Uruchamianie i testy](docs/12-running-and-testing.md).
 
-Eksport v2 tworzy osobny folder z datą i czasem, historię podsumowań oraz szczegóły w osobnych plikach każdego parametru. SQLite v3 zachowuje źródła i dodatkowy, odtwarzalny cache podsumowań dziennych; eksport może wybrać podsumowania miesięczne. [Format i reguły podsumowań](docs/05-export.md).
+Eksport v2 tworzy osobny folder z datą i czasem, historię podsumowań oraz szczegóły w osobnych plikach każdego parametru. Schemat aplikacji v3 w PostgreSQL zachowuje źródła i dodatkowy, odtwarzalny cache podsumowań dziennych; eksport może wybrać podsumowania miesięczne. [Format i reguły podsumowań](docs/05-export.md).
 
-Zaimportowano 844 archiwa: 10 994 FIT, 8 307 429 wiadomości i 20 841 953 pola fizyczne. Ciągła historia archiwów zaczyna się 2024-06-19; osobny METRICS pochodzi z 2024-02-17. Część pól pozostaje bez publicznie opisanej semantyki i jest zachowywana pod identyfikatorami źródłowymi. Testy obejmują piramidę jednostkowe/integracyjne/UI, uruchomienie paczki Windows i rzeczywisty eksport WebAPI.
+Od 2026-10-23 aplikacja używa wyłącznie PostgreSQL 16+ — lokalnie i na serwerze. Nie przenosi danych ze starego SQLite; nową bazę zasila ponowne pobranie lub import oryginalnych ZIP. Najpierw skonfiguruj serwer i połączenie: [PostgreSQL na Windows, Linux i Raspberry Pi OS](docs/13-postgresql-setup.md).
+
+Hasła połączenia nie zapisują się w ustawieniach. PostgreSQL wymaga osobnego zabezpieczenia nośnika i TLS; oryginalne ZIP oraz eksporty również zawierają dane wrażliwe.
 
 ## Dokumentacja
 
@@ -21,9 +23,10 @@ Zaimportowano 844 archiwa: 10 994 FIT, 8 307 429 wiadomości i 20 841 953 pola f
 7. [Pobranie surowej historii — uruchomienie i wznowienie](docs/07-history-collection.md)
 8. [Wyniki analizy pełnej historii FIT](docs/08-fit-analysis.md)
 9. [Kompletny katalog wykrytych pól](docs/09-fit-field-catalog.md)
-10. [Schemat SQLite i podsumowania](docs/10-sqlite-schema.md) — [DDL źródeł](schema/001_initial.sql), [podsumowania v3](schema/003_summaries.sql)
+10. [Schemat PostgreSQL i podsumowania](docs/10-postgresql-schema.md) — [DDL źródeł](schema/001_initial.sql), [podsumowania v3](schema/003_summaries.sql)
 11. [Interfejs Windows i ustawienia aplikacji](docs/11-desktop-ui.md)
 12. [Uruchamianie, budowanie i testy](docs/12-running-and-testing.md)
+13. [Konfiguracja PostgreSQL i ochrona danych](docs/13-postgresql-setup.md)
 
 ## Pobranie historii do analizy
 

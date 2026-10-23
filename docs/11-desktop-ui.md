@@ -14,9 +14,9 @@ Zrzuty pozostają referencją wyglądu, nie źródłem wartości pomiarowych ani
 
 ## Start
 
-Pokazać ostatni pobrany dzień, stan importu do SQLite, zakres historii, brakujące lub nierozstrzygnięte dni, dostępność parametrów i rozmiar danych. Nie utożsamiać niezweryfikowanych 404 z potwierdzonym brakiem danych.
+Pokazać ostatni pobrany dzień, stan importu do PostgreSQL, zakres historii, brakujące lub nierozstrzygnięte dni, dostępność parametrów i rozmiar danych. Nie utożsamiać niezweryfikowanych 404 z potwierdzonym brakiem danych.
 
-Główny przycisk **„Pobierz dane”** pobiera brakujące archiwa do wczoraj według `Europe/Warsaw`, następnie przetwarza je do SQLite. Poprawne lokalne archiwa wykorzystuje bez ponownego pobierania. Osobno dostępna jest operacja ponownego przetworzenia archiwów lokalnych bez żądań pobrania.
+Główny przycisk **„Pobierz dane”** pobiera brakujące archiwa do wczoraj według `Europe/Warsaw`, następnie przetwarza je do PostgreSQL. Poprawne lokalne archiwa wykorzystuje bez ponownego pobierania. Osobno dostępna jest operacja ponownego przetworzenia archiwów lokalnych bez żądań pobrania.
 
 Postęp obejmuje pasek, aktualnie obsługiwany dzień i etap, licznik ukończonych dni oraz **„Zatrzymaj”**. Szczegóły błędów są dostępne w rozwijanym panelu bez sekretów i surowych danych zdrowotnych. Zatrzymanie zachowuje ukończone operacje; nieukończona transakcja nie jest prezentowana jako zakończony import. Wznowienie pomija ukończoną pracę.
 
@@ -42,9 +42,9 @@ Zakresy: **Dzień**, **7 dni**, **30 dni**, **90 dni**, **Cała historia**, wła
 
 Checkbox **„Linia trendu”** jest domyślnie odznaczony. Włącza przerywaną linię z podpisem „Trend liniowy (obliczony)”, dopasowaną metodą najmniejszych kwadratów względem rzeczywistego czasu. Obejmuje poprawne skończone wartości liczbowe aktualnego wykresu. Nie dodaje punktów w lukach ani nie zmienia próbek; sama prosta trendu jest wskazówką wizualną i może przebiegać przez okresy bez pomiarów. Checkbox jest niedostępny podczas ładowania, dla kategorii i przy braku co najmniej dwóch obserwacji z różnymi czasami. Wybór obowiązuje w bieżącym oknie, bez zapisu w ustawieniach.
 
-Linia trendu jest obliczana wyłącznie na wykresie i nie jest podsumowaniem Garmin. Nie trafia do SQLite lub JSON. Późniejsze wymaganie użytkownika wprowadza średnie i podsumowania historii w bazie i eksporcie; opisuje je [eksport](05-export.md). Nie redukować źródłowych próbek w bazie lub plikach szczegółowych na potrzeby UI. Zapytanie pobiera wybrany parametr i okres, a nie całą bazę. Nie dodawać ocen ani interpretacji medycznych.
+Linia trendu jest obliczana wyłącznie na wykresie i nie jest podsumowaniem Garmin. Nie trafia do PostgreSQL lub JSON. Późniejsze wymaganie użytkownika wprowadza średnie i podsumowania historii w bazie i eksporcie; opisuje je [eksport](05-export.md). Nie redukować źródłowych próbek w bazie lub plikach szczegółowych na potrzeby UI. Zapytanie pobiera wybrany parametr i okres, a nie całą bazę. Nie dodawać ocen ani interpretacji medycznych.
 
-Nierozpoznane pola zachować w SQLite. UI pokazuje ich obecność i liczbę z jednoznaczną etykietą, że chodzi o warianty pól, a nie liczbę parametrów zdrowotnych; bez zgadywanych nazw i wykresów. Pełne rekordy można przeglądać zewnętrznym narzędziem SQLite, poza zakresem interfejsu.
+Nierozpoznane pola zachować w PostgreSQL. UI pokazuje ich obecność i liczbę z jednoznaczną etykietą, że chodzi o warianty pól, a nie liczbę parametrów zdrowotnych; bez zgadywanych nazw i wykresów. Pełne rekordy można przeglądać narzędziem PostgreSQL, np. psql lub pgAdmin, poza zakresem interfejsu.
 
 ## Eksport
 
@@ -65,13 +65,12 @@ Docelowe lokalizacje dla Windows:
 
 D:/Projects/GarminDatabase/
   data/raw/YYYY-MM-DD.zip
-  data/garmin.sqlite3
   exports/
 ```
 
-`settings.json` przechowuje ostatnie wybory eksportu, lokalizacje danych i preferencje interfejsu; nie zawiera sekretów. Na koncie użytkownika odpowiada ścieżce `C:/Users/wikto/AppData/Local/GarminDatabase/settings.json`. Ustawienia zapisywać atomowo. Lokalizacje archiwów, SQLite i eksportów są konfigurowalne.
+`settings.json` przechowuje ostatnie wybory eksportu, lokalizacje danych i preferencje interfejsu; nie zawiera sekretów. Na koncie użytkownika odpowiada ścieżce `C:/Users/wikto/AppData/Local/GarminDatabase/settings.json`. Ustawienia zapisywać atomowo. Lokalizacje archiwów i eksportów są konfigurowalne. Baza PostgreSQL jest wskazana przez `database_dsn` w ustawieniach lub `GARMIN_DATABASE_DSN`/libpq. Pole połączenia w UI nie przyjmuje hasła; hasło dostarcza plik pgpass lub środowisko procesu. Serwer musi działać przed uruchomieniem UI. Zobacz [konfigurację PostgreSQL](13-postgresql-setup.md).
 
-Tokeny sesji w `auth/session.bin` szyfrować Windows DPAPI w zakresie użytkownika, bez opcji ochrony wspólnej dla wszystkich kont komputera. Nie zapisywać sesji w SQLite ani w Temp. Sam katalog lub zapis w bazie nie zapewniają szyfrowania. Domyślnie odszyfrowanie wymaga tego samego użytkownika Windows i komputera; po przeniesieniu potrzebne jest ponowne logowanie. Nie dodawać własnego stałego klucza szyfrującego w aplikacji. Zobacz [DPAPI](https://learn.microsoft.com/en-us/windows/win32/SecCrypto/example-c-program-using-cryptprotectdata) i [zalecenia lokalizacji danych aplikacji](https://github.com/MicrosoftDocs/windows-dev-docs/blob/docs/hub/apps/develop/windows-app-restore.md).
+Tokeny sesji w `auth/session.bin` szyfrować Windows DPAPI w zakresie użytkownika, bez opcji ochrony wspólnej dla wszystkich kont komputera. Nie zapisywać sesji w PostgreSQL ani w Temp. Sam katalog lub zapis w bazie nie zapewniają szyfrowania. Domyślnie odszyfrowanie wymaga tego samego użytkownika Windows i komputera; po przeniesieniu potrzebne jest ponowne logowanie. Nie dodawać własnego stałego klucza szyfrującego w aplikacji. Zobacz [DPAPI](https://learn.microsoft.com/en-us/windows/win32/SecCrypto/example-c-program-using-cryptprotectdata) i [zalecenia lokalizacji danych aplikacji](https://github.com/MicrosoftDocs/windows-dev-docs/blob/docs/hub/apps/develop/windows-app-restore.md).
 
 Istniejący skrypt historyczny nadal korzysta z sesji w `private/garmin-session`; ten dokument nie zmienia jego implementacji ani nie oznacza, że sesja skryptu została zaszyfrowana. Docelowa aplikacja ma zapewnić własne bezpieczne logowanie. Wszystkie archiwa, baza, eksporty, logi i sesje pozostają poza Git.
 

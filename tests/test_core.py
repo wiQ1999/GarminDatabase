@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import timedelta
 
 import pytest
@@ -90,11 +91,13 @@ def test_database_initialization_idempotent(tmp_path):
     db.initialize()
     assert db.status()["fields"] == 0
     with db.connect() as conn:
-        assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
-        assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert "PostgreSQL" in conn.execute("SELECT version()").fetchone()[0]
         assert conn.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == 3
 
 
+@pytest.mark.skipif(
+    os.name != "nt", reason="Windows DPAPI integration requires Windows"
+)
 @pytest.mark.integration
 def test_encrypted_session(tmp_path):
     store = SessionStore(tmp_path / "session.bin")

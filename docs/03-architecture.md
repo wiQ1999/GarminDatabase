@@ -7,7 +7,7 @@ flowchart LR
     G[Garmin: dzienny ZIP] --> D[Pobranie i walidacja]
     D --> R[Oryginalny ZIP]
     R --> P[Dekoder FIT]
-    P --> S[SQLite]
+    P --> S[PostgreSQL]
     S --> E[Eksport JSON na polecenie]
 ```
 
@@ -18,13 +18,12 @@ Pobieranie, dekodowanie i eksport to odrębne operacje. Zmiana parsera nie wymag
 ```text
 data/
   raw/YYYY-MM-DD.zip
-  garmin.sqlite3
 private/                 # sesja istniejącego skryptu historycznego; nie docelowego UI
 exports/GarminDatabase_DATA_CZAS/  # osobny pakiet: history/, details/, manifest.json
 logs/                    # log techniczny, bez wartości zdrowotnych i sekretów
 ```
 
-Ścieżka danych jest konfigurowalna. Ma być możliwe przeniesienie archiwów i bazy przy wyłączonej aplikacji. SQLite używa ścieżek archiwów względem katalogu danych.
+Ścieżka danych jest konfigurowalna. Katalog zawiera oryginalne archiwa, a dane SQL znajdują się w osobnym serwerze PostgreSQL. Aplikacja zapisuje ścieżki archiwów względem katalogu danych. Serwer może działać na tym samym urządzeniu lub docelowym hoście; typ bazy i kod pozostają takie same. Konfiguracja: [PostgreSQL](13-postgresql-setup.md).
 
 Aplikacja Windows zapisuje ustawienia w `%LOCALAPPDATA%/GarminDatabase/settings.json`, a sesję zaszyfrowaną DPAPI w `auth/session.bin` pod tym samym katalogiem. Nie zapisuje hasła ani kodu MFA. Skrypty przygotowawcze zachowują dotychczasowy sposób logowania. Szczegóły: [UI i ustawienia](11-desktop-ui.md).
 
@@ -32,15 +31,15 @@ Aplikacja Windows zapisuje ustawienia w `%LOCALAPPDATA%/GarminDatabase/settings.
 
 Okno Windows jest warstwą obsługi wspólnych operacji pobierania, importu, ponownego przetwarzania i eksportu. Długie operacje działają poza wątkiem UI. Szczegółowe pomiary są dostępne dla pojedynczego dnia; dłuższe okresy pokazują podsumowania Garmin albo oznaczone średnie dzienne pięciu obsługiwanych parametrów pomiarowych.
 
-Przeglądanie zatwierdzonych danych działa podczas importu przez oddzielne połączenia SQLite w trybie WAL. Qt uruchamia import i zapytania wykresu poza wątkiem UI. Transakcja jednego FIT nie udostępnia częściowego wyniku. Eksport czyta wartości i metadane kompletności z jednego obrazu bazy, także gdy inny proces importuje kolejne pliki.
+Przeglądanie zatwierdzonych danych działa podczas importu przez oddzielne połączenia PostgreSQL z MVCC; odczyty używają `REPEATABLE READ READ ONLY`. Qt uruchamia import i zapytania wykresu poza wątkiem UI. Transakcja jednego FIT nie udostępnia częściowego wyniku. Eksport czyta wartości i metadane kompletności z jednego obrazu bazy, także gdy inny proces importuje kolejne pliki.
 
-Zmiany parametru i filtrów automatycznie uruchamiają odczyt. UI wykonuje jedno zapytanie wykresu naraz, a przy kolejnych zmianach zachowuje ostatni wybór i odrzuca nieaktualne wyniki lub błędy. Oddzielna warstwa animacji pokazuje ładowanie nad rozmytym wykresem. Opcjonalna regresja liniowa używa wyłącznie punktów aktualnego wykresu; jest obliczeniem prezentacji i nie zmienia SQLite ani plików JSON.
+Zmiany parametru i filtrów automatycznie uruchamiają odczyt. UI wykonuje jedno zapytanie wykresu naraz, a przy kolejnych zmianach zachowuje ostatni wybór i odrzuca nieaktualne wyniki lub błędy. Oddzielna warstwa animacji pokazuje ładowanie nad rozmytym wykresem. Opcjonalna regresja liniowa używa wyłącznie punktów aktualnego wykresu; jest obliczeniem prezentacji i nie zmienia PostgreSQL ani plików JSON.
 
-Raspberry Pi będzie w przyszłości uruchamiać te same operacje bez UI, według harmonogramu, i służyć jako hub dostępu do danych. Protokół dostępu, uwierzytelnianie i relacja z aplikacją Windows pozostają zakresem późniejszego etapu; nie zakładamy obecnie współdzielenia pliku SQLite przez sieć.
+Raspberry Pi będzie w przyszłości uruchamiać te same operacje bez UI, według harmonogramu, i służyć jako hub dostępu do danych. Protokół dostępu, uwierzytelnianie i relacja z aplikacją Windows pozostają zakresem późniejszego etapu; połączenie z PostgreSQL używa protokołu serwera, bez współdzielenia pliku bazy przez sieć.
 
-## Model SQLite v1
+## Model PostgreSQL v1
 
-Po skanowaniu pełnej pobranej historii ustalono [kompletny schemat](10-sqlite-schema.md), zapisany jako [wykonywalny SQL](../schema/001_initial.sql). Zastępuje on wcześniejszy szkic sześciu tabel. Zaimplementowany importer zasilił lokalną bazę pełną historią; wyniki walidacji są w [instrukcji](12-running-and-testing.md).
+Po skanowaniu pełnej pobranej historii ustalono [kompletny schemat](10-postgresql-schema.md), zapisany jako [wykonywalny SQL](../schema/001_initial.sql). Zastępuje on wcześniejszy szkic sześciu tabel. Obecny schemat jest przeznaczony dla pustej bazy PostgreSQL. Dawna walidacja pełnej historii dotyczyła SQLite i nie zastępuje odbioru nowego silnika.
 
 Model rozdziela daty pobrania, oryginalne archiwa, wystąpienia FIT w ZIP, unikatowe treści FIT, przebiegi dekodowania, definicje wiadomości i pól, wiadomości danych oraz wartości pól. Katalog profilu przechowuje rozpoznane nazwy, jednostki i reguły dekodowania; pola nieznane pozostają w bazie pod identyfikatorami źródłowymi. Wartości skalarne mają typowane kolumny, tablice i struktury — JSON. Nie powielamy wartości dla rozwiniętych komponentów.
 
@@ -59,6 +58,6 @@ Identyczny FIT obecny w kilku archiwach ma jedną reprezentację danych i wiele 
 
 ## Trwałość
 
-Pobranie jest zapisywane do pliku tymczasowego w katalogu docelowym, weryfikowane i atomowo przenoszone do nazwy docelowej. Istniejące archiwum nie jest nadpisywane. Tymczasowy plik jest usuwany po błędzie. Rejestracja archiwum i dekodowanie każdego FIT mają osobne transakcje SQLite. Stany pobrania i dekodowania są niezależne; wznowienie pomija ukończone FIT.
+Pobranie jest zapisywane do pliku tymczasowego w katalogu docelowym, weryfikowane i atomowo przenoszone do nazwy docelowej. Istniejące archiwum nie jest nadpisywane. Tymczasowy plik jest usuwany po błędzie. Rejestracja archiwum i dekodowanie każdego FIT mają osobne transakcje PostgreSQL. Stany pobrania i dekodowania są niezależne; wznowienie pomija ukończone FIT.
 
-Zastosować blokadę pojedynczego procesu zapisującego. Awaria po zapisie ZIP, ale przed rejestracją w bazie, musi zostać rozpoznana przy następnym uruchomieniu: sprawdzić lokalny ZIP zamiast ponownie go pobierać.
+Zapis jest chroniony blokadą sesyjną PostgreSQL advisory dla bazy/schematu oraz blokadą OS katalogu ZIP. Importer, inicjalizacja, synchronizacja i publikacja cache respektują tę samą blokadę. Awaria po zapisie ZIP, ale przed rejestracją w bazie, musi zostać rozpoznana przy następnym uruchomieniu: sprawdzić lokalny ZIP zamiast ponownie go pobierać.

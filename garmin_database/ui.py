@@ -41,7 +41,7 @@ from .settings import Settings, application_dir
 from .storage import Database
 from .summaries import has_chart_summary
 from .sync import Sync
-from .util import Cancelled, check_stop, writer_lock, yesterday
+from .util import Cancelled, check_stop, yesterday
 
 STYLE = """
 QWidget { background:#10141c; color:#e9eef5; font-family:'Segoe UI'; font-size:14px; }
@@ -132,8 +132,8 @@ class Window(QMainWindow):
             QFontDatabase.addApplicationFont(
                 str(Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts/segoeui.ttf")
             )
-        self.db = Database(self.settings.data_dir)
-        with writer_lock(self.db.root):
+        self.db = Database(self.settings.data_dir, self.settings.database_dsn)
+        with self.db.writer_lock():
             self.db.initialize()
         self.worker = None
         self.query_worker = None
@@ -337,6 +337,14 @@ class Window(QMainWindow):
         form = QFormLayout()
         self.data_path = QLineEdit(self.settings.data_dir)
         form.addRow("Folder danych", self.data_path)
+        self.database_dsn = QLineEdit(self.settings.database_dsn)
+        self.database_dsn.setPlaceholderText(
+            "host=localhost port=5432 dbname=garmin user=garmin"
+        )
+        self.database_dsn.setToolTip(
+            "Parametry PostgreSQL bez hasła. Hasło: pgpass; puste pole: GARMIN_DATABASE_DSN / libpq."
+        )
+        form.addRow("Połączenie PostgreSQL", self.database_dsn)
         self.email = QLineEdit()
         form.addRow("E-mail Garmin", self.email)
         self.password = QLineEdit()
@@ -392,7 +400,7 @@ class Window(QMainWindow):
             if k not in {"downloaded", "empty_zip", "no_data_confirmed"}
         )
         self.status.setText(
-            f"Ostatni pobrany dzień: {info['last_downloaded'] or 'brak'}\nZakres zarejestrowany w bazie: {info['first_day'] or 'brak'} — {info['last_day'] or 'brak'}\nArchiwa w bazie: {info['archives']}   •   Zaimportowane FIT: {info['files']}\nWiadomości: {info['messages']:,}   •   Fizyczne pola: {info['fields']:,}\nDni czekające na rejestrację: {info['pending_days']}   •   Oczekujące FIT: {info['pending_files']}\nDni brakujące / nierozstrzygnięte: {unresolved}   •   Nieznane warianty pól: {info['unknown_variants']}\nZIP w bazie: {info['archive_bytes'] / 1024**2:.1f} MB   •   SQLite: {info['database_bytes'] / 1024**2:.1f} MB"
+            f"Ostatni pobrany dzień: {info['last_downloaded'] or 'brak'}\nZakres zarejestrowany w bazie: {info['first_day'] or 'brak'} — {info['last_day'] or 'brak'}\nArchiwa w bazie: {info['archives']}   •   Zaimportowane FIT: {info['files']}\nWiadomości: {info['messages']:,}   •   Fizyczne pola: {info['fields']:,}\nDni czekające na rejestrację: {info['pending_days']}   •   Oczekujące FIT: {info['pending_files']}\nDni brakujące / nierozstrzygnięte: {unresolved}   •   Nieznane warianty pól: {info['unknown_variants']}\nZIP w bazie: {info['archive_bytes'] / 1024**2:.1f} MB   •   PostgreSQL: {info['database_bytes'] / 1024**2:.1f} MB"
         )
         self.status.setText(
             self.status.text()
@@ -687,19 +695,37 @@ class Window(QMainWindow):
         self.worker.failure.connect(self.export_result.setText)
 
     def save_settings(self):
-        old = self.settings.data_dir
+        old = (
+            self.settings.data_dir,
+            self.settings.database_dsn,
+            self.settings.export_dir,
+        )
         try:
-            db = Database(self.data_path.text())
-            with writer_lock(db.root):
+            from dataclasses import replace
+
+            candidate = replace(
+                self.settings,
+                data_dir=self.data_path.text(),
+                database_dsn=self.database_dsn.text(),
+                export_dir=self.output.text(),
+            )
+            candidate.validate()
+            db = Database(candidate.data_dir, candidate.database_dsn)
+            with db.writer_lock():
                 db.initialize()
-            self.settings.data_dir = self.data_path.text()
-            self.settings.export_dir = self.output.text()
+            self.settings.data_dir = candidate.data_dir
+            self.settings.database_dsn = candidate.database_dsn
+            self.settings.export_dir = candidate.export_dir
             self.settings.save(self.settings_path)
             self.db = db
             self.refresh()
             self.session_status.setText("Ustawienia zapisane")
         except Exception as e:
-            self.settings.data_dir = old
+            (
+                self.settings.data_dir,
+                self.settings.database_dsn,
+                self.settings.export_dir,
+            ) = old
             self.session_status.setText(
                 "Nie można zapisać ustawień: " + type(e).__name__
             )

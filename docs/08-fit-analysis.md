@@ -105,7 +105,7 @@ Pokrycie strukturalne (odczyt bajtów i wiadomości) i pokrycie semantyczne (zna
 
 Pliki ACTIVITY znaleziono wewnątrz otrzymanych ZIP. Zachowujemy je zgodnie z zasadą pełnego zachowania źródła. Dziewięć wystąpień nie stanowi dowodu pełnej historii treningów; osobne pobieranie aktywności pozostaje poza zakresem.
 
-Tablice, nieważne wartości, subpola i komponenty wymagają reprezentacji bardziej ogólnej niż tabela z jednym zestawem kolumn zdrowotnych. Ustalony [schemat SQLite](10-sqlite-schema.md) zachowuje fizyczne pola oraz osobny katalog ich interpretacji. Nie liczy własnych podsumowań zdrowotnych.
+Tablice, nieważne wartości, subpola i komponenty wymagają reprezentacji bardziej ogólnej niż tabela z jednym zestawem kolumn zdrowotnych. Ustalony [schemat PostgreSQL](10-postgresql-schema.md) zachowuje fizyczne pola oraz osobny katalog ich interpretacji. Nie liczy własnych podsumowań zdrowotnych.
 
 Rozmiar przyszłego eksportu JSON i bazy nie jest jeszcze zmierzony: raport obejmuje rozmiary źródeł. Baza i JSON będą miały narzut struktury; nie można utożsamić go z rozmiarem ZIP ani obiecać zmieszczenia szczegółowych 90 dni w kontekście AI.
 

@@ -51,7 +51,7 @@ def register_components(conn, profile, cid, desc, catalog_id):
             "parent_base_type": json.loads(desc["profile_metadata_json"])["base_type"],
         }
         conn.execute(
-            "INSERT OR IGNORE INTO interpretation_rules(profile_id,source_catalog_id,target_catalog_id,kind,rule_json) VALUES(?,?,?,'component',?)",
+            "INSERT INTO interpretation_rules(profile_id,source_catalog_id,target_catalog_id,kind,rule_json) VALUES(%s,%s,%s,'component',%s) ON CONFLICT DO NOTHING",
             (profile, cid, target_id, dumps(rule)),
         )
         shift += bits
@@ -89,7 +89,7 @@ def register_subfield(conn, profile, cid, desc, catalog_id):
     }
     source = catalog_id(original)
     conn.execute(
-        "INSERT OR IGNORE INTO interpretation_rules(profile_id,source_catalog_id,target_catalog_id,kind,rule_json) VALUES(?,?,?,'subfield',?)",
+        "INSERT INTO interpretation_rules(profile_id,source_catalog_id,target_catalog_id,kind,rule_json) VALUES(%s,%s,%s,'subfield',%s) ON CONFLICT DO NOTHING",
         (
             profile,
             source,
@@ -125,15 +125,26 @@ class Importer:
             options,
         )
         conn.execute(
-            "INSERT OR IGNORE INTO decoder_profiles(parser_name,parser_version,profile_version,options_json) VALUES(?,?,?,?)",
+            "INSERT INTO decoder_profiles(parser_name,parser_version,profile_version,options_json) VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING",
             values,
         )
         return conn.execute(
-            "SELECT id FROM decoder_profiles WHERE parser_name=? AND parser_version=? AND profile_version=? AND options_json=?",
+            "SELECT id FROM decoder_profiles WHERE parser_name=%s AND parser_version=%s AND profile_version=%s AND options_json=%s",
             values,
         ).fetchone()[0]
 
     def archive(
+        self,
+        path,
+        stop=None,
+        progress=lambda *a: None,
+        force=False,
+        origin="local_archive",
+    ):
+        with self.db.writer_lock():
+            return self._archive(path, stop, progress, force, origin)
+
+    def _archive(
         self,
         path,
         stop=None,
@@ -150,7 +161,7 @@ class Importer:
         digest = sha256(path.read_bytes()).hexdigest()
         with self.db.connect() as conn, ZipFile(path) as archive:
             previous = conn.execute(
-                "SELECT id,sha256 FROM archives WHERE day=?", (day,)
+                "SELECT id,sha256 FROM archives WHERE day=%s", (day,)
             ).fetchone()
             if previous and previous[1] != digest:
                 raise ValueError("Zmienione archiwum źródłowe")
@@ -161,33 +172,33 @@ class Importer:
                 (i, x) for i, x in enumerate(archive.infolist()) if not x.is_dir()
             ]
             conn.execute(
-                "INSERT INTO import_days(day,download_status,checked_at) VALUES(?,?,?) ON CONFLICT(day) DO UPDATE SET download_status=excluded.download_status",
+                "INSERT INTO import_days(day,download_status,checked_at) VALUES(%s,%s,%s) ON CONFLICT(day) DO UPDATE SET download_status=excluded.download_status",
                 (day, "downloaded" if entries else "empty_zip", utc_now()),
             )
             conn.execute(
-                "INSERT OR IGNORE INTO archives(day,relative_path,sha256,size_bytes,acquired_at,acquisition_origin) VALUES(?,?,?,?,?,?)",
+                "INSERT INTO archives(day,relative_path,sha256,size_bytes,acquired_at,acquisition_origin) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                 (day, relative, digest, path.stat().st_size, utc_now(), origin),
             )
             aid = conn.execute(
-                "SELECT id FROM archives WHERE day=?", (day,)
+                "SELECT id FROM archives WHERE day=%s", (day,)
             ).fetchone()[0]
             profile = self.profile(conn)
             if previous and not force:
                 registered = conn.execute(
-                    "SELECT count(*) FROM archive_entries WHERE archive_id=?", (aid,)
+                    "SELECT count(*) FROM archive_entries WHERE archive_id=%s", (aid,)
                 ).fetchone()[0]
                 incomplete = conn.execute(
-                    """SELECT 1 FROM archive_entries e WHERE e.archive_id=? AND NOT EXISTS(
+                    """SELECT 1 FROM archive_entries e WHERE e.archive_id=%s AND NOT EXISTS(
                     SELECT 1 FROM file_decodes d WHERE d.fit_file_id=e.fit_file_id
-                    AND d.profile_id=? AND d.is_active=1 AND d.status='complete') LIMIT 1""",
+                    AND d.profile_id=%s AND d.is_active=1 AND d.status='complete') LIMIT 1""",
                     (aid, profile),
                 ).fetchone()
                 if registered == len(entries) and not incomplete:
                     return 0  # no fictitious decode run for an unchanged completed ZIP
             run = conn.execute(
-                "INSERT INTO decode_runs(profile_id,started_at,status) VALUES(?,?,'running')",
+                "INSERT INTO decode_runs(profile_id,started_at,status) VALUES(%s,%s,'running') RETURNING id",
                 (profile, utc_now()),
-            ).lastrowid
+            ).fetchone()[0]
             conn.commit()
             failed = 0
             try:
@@ -196,20 +207,20 @@ class Importer:
                     payload = archive.read(item)
                     h = sha256(payload).hexdigest()
                     conn.execute(
-                        "INSERT OR IGNORE INTO fit_files(sha256,size_bytes,integrity_status) VALUES(?,?,'pending')",
+                        "INSERT INTO fit_files(sha256,size_bytes,integrity_status) VALUES(%s,%s,'pending') ON CONFLICT DO NOTHING",
                         (h, len(payload)),
                     )
                     fid = conn.execute(
-                        "SELECT id FROM fit_files WHERE sha256=?", (h,)
+                        "SELECT id FROM fit_files WHERE sha256=%s", (h,)
                     ).fetchone()[0]
                     category = Path(item.filename).stem.partition("_")[2] or "unknown"
                     conn.execute(
-                        "INSERT OR IGNORE INTO archive_entries(archive_id,entry_index,entry_name,category,fit_file_id) VALUES(?,?,?,?,?)",
+                        "INSERT INTO archive_entries(archive_id,entry_index,entry_name,category,fit_file_id) VALUES(%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                         (aid, index, item.filename, category, fid),
                     )
                     conn.commit()
                     done = conn.execute(
-                        "SELECT status FROM file_decodes WHERE fit_file_id=? AND profile_id=?",
+                        "SELECT status FROM file_decodes WHERE fit_file_id=%s AND profile_id=%s",
                         (fid, profile),
                     ).fetchone()
                     force_file = (
@@ -227,32 +238,32 @@ class Importer:
                         failed += 1
                         # Retain the previous active result on failed reprocessing.
                         old = conn.execute(
-                            "SELECT id FROM file_decodes WHERE fit_file_id=? AND profile_id=?",
+                            "SELECT id FROM file_decodes WHERE fit_file_id=%s AND profile_id=%s",
                             (fid, profile),
                         ).fetchone()
                         if not old:
                             did = conn.execute(
-                                "INSERT INTO file_decodes(fit_file_id,profile_id,run_id,status,error_type) VALUES(?,?,?,'failed',?)",
+                                "INSERT INTO file_decodes(fit_file_id,profile_id,run_id,status,error_type) VALUES(%s,%s,%s,'failed',%s) RETURNING id",
                                 (fid, profile, run, type(error).__name__),
-                            ).lastrowid
+                            ).fetchone()[0]
                             conn.execute(
-                                "INSERT INTO decode_issues(file_decode_id,issue_code,severity,context_json) VALUES(?,'fit_decode_failed','error',?)",
+                                "INSERT INTO decode_issues(file_decode_id,issue_code,severity,context_json) VALUES(%s,'fit_decode_failed','error',%s)",
                                 (did, dumps({"type": type(error).__name__})),
                             )
                         conn.execute(
-                            "UPDATE fit_files SET integrity_status='invalid' WHERE id=?",
+                            "UPDATE fit_files SET integrity_status='invalid' WHERE id=%s",
                             (fid,),
                         )
                         conn.commit()
                 conn.execute(
-                    "UPDATE decode_runs SET finished_at=?,status=? WHERE id=?",
+                    "UPDATE decode_runs SET finished_at=%s,status=%s WHERE id=%s",
                     (utc_now(), "partial" if failed else "complete", run),
                 )
                 conn.commit()
             except BaseException:
                 conn.rollback()
                 conn.execute(
-                    "UPDATE decode_runs SET finished_at=?,status='interrupted' WHERE id=?",
+                    "UPDATE decode_runs SET finished_at=%s,status='interrupted' WHERE id=%s",
                     (utc_now(), run),
                 )
                 conn.commit()
@@ -260,16 +271,16 @@ class Importer:
         return failed
 
     def decode(self, conn, payload, fid, file_hash, profile, run, stop):
-        conn.execute("BEGIN IMMEDIATE")
+        # The SELECT in archive() has already opened this FIT transaction.
         # Deletion and replacement remain inside one transaction; rollback restores it.
         conn.execute(
-            "DELETE FROM file_decodes WHERE fit_file_id=? AND profile_id=?",
+            "DELETE FROM file_decodes WHERE fit_file_id=%s AND profile_id=%s",
             (fid, profile),
         )
         did = conn.execute(
-            "INSERT INTO file_decodes(fit_file_id,profile_id,run_id,status) VALUES(?,?,?,'pending')",
+            "INSERT INTO file_decodes(fit_file_id,profile_id,run_id,status) VALUES(%s,%s,%s,'pending') RETURNING id",
             (fid, profile, run),
-        ).lastrowid
+        ).fetchone()[0]
         definitions = {}
         catalog = {}
         descriptions = {}
@@ -280,13 +291,13 @@ class Importer:
         def catalog_id(info):
             key = info["stable_key"]
             if key not in catalog:
-                columns = list(info)
+                columns = [f'"{name}"' for name in info]
                 conn.execute(
-                    f"INSERT OR IGNORE INTO field_catalog(profile_id,{','.join(columns)}) VALUES(?{',?' * len(columns)})",
+                    f"INSERT INTO field_catalog(profile_id,{','.join(columns)}) VALUES(%s{',%s' * len(columns)}) ON CONFLICT DO NOTHING",
                     (profile, *info.values()),
                 )
                 catalog[key] = conn.execute(
-                    "SELECT id FROM field_catalog WHERE profile_id=? AND stable_key=?",
+                    "SELECT id FROM field_catalog WHERE profile_id=%s AND stable_key=%s",
                     (profile, key),
                 ).fetchone()[0]
             return catalog[key]
@@ -302,7 +313,7 @@ class Importer:
                     check_stop(stop)
                     if isinstance(frame, fitdecode.FitHeader):
                         conn.execute(
-                            "UPDATE fit_files SET protocol_version=?,header_profile_version=? WHERE id=?",
+                            "UPDATE fit_files SET protocol_version=%s,header_profile_version=%s WHERE id=%s",
                             (
                                 payload[1],
                                 int.from_bytes(frame.chunk.bytes[2:4], "little"),
@@ -313,7 +324,7 @@ class Importer:
                     elif isinstance(frame, fitdecode.FitDefinitionMessage):
                         definition_index += 1
                         mid = conn.execute(
-                            "INSERT INTO message_definitions(file_decode_id,definition_index,global_message_num,local_message_num,byte_order,byte_offset) VALUES(?,?,?,?,?,?)",
+                            "INSERT INTO message_definitions(file_decode_id,definition_index,global_message_num,local_message_num,byte_order,byte_offset) VALUES(%s,%s,%s,%s,%s,%s) RETURNING id",
                             (
                                 did,
                                 definition_index,
@@ -322,12 +333,12 @@ class Importer:
                                 "little" if frame.endian == "<" else "big",
                                 frame.chunk.offset,
                             ),
-                        ).lastrowid
+                        ).fetchone()[0]
                         field_ids = {}
                         for order, f in enumerate(frame.all_field_defs):
                             idx = getattr(f, "dev_data_index", None)
                             field_ids[id(f)] = conn.execute(
-                                "INSERT INTO field_definitions(message_definition_id,field_order,field_num,namespace,developer_data_index,base_type_id,size_bytes) VALUES(?,?,?,?,?,?,?)",
+                                "INSERT INTO field_definitions(message_definition_id,field_order,field_num,namespace,developer_data_index,base_type_id,size_bytes) VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id",
                                 (
                                     mid,
                                     order,
@@ -337,7 +348,7 @@ class Importer:
                                     f.base_type.identifier,
                                     f.size,
                                 ),
-                            ).lastrowid
+                            ).fetchone()[0]
                         definitions[id(frame)] = (mid, field_ids)
                     elif isinstance(frame, fitdecode.FitDataMessage):
                         mid, field_ids = definitions[id(frame.def_mesg)]
@@ -390,7 +401,7 @@ class Importer:
                         )
                         header = frame.chunk.bytes[0]
                         message = conn.execute(
-                            "INSERT INTO fit_messages(file_decode_id,message_definition_id,message_index,byte_offset,byte_length,record_header,compressed_time_offset,time_unix_ms,time_basis,time_field_num,time_resolution_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                            "INSERT INTO fit_messages(file_decode_id,message_definition_id,message_index,byte_offset,byte_length,record_header,compressed_time_offset,time_unix_ms,time_basis,time_field_num,time_resolution_json) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
                             (
                                 did,
                                 mid,
@@ -404,7 +415,7 @@ class Importer:
                                 time_field,
                                 dumps({"basis": basis, "field": time_field}),
                             ),
-                        ).lastrowid
+                        ).fetchone()[0]
                         batch = []
                         for f in physical:
                             desc = info[id(f)]
@@ -430,20 +441,21 @@ class Importer:
                                     register_subfield(
                                         conn, profile, cid, desc, catalog_id
                                     )
-                        conn.executemany(
-                            "INSERT INTO fit_fields VALUES(?,?,?,?,?,?,?,?,?,?)", batch
+                        conn.cursor().executemany(
+                            "INSERT INTO fit_fields VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            batch,
                         )
                         fields += len(batch)
                         messages += 1
             for notice in notices:
                 conn.execute(
-                    "INSERT INTO decode_issues(file_decode_id,issue_code,severity,context_json) VALUES(?,'parser_warning','warning',?)",
+                    "INSERT INTO decode_issues(file_decode_id,issue_code,severity,context_json) VALUES(%s,'parser_warning','warning',%s)",
                     (did, dumps({"category": notice.category.__name__})),
                 )
         check_stop(stop)
-        conn.execute("UPDATE file_decodes SET is_active=0 WHERE fit_file_id=?", (fid,))
+        conn.execute("UPDATE file_decodes SET is_active=0 WHERE fit_file_id=%s", (fid,))
         conn.execute(
-            "UPDATE file_decodes SET status=?,decoded_at=?,is_active=1,message_count=?,stored_field_count=?,unknown_field_count=? WHERE id=?",
+            "UPDATE file_decodes SET status=%s,decoded_at=%s,is_active=1,message_count=%s,stored_field_count=%s,unknown_field_count=%s WHERE id=%s",
             (
                 "partial" if notices else "complete",
                 utc_now(),
@@ -453,8 +465,10 @@ class Importer:
                 did,
             ),
         )
-        conn.execute("UPDATE fit_files SET integrity_status='valid' WHERE id=?", (fid,))
         conn.execute(
-            "DELETE FROM file_decodes WHERE fit_file_id=? AND id<>?", (fid, did)
+            "UPDATE fit_files SET integrity_status='valid' WHERE id=%s", (fid,)
+        )
+        conn.execute(
+            "DELETE FROM file_decodes WHERE fit_file_id=%s AND id<>%s", (fid, did)
         )
         conn.commit()

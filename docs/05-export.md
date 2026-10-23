@@ -61,11 +61,11 @@ Skan bieżącej bazy dla zakresu 2024-01-01–2026-10-10 obejmował wyłącznie 
 
 `valid_count` oznacza liczbę obserwacji użytych przez daną metodę, `invalid_count` — rekordy nieważne lub błędnie zdekodowane, `excluded_count` — poprawne wg FIT, ale nieprzydatne do średniej (np. tablica lub ujemna wartość stresu), `untimed_count` — rekordy bez rozpoznanego czasu. Te ostatnie nie biorą udziału w obliczeniu; są ewidencjonowane pod dniem żądania archiwum. `day_basis` odróżnia `measurement_time`, `requested_day` i `mixed`. `first_time` i `last_time` dotyczą tylko poprawnych obserwacji użytych w podsumowaniu. Liczniki są rozłączne.
 
-Nie odrzucamy nieprawidłowych rekordów ze szczegółów ani z SQLite. Ujemne wartości stresu nie są dodatnim pomiarem poziomu stresu i nie wchodzą do średniej; zachowujemy je w danych źródłowych. Nie przypisujemy im zgadywanej etykiety medycznej. Deduplikacja nadal dotyczy identycznych FIT po SHA-256, nie samej pary czas–wartość; różne wiadomości źródłowe z tym samym czasem pozostają osobnymi obserwacjami.
+Nie odrzucamy nieprawidłowych rekordów ze szczegółów ani z PostgreSQL. Ujemne wartości stresu nie są dodatnim pomiarem poziomu stresu i nie wchodzą do średniej; zachowujemy je w danych źródłowych. Nie przypisujemy im zgadywanej etykiety medycznej. Deduplikacja nadal dotyczy identycznych FIT po SHA-256, nie samej pary czas–wartość; różne wiadomości źródłowe z tym samym czasem pozostają osobnymi obserwacjami.
 
-Metadane każdego pliku obejmują `missing_days`, `unimported_or_partial_days` i `decode_status` ze spójnego obrazu SQLite. `missing_days` oznacza brak potwierdzonego archiwum, nie pewność braku pomiarów zegarka. `decode_status: complete` nie gwarantuje obecności każdego parametru każdego dnia. Brakujące dni nie są uzupełniane zerem lub sztucznym pomiarem.
+Metadane każdego pliku obejmują `missing_days`, `unimported_or_partial_days` i `decode_status` ze spójnego obrazu PostgreSQL. `missing_days` oznacza brak potwierdzonego archiwum, nie pewność braku pomiarów zegarka. `decode_status: complete` nie gwarantuje obecności każdego parametru każdego dnia. Brakujące dni nie są uzupełniane zerem lub sztucznym pomiarem.
 
-Podsumowania dzienne są zapisywane w osobnych tabelach SQLite, z metodą, wersją algorytmu, zakresem i rewizją danych. Powstają na żądanie eksportu lub wykresu. Import i ponowne przetwarzanie unieważniają cache; następny odczyt go odbudowuje. Podsumowania miesięczne są wyliczane z dziennych bez dodatkowej trwałej kopii. Szczegóły: [schemat v3](10-sqlite-schema.md).
+Podsumowania dzienne są zapisywane w osobnych tabelach PostgreSQL, z metodą, wersją algorytmu, zakresem i rewizją danych. Powstają na żądanie eksportu lub wykresu. Import i ponowne przetwarzanie unieważniają cache; następny odczyt go odbudowuje. Podsumowania miesięczne są wyliczane z dziennych bez dodatkowej trwałej kopii. Szczegóły: [schemat v3](10-postgresql-schema.md).
 
 ## Format JSON v2
 

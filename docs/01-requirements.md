@@ -1,6 +1,6 @@
 # Cel i wymagania
 
-Ustalenia z rozmowy, aktualizacja 2026-10-11. Wymagania użytkownika mają pierwszeństwo przed propozycjami implementacji w pozostałych dokumentach.
+Ustalenia z rozmowy, aktualizacja 2026-10-23. Wymagania użytkownika mają pierwszeństwo przed propozycjami implementacji w pozostałych dokumentach.
 
 ## Cel
 
@@ -11,7 +11,7 @@ Zapewnić pełne zachowanie danych dostępnych w dziennym eksporcie dobrostanu G
 - Jeden użytkownik, jedno prywatne konto Garmin.
 - Jeden zegarek: Garmin Epix gen 2, używany nieprzerwanie od nieustalonej daty w 2024 roku.
 - Pierwsza wersja: aplikacja okienkowa na Windows 11, uruchamiana ręcznie z pliku `.exe`, bez konsoli, przeglądarki, instalatora i osobnej instalacji Pythona.
-- Python i SQLite; realizacja UI: PySide6 Essentials/Qt Widgets i QPainter, pakowanie PyInstaller onedir.
+- Python i PostgreSQL 16+ lokalnie oraz na serwerze; darmowe wydanie community, bez wariantu SQLite; realizacja UI: PySide6 Essentials/Qt Widgets i QPainter, pakowanie PyInstaller onedir.
 - W przyszłości Raspberry Pi jako automat importu według harmonogramu i hub dostępu do danych, bez UI, ze wspólną logiką aplikacji.
 
 ## Zakres pierwszej wersji
@@ -19,9 +19,9 @@ Zapewnić pełne zachowanie danych dostępnych w dziennym eksporcie dobrostanu G
 1. Jedna metoda pobierania: WebAPI dziennego archiwum dobrostanu ZIP, po potwierdzeniu zgodności z ręcznym eksportem.
 2. Pierwszy import sprawdza każdy dzień od 2024-01-01 do wczoraj. Nieznany początek historii ustala się na podstawie uzyskanych danych; dni bez danych nie są błędami sieciowymi.
 3. Kolejne uruchomienia pobierają niepobrane dni, także zaległości. Nigdy nie pobierają dzisiejszego ani przyszłego dnia.
-4. Zachowanie oryginalnych archiwów oraz dekodowanie danych do SQLite bez utraty dostępnych pól.
+4. Zachowanie oryginalnych archiwów oraz dekodowanie danych do PostgreSQL bez utraty dostępnych pól.
 5. Ręczne generowanie JSON z wyborem parametrów i okresu.
-6. Dane źródłowe i SQLite stanowią trwałe zasoby. Każdy eksport tworzy osobny folder z datą i czasem; starsze eksporty pozostają na dysku do ręcznego usunięcia przez użytkownika.
+6. Dane źródłowe i PostgreSQL stanowią trwałe zasoby. Każdy eksport tworzy osobny folder z datą i czasem; starsze eksporty pozostają na dysku do ręcznego usunięcia przez użytkownika.
 7. Interfejs po polsku: Start, Dane, Eksport, Ustawienia; ciemny motyw z niebieskimi akcentami i ikonami wzorowanymi na Garmin Connect.
 8. Przeglądanie stanu importu, kompletności danych i wykresów rozpoznanych parametrów. Dłuższe okresy pokazują podsumowania Garmin albo oznaczone średnie dzienne aplikacji dla HRV, tętna, oddechu, saturacji i stresu. Szczegóły są wyświetlane dla pojedynczego dnia. Wykres odświeża się automatycznie, sygnalizuje ładowanie i blokuje niedostępne zakresy. Checkbox umożliwia pokazanie obliczonej linii trendu wyłącznie w UI. Bez tabel rekordów, powiększania i interpolacji pomiarów.
 9. Przycisk „Pobierz dane” uruchamia pobieranie i import; postęp, zatrzymanie i późniejsze wznowienie są widoczne w UI. Przeglądanie już zaimportowanych danych jest dostępne podczas pracy.
@@ -32,7 +32,7 @@ Szczegóły uzgodnionego interfejsu i przechowywania ustawień: [specyfikacja UI
 
 - Osobne pobieranie treningów i dodatkowych metryk z innych endpointów.
 - Automatyczne ponowne pobieranie zakończonych dni i przyrostowe aktualizacje dawnych danych.
-- Anomalie, diagnozy i dodatkowe wskaźniki zdrowotne. Użytkownik rozszerzył zakres o jawne podsumowania w SQLite i eksporcie: dzienne średnie z minimum, maksimum i licznikami jakości oraz opcjonalne podsumowania miesięczne. Kategorie i liczniki mają osobne metody, opisane w [eksporcie](05-export.md). Linia trendu nadal pozostaje wyłącznie w UI.
+- Anomalie, diagnozy i dodatkowe wskaźniki zdrowotne. Użytkownik rozszerzył zakres o jawne podsumowania w PostgreSQL i eksporcie: dzienne średnie z minimum, maksimum i licznikami jakości oraz opcjonalne podsumowania miesięczne. Kategorie i liczniki mają osobne metody, opisane w [eksporcie](05-export.md). Linia trendu nadal pozostaje wyłącznie w UI.
 - Instrukcje lub interpretacje dla AI w plikach eksportu.
 - Automatyczny eksport, WebAPI aplikacji, MCP i bezpośrednie odpytywanie bazy przez model w pierwszej wersji. Przyszła rola Raspberry Pi jako huba wymaga osobnego projektu sposobu udostępniania danych.
 - Automatyczne kopie zapasowe i dodatkowe trwałe kopie danych.
@@ -41,6 +41,10 @@ Nie odrzucać pól znajdujących się w archiwum dlatego, że dotyczą wysiłku.
 
 ## Przechowywanie
 
-Początkowo folder projektu, z konfigurowalną ścieżką. Oryginalne archiwa, SQLite, eksporty, logi i sesje nigdy nie trafiają do Git. Przed użyciem niestandardowego katalogu w repozytorium należy sprawdzić reguły ignorowania.
+Początkowo folder projektu, z konfigurowalną ścieżką. Oryginalne archiwa, PostgreSQL, eksporty, logi i sesje nigdy nie trafiają do Git. Przed użyciem niestandardowego katalogu w repozytorium należy sprawdzić reguły ignorowania.
 
 Brak dodatkowej kopii jest świadomym ograniczeniem tej wersji: awaria dysku może oznaczać utratę danych. Zachowanie archiwów umożliwia odbudowę bazy, ale tylko gdy same archiwa pozostały dostępne.
+
+## Decyzja PostgreSQL — 2026-10-23
+
+Silnik jest taki sam w testach lokalnych i na serwerze: PostgreSQL. Nie implementujemy przenoszenia danych SQLite; historia będzie pobrana ponownie i zapisana do nowej bazy. Przed lokalnymi próbami usunąć starą bazę SQLite i jej pliki pomocnicze przy wyłączonej aplikacji, zachowując archiwa i eksporty. Testy integracyjne korzystają wyłącznie z oddzielnej bazy PostgreSQL. Konfigurację opisuje [instrukcja PostgreSQL](13-postgresql-setup.md).

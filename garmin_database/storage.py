@@ -1,91 +1,119 @@
-import sqlite3
+"""PostgreSQL storage shared by desktop and headless operations."""
+
+import os
+import threading
+from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
 
-from .util import utc_now
+import psycopg
+from psycopg import IsolationLevel
+
+from .util import utc_now, writer_lock
 
 
-class Connection(sqlite3.Connection):
-    def __exit__(self, *args):
-        try:
-            return super().__exit__(*args)
-        finally:
-            self.close()
+class Row(tuple):
+    """A result row supports both column names and positional unpacking."""
+
+    def __new__(cls, values, columns):
+        row = super().__new__(cls, values)
+        row.columns = columns
+        return row
+
+    def keys(self):
+        return self.columns
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            key = self.columns.index(key)
+        return super().__getitem__(key)
+
+
+def result_rows(cursor):
+    columns = tuple(column.name for column in cursor.description or ())
+    return lambda values: Row(values, columns)
 
 
 class Database:
-    def __init__(self, data_dir):
+    def __init__(self, data_dir, dsn=None):
         self.root = Path(data_dir)
-        self.path = self.root / "garmin.sqlite3"
+        # Connection secrets belong in libpq's password file or environment,
+        # never in logs, command-line arguments or settings.json.
+        self.dsn = dsn or os.environ.get("GARMIN_DATABASE_DSN") or "dbname=garmin"
+        self._writer = threading.local()
 
     def connect(self, readonly=False):
-        if readonly:
-            conn = sqlite3.connect(
-                self.path.resolve().as_uri() + "?mode=ro",
-                uri=True,
-                timeout=30,
-                factory=Connection,
-            )
-        else:
-            self.root.mkdir(parents=True, exist_ok=True)
-            conn = sqlite3.connect(self.path, timeout=30, factory=Connection)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA busy_timeout=30000")
+        conn = psycopg.connect(
+            self.dsn,
+            connect_timeout=10,
+            application_name="GarminDatabase",
+            row_factory=result_rows,
+        )
+        conn.isolation_level = (
+            IsolationLevel.REPEATABLE_READ
+            if readonly
+            else IsolationLevel.READ_COMMITTED
+        )
+        conn.read_only = readonly
         return conn
 
+    @contextmanager
+    def writer_lock(self, *, allow_nested=True):
+        """Serialize writers across hosts; also protect the local ZIP directory."""
+        if getattr(self._writer, "active", False):
+            if not allow_nested:
+                raise RuntimeError("Trwa zapis danych PostgreSQL")
+            yield
+            return
+        with writer_lock(self.root), self.connect() as lock:
+            lock.autocommit = True
+            key = lock.execute(
+                "SELECT hashtextextended(current_database() || ':' || current_schema() "
+                "|| ':garmin_database.writer', 0)"
+            ).fetchone()[0]
+            if not lock.execute("SELECT pg_try_advisory_lock(%s)", (key,)).fetchone()[
+                0
+            ]:
+                raise RuntimeError("Inny proces zapisuje dane PostgreSQL")
+            self._writer.active = True
+            try:
+                yield
+            finally:
+                self._writer.active = False
+                lock.execute("SELECT pg_advisory_unlock(%s)", (key,))
+
     def initialize(self):
-        with self.connect() as conn:
-            conn.execute("PRAGMA journal_mode=WAL")
-            version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version > 3:
+        with self.writer_lock(), self.connect() as conn:
+            exists = conn.execute("SELECT to_regclass('schema_migrations')").fetchone()[
+                0
+            ]
+            migrations = (
+                dict(conn.execute("SELECT version,sql_sha256 FROM schema_migrations"))
+                if exists
+                else {}
+            )
+            if migrations and max(migrations) > 3:
                 raise ValueError("Baza pochodzi z nowszej wersji aplikacji")
-            if version == 0:
-                sql = (Path(__file__).parent / "resources/001_initial.sql").read_text(
+            for version, filename in enumerate(
+                ("001_initial.sql", "002_query_indexes.sql", "003_summaries.sql"), 1
+            ):
+                sql = (Path(__file__).parent / "resources" / filename).read_text(
                     encoding="utf-8"
                 )
-                try:
-                    conn.executescript("BEGIN IMMEDIATE;\n" + sql)
-                    conn.execute(
-                        "INSERT INTO schema_migrations VALUES(1,?,?)",
-                        (utc_now(), sha256(sql.encode()).hexdigest()),
-                    )
-                    conn.commit()
-                except Exception:
-                    conn.rollback()
-                    raise
-            if version < 2:
-                sql = (
-                    Path(__file__).parent / "resources/002_query_indexes.sql"
-                ).read_text(encoding="utf-8")
-                try:
-                    conn.executescript("BEGIN IMMEDIATE;\n" + sql)
-                    conn.execute(
-                        "INSERT INTO schema_migrations VALUES(2,?,?)",
-                        (utc_now(), sha256(sql.encode()).hexdigest()),
-                    )
-                    conn.commit()
-                except Exception:
-                    conn.rollback()
-                    raise
-            if version < 3:
-                sql = (Path(__file__).parent / "resources/003_summaries.sql").read_text(
-                    encoding="utf-8"
+                digest = sha256(sql.encode()).hexdigest()
+                if version in migrations:
+                    if migrations[version] != digest:
+                        raise ValueError("Niezgodna suma kontrolna schematu PostgreSQL")
+                    continue
+                conn.execute(sql, prepare=False)
+                conn.execute(
+                    "INSERT INTO schema_migrations VALUES(%s,%s,%s)",
+                    (version, utc_now(), digest),
                 )
-                try:
-                    conn.executescript("BEGIN IMMEDIATE;\n" + sql)
-                    conn.execute(
-                        "INSERT INTO schema_migrations VALUES(3,?,?)",
-                        (utc_now(), sha256(sql.encode()).hexdigest()),
-                    )
-                    conn.commit()
-                except Exception:
-                    conn.rollback()
-                    raise
-            # Called under the writer lock: any surviving running marker belongs
-            # to a crashed process. SQLite already rolled back its transaction.
+            # The database-wide writer lock proves no live importer owns these
+            # markers. PostgreSQL rolled back any unfinished FIT transaction.
             conn.execute(
-                "UPDATE decode_runs SET status='interrupted',finished_at=? WHERE status='running'",
+                "UPDATE decode_runs SET status='interrupted',finished_at=%s WHERE status='running'",
                 (utc_now(),),
             )
 
@@ -97,10 +125,10 @@ class Database:
                 )
             )
             files = conn.execute(
-                "SELECT count(*),coalesce(sum(message_count),0),coalesce(sum(stored_field_count),0) FROM file_decodes WHERE is_active=1"
+                "SELECT count(*),coalesce(sum(message_count),0)::bigint,coalesce(sum(stored_field_count),0)::bigint FROM file_decodes WHERE is_active=1"
             ).fetchone()
             period = conn.execute(
-                "SELECT min(day),max(day),count(*),coalesce(sum(size_bytes),0) FROM archives"
+                "SELECT min(day),max(day),count(*),coalesce(sum(size_bytes),0)::bigint FROM archives"
             ).fetchone()
             unknown = conn.execute(
                 "SELECT count(*) FROM field_catalog WHERE semantics_status='unknown'"
@@ -114,7 +142,9 @@ class Database:
             pending_days = conn.execute(
                 "SELECT count(*) FROM import_days d WHERE download_status='downloaded' AND NOT EXISTS(SELECT 1 FROM archives a WHERE a.day=d.day)"
             ).fetchone()[0]
-        sizes = sum(p.stat().st_size for p in self.root.glob("garmin.sqlite3*"))
+            size = conn.execute(
+                "SELECT pg_database_size(current_database())"
+            ).fetchone()[0]
         return dict(
             days=days,
             first_day=period[0],
@@ -122,7 +152,7 @@ class Database:
             last_downloaded=download_period[1],
             archives=period[2],
             archive_bytes=period[3],
-            database_bytes=sizes,
+            database_bytes=size,
             files=files[0],
             messages=files[1],
             fields=files[2],

@@ -1,6 +1,7 @@
 import json
 from contextlib import nullcontext
 from datetime import date, datetime, time, timedelta, timezone
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from .fit import FIT_EPOCH
@@ -173,14 +174,14 @@ class Queries:
             days = {
                 x[0]: x[1]
                 for x in c.execute(
-                    "SELECT day,download_status FROM import_days WHERE day BETWEEN ? AND ?",
+                    "SELECT day,download_status FROM import_days WHERE day BETWEEN %s AND %s",
                     (start.isoformat(), end.isoformat()),
                 )
             }
             pending = [
                 x[0]
                 for x in c.execute(
-                    """SELECT d.day FROM import_days d WHERE d.day BETWEEN ? AND ?
+                    """SELECT d.day FROM import_days d WHERE d.day BETWEEN %s AND %s
                 AND d.download_status='downloaded' AND (NOT EXISTS(SELECT 1 FROM archives a WHERE a.day=d.day)
                 OR EXISTS(SELECT 1 FROM archives a JOIN archive_entries e ON e.archive_id=a.id WHERE a.day=d.day
                    AND NOT EXISTS(SELECT 1 FROM file_decodes x WHERE x.fit_file_id=e.fit_file_id AND x.is_active=1 AND x.status='complete'))) ORDER BY d.day""",
@@ -202,6 +203,7 @@ class Queries:
         """Stream one series. Archive selection never multiplies FIT measurements."""
         own = conn is None
         c = conn or self.db.connect(readonly=True)
+        stream = None
         try:
             begin, finish = bounds(start, end)
             ids = list(parameter["ids"])
@@ -211,33 +213,35 @@ class Queries:
                 r[0]: json.loads(r[1])
                 for r in c.execute(
                     "SELECT source_catalog_id,rule_json FROM interpretation_rules WHERE kind='component' AND target_catalog_id IN ("
-                    + ",".join("?" for _ in ids)
+                    + ",".join("%s" for _ in ids)
                     + ")",
                     ids,
                 )
             }
             requested = set(ids)
             ids = list(set(ids) | set(rules))
-            placeholders = ",".join("?" for _ in ids)
+            placeholders = ",".join("%s" for _ in ids)
             # Untimed summaries are preserved with a separately labelled requested
             # day; it is never emitted as a fabricated measurement timestamp.
-            sql = f"""SELECT f.*,m.time_unix_ms,m.time_basis,m.message_index,x.fit_file_id,c.scale,c.offset,c.time_role
+            sql = f"""SELECT f.*,m.time_unix_ms,m.time_basis,m.message_index,x.fit_file_id,c.scale,c."offset",c.time_role
                 FROM fit_fields f JOIN fit_messages m ON m.id=f.message_id
                 JOIN file_decodes x ON x.id=m.file_decode_id AND x.is_active=1
                 JOIN field_catalog c ON c.id=f.resolved_catalog_id
                 WHERE f.resolved_catalog_id IN ({placeholders})
-                AND ((m.time_unix_ms>=? AND m.time_unix_ms<?) OR (m.time_unix_ms IS NULL AND EXISTS(
+                AND ((m.time_unix_ms>=%s AND m.time_unix_ms<%s) OR (m.time_unix_ms IS NULL AND EXISTS(
                     SELECT 1 FROM archive_entries e JOIN archives a ON a.id=e.archive_id
-                    WHERE e.fit_file_id=x.fit_file_id AND a.day BETWEEN ? AND ?)))
+                    WHERE e.fit_file_id=x.fit_file_id AND a.day BETWEEN %s AND %s)))
                 ORDER BY m.time_unix_ms,x.fit_file_id,m.message_index,f.field_definition_id"""
             origins = {}
-            for row in c.execute(
+            stream = c.cursor(name="garmin_series_" + uuid4().hex)
+            stream.itersize = 1000
+            for row in stream.execute(
                 sql, (*ids, begin, finish, start.isoformat(), end.isoformat())
             ):
                 fid = row["fit_file_id"]
                 if fid not in origins:
                     origin = c.execute(
-                        "SELECT a.day,a.relative_path,e.entry_name FROM archive_entries e JOIN archives a ON a.id=e.archive_id WHERE e.fit_file_id=? ORDER BY (a.day BETWEEN ? AND ?) DESC,a.day,e.entry_index LIMIT 1",
+                        "SELECT a.day,a.relative_path,e.entry_name FROM archive_entries e JOIN archives a ON a.id=e.archive_id WHERE e.fit_file_id=%s ORDER BY (a.day BETWEEN %s AND %s) DESC,a.day,e.entry_index LIMIT 1",
                         (fid, start.isoformat(), end.isoformat()),
                     ).fetchone()
                     origins[fid] = (origin[0], origin[1] + "/" + origin[2])
@@ -258,8 +262,8 @@ class Queries:
                     # Components are decoded from preserved packed bits. A physical
                     # destination field takes precedence when present in this message.
                     if c.execute(
-                        "SELECT 1 FROM fit_fields WHERE message_id=? AND resolved_catalog_id IN ("
-                        + ",".join("?" for _ in requested)
+                        "SELECT 1 FROM fit_fields WHERE message_id=%s AND resolved_catalog_id IN ("
+                        + ",".join("%s" for _ in requested)
                         + ")",
                         (row["message_id"], *requested),
                     ).fetchone():
@@ -288,6 +292,8 @@ class Queries:
                     time_basis=row["time_basis"],
                 )
         finally:
+            if stream is not None:
+                stream.close()
             if own:
                 c.close()
 
@@ -296,7 +302,6 @@ class Queries:
             return [], "Brak podsumowań źródłowych Garmin. Wybierz pojedynczy dzień."
         if start != end and summary_method(parameter) == "sample_mean":
             with self.db.connect(readonly=True) as conn:
-                conn.execute("BEGIN")
                 rows = Summaries(self.db).daily(parameter, start, end, conn)
             points = [
                 (

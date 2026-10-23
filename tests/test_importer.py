@@ -54,7 +54,12 @@ def test_import_and_reprocess(tmp_path):
                 "SELECT value FROM v_numeric_parameters WHERE variant_name='heart_rate' ORDER BY message_index"
             )
         ] == [62, 64]
-        assert c.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert (
+            c.execute(
+                "SELECT count(*) FROM fit_fields f LEFT JOIN fit_messages m ON m.id=f.message_id WHERE m.id IS NULL"
+            ).fetchone()[0]
+            == 0
+        )
 
 
 @pytest.mark.integration

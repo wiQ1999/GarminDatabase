@@ -32,6 +32,7 @@ def project_dir():
 class Settings:
     data_dir: str = field(default_factory=lambda: str(project_dir() / "data"))
     export_dir: str = field(default_factory=lambda: str(project_dir() / "exports"))
+    database_dsn: str = ""  # Non-secret libpq connection options; password via pgpass.
     recent_days: int = 90
     parameters: list[str] = field(default_factory=list)
     summary_period: str = "day"
@@ -55,6 +56,16 @@ class Settings:
         import math
         from datetime import date
 
+        from psycopg.conninfo import conninfo_to_dict
+
+        try:
+            options = conninfo_to_dict(self.database_dsn)
+        except Exception:
+            raise ValueError("Nieprawidłowe połączenie PostgreSQL") from None
+        if "password" in options:
+            raise ValueError(
+                "Hasło PostgreSQL umieść w pgpass lub PGPASSWORD, poza ustawieniami"
+            )
         if not isinstance(self.recent_days, int) or self.recent_days < 1:
             raise ValueError("Okres szczegółowy musi być dodatnią liczbą dni")
         if not isinstance(self.parameters, list) or not all(

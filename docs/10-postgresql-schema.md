@@ -1,18 +1,18 @@
-# Kompletny schemat SQLite
+# Kompletny schemat PostgreSQL
 
-Definicja wykonywalna: [schema/001_initial.sql](../schema/001_initial.sql). Schemat jest używany przez importer w aplikacji; baza lokalna została zasilona pełną pobraną historią. Testy i walidację opisano w [instrukcji](12-running-and-testing.md). Wyniki skanowania źródeł opisano w [analizie FIT](08-fit-analysis.md), a wszystkie wykryte pola w [katalogu](09-fit-field-catalog.md).
+Definicja wykonywalna: [schema/001_initial.sql](../schema/001_initial.sql). Schemat jest używany przez importer w aplikacji; ten sam silnik PostgreSQL jest wymagany lokalnie i na serwerze. Nową bazę zasilamy ponownym pobraniem/importem, bez migracji danych ze starego SQLite. Testy i walidację opisano w [instrukcji](12-running-and-testing.md). Wyniki skanowania źródeł opisano w [analizie FIT](08-fit-analysis.md), a wszystkie wykryte pola w [katalogu](09-fit-field-catalog.md).
 
-Aktualna wersja migracji bazy to `user_version=3`. [Migracja 002](../schema/002_query_indexes.sql) dodaje indeksy, w tym złożony klucz obcy definicji pola, który umożliwia ponowne przetwarzanie bez skanowania ponad 20 mln pól. [Migracja 003](../schema/003_summaries.sql) dodaje osobną warstwę podsumowań, bez zmiany fizycznych danych FIT. Aplikacja wykonuje migracje transakcyjnie i zapisuje ich SHA-256 w `schema_migrations`.
+Aktualna wersja migracji bazy to `max(schema_migrations.version)=3`. [Migracja 002](../schema/002_query_indexes.sql) dodaje indeksy, w tym złożony klucz obcy definicji pola, który umożliwia ponowne przetwarzanie bez skanowania ponad 20 mln pól. [Migracja 003](../schema/003_summaries.sql) dodaje osobną warstwę podsumowań, bez zmiany fizycznych danych FIT. Aplikacja wykonuje migracje transakcyjnie i zapisuje ich SHA-256 w `schema_migrations`.
 
 ## Podsumowania aplikacji — migracja 003
 
-`dataset_state` zawiera pojedynczy numer rewizji. Triggery podnoszą go przy zmianie dekodowań lub powiązań FIT z archiwami. Wycofanie transakcji wycofuje również zmianę rewizji. `summary_cache` identyfikuje parametr, metodę, wersję algorytmu, rewizję źródeł, obliczony zakres i datę obliczenia.
+`dataset_state` zawiera pojedynczy numer rewizji. Triggery PL/pgSQL wykonywane raz na instrukcję podnoszą go przy zmianie dekodowań lub powiązań FIT z archiwami. Wycofanie transakcji wycofuje również zmianę rewizji. `summary_cache` identyfikuje parametr, metodę, wersję algorytmu, rewizję źródeł, obliczony zakres i datę obliczenia.
 
 `daily_summaries` ma klucz `(parameter_key, day)` i przechowuje `mean`, `minimum`, `maximum`, ostatnią obserwację JSON, liczności kategorii JSON, liczniki poprawnych, nieprawidłowych, wykluczonych i nietimestampowanych rekordów, pierwszy/ostatni czas poprawnej obserwacji i podstawę przypisania dnia. Średnie istnieją tylko dla jawnej listy pomiarów; kody kategorii oraz liczniki ruchu nie są uśredniane. Metody i reguły czasu opisuje [eksport](05-export.md).
 
 `v_current_daily_summaries` udostępnia tylko cache o aktualnej rewizji i wersji algorytmu. Obliczenie jest wykonywane na żądanie wykresu lub eksportu. Wynik zastępuje cache parametru transakcyjnie; anulowanie zachowuje poprzedni zapis. Nowy import unieważnia cache, a kolejne użycie go odbudowuje. Zapis cache nie zmienia rewizji źródeł.
 
-Odczyt odbywa się w jednej transakcji WAL. Podsumowania można obliczyć podczas importu, ale zapis cache jest wtedy pomijany. Tak samo jest, gdy w trakcie obliczenia zmieniła się rewizja. Eksport wciąż zawiera spójny wcześniejszy stan źródeł i metadanych. Miesięczne zestawienia korzystają z dziennych bez dodatkowej tabeli; średnia miesiąca jest ważona liczbą poprawnych próbek. Nie wykonujemy ponownego pobrania ani dekodowania oryginałów w celu migracji.
+Odczyt odbywa się w transakcji PostgreSQL `REPEATABLE READ READ ONLY`. Podsumowania można obliczyć podczas importu, ale zapis cache jest wtedy pomijany. Tak samo jest, gdy w trakcie obliczenia zmieniła się rewizja. Eksport wciąż zawiera spójny wcześniejszy stan źródeł i metadanych. Miesięczne zestawienia korzystają z dziennych bez dodatkowej tabeli; średnia miesiąca jest ważona liczbą poprawnych próbek. Migracje 001–003 tworzą schemat PostgreSQL; nie przenoszą danych SQLite.
 
 ## Decyzja
 
@@ -68,9 +68,9 @@ Numery lokalnych wiadomości są wielokrotnie używane i redefiniowane wewnątrz
 
 ## Reprezentacja wartości
 
-`fit_fields` przechowuje jedną z pięciu reprezentacji niepustych: `INTEGER`, `REAL`, tekst, tablicę/strukturę JSON albo tekstową reprezentację całkowitej liczby przekraczającej zakres SQLite INTEGER. CHECK wymusza dokładnie jedną aktywną kolumnę. `null` ma wszystkie kolumny wartości puste.
+`fit_fields` przechowuje jedną z pięciu reprezentacji niepustych: `BIGINT`, `DOUBLE PRECISION`, tekst, tablicę/strukturę JSON albo tekstową reprezentację całkowitej liczby przekraczającej zakres signed BIGINT. CHECK wymusza dokładnie jedną aktywną kolumnę. `null` ma wszystkie kolumny wartości puste.
 
-Wartości skalarne nie są pakowane do JSON. Tablice zachowują długość, kolejność i pozycje `null`, także gdy część elementów jest nieważna według FIT. `uint64` spoza zakresu signed int64 należy zapisać jako liczbę dziesiętną w tekście; w tablicach stosować jawnie oznaczone obiekty, np. `{"integer_text":"18446744073709551614"}`. Nie konwertować takich liczb do REAL. Bajty są tablicą liczb 0–255, a nie zgadywanym tekstem. Nieprawidłowe sekwencje tekstowe pozostają odtwarzalne z oryginału i muszą mieć wpis w `decode_issues`.
+Wartości skalarne nie są pakowane do JSON. Tablice zachowują długość, kolejność i pozycje `null`, także gdy część elementów jest nieważna według FIT. `uint64` spoza zakresu signed int64 należy zapisać jako liczbę dziesiętną w tekście; w tablicach stosować jawnie oznaczone obiekty, np. `{"integer_text":"18446744073709551614"}`. Nie konwertować takich liczb do DOUBLE PRECISION. Bajty są tablicą liczb 0–255, a nie zgadywanym tekstem. Nieprawidłowe sekwencje tekstowe pozostają odtwarzalne z oryginału i muszą mieć wpis w `decode_issues`.
 
 `validity` rozróżnia poprawne pole, nieważną wartość FIT, częściowo nieważną tablicę i błąd dekodowania. „Valid” oznacza poprawność reprezentacji FIT, nie prawidłowy wynik zdrowotny ani pełną interpretację wszystkich kodów specjalnych. Wartości specjalne mieszczące się w typie bazowym pozostają zachowane. Brak pola w definicji to brak wiersza, nie zero ani `null` z pomiaru. Sentinel nieważności rozpoznaje dekoder według typu bazowego; jego oryginalne bajty pozostają w ZIP.
 
@@ -98,18 +98,22 @@ Natywne nieznane pola i pola Developer Data to różne przypadki. `developer_dat
 
 `v_active_fields` udostępnia wartości i etykiety aktywnego dekodowania. `v_numeric_parameters` udostępnia rozpoznane, poprawne skalary w jednostkach profilu. `v_field_provenance` pokazuje wszystkie archiwa zawierające dany plik; połączenie tego widoku z wartościami mnoży wystąpienia, więc do eksportu używać `EXISTS` lub jawnego wyboru pojedynczego źródła.
 
-Indeksy obejmują czas wiadomości, definicję wiadomości, parametr plus wiadomość, kategorię wpisu i hash pliku. Eksport najpierw ogranicza czas/parametr, a potem odczytuje wartości. Tablice można czytać przez `json_each`. Wyszukiwanie liczb spoza signed int64 wymaga jawnej obsługi w Pythonie.
+Indeksy obejmują czas wiadomości, definicję wiadomości, parametr plus wiadomość, kategorię wpisu i hash pliku. Eksport najpierw ogranicza czas/parametr, a potem odczytuje wartości. JSON zachowuje serializację w kolumnach TEXT, sprawdzaną przez rzutowanie `::json` w CHECK; dzięki temu profil i eksport zachowują dotychczasowy kontrakt tekstowy. Tablice można czytać przez `json_array_elements_text(json_value::json)`. Wyszukiwanie liczb spoza signed int64 wymaga jawnej obsługi w Pythonie.
 
 ## Transakcje i ponowne przetwarzanie
 
 Każdy unikatowy FIT jest dekodowany w transakcji. Częściowy lub nieudany wynik nie otrzymuje statusu `complete`. Wyłączenie starej wersji i włączenie nowej odbywa się atomowo; indeks częściowy pozwala na jedno aktywne dekodowanie pliku. Zapis tej samej wersji nie tworzy duplikatów dzięki `(fit_file_id, profile_id)`.
 
-Nowe dekodowanie można zbudować przed przełączeniem aktywnego wyniku; po poprawnym przełączeniu usunąć stare wiersze dekodowania, zamiast trzymać równoległe trwałe kopie. Zachować metadane wersji i przebiegu. Przy ponowieniu nieudanej wersji importer czyści jej częściowe wiersze w transakcji. Tryb WAL i pliki pomocnicze SQLite są elementem działania bazy, nie dodatkowym backupem.
+Nowe dekodowanie można zbudować przed przełączeniem aktywnego wyniku; po poprawnym przełączeniu usunąć stare wiersze dekodowania, zamiast trzymać równoległe trwałe kopie. Zachować metadane wersji i przebiegu. Przy ponowieniu nieudanej wersji importer czyści jej częściowe wiersze w transakcji. MVCC PostgreSQL pozwala czytać poprzedni zatwierdzony stan podczas wymiany FIT. Globalna dla bazy/schematu blokada advisory chroni import między procesami i komputerami; lokalna blokada OS dodatkowo chroni katalog archiwów. Blokady zwalniają się po zamknięciu połączenia lub awarii procesu. Cache publikuje wynik tylko po uzyskaniu tej samej blokady i potwierdzeniu rewizji źródeł.
 
 Importer dodatkowo weryfikuje zgodność profilu katalogu z profilem dekodowania, zgodność profilu przebiegu z `file_decodes`, kompletność wartości fizycznych i poprawność reguł interpretacji. Nieznana semantyka jest raportowana jako ograniczenie pokrycia, ale sama w sobie nie oznacza błędu strukturalnego FIT.
 
-Wymagane SQLite co najmniej 3.37 z JSON1 i `foreign_keys=ON` na każdym połączeniu. Produkcyjny importer zapisze wersję i SHA migracji w `schema_migrations`. Rozmiaru gotowej bazy nie utożsamiać z 88 MB plików FIT: wiersze, indeksy i definicje mają narzut, który należy zmierzyć przy realizacji importera.
+Wymagany PostgreSQL 16 lub nowszy i psycopg 3. Klucze obce są zawsze egzekwowane przez serwer. Identyfikatory mają `BIGINT GENERATED BY DEFAULT AS IDENTITY`; importer pobiera je przez `INSERT ... RETURNING id`. Inicjalizacja wykonuje DDL i rejestrację wersji w jednej transakcji, odmawia nowszych wersji i zmienionych sum SHA-256. `schema/` i `garmin_database/resources/` zawierają identyczny SQL. Rozmiaru gotowej bazy nie utożsamiać z 88 MB plików FIT: wiersze, indeksy i definicje mają narzut, który należy zmierzyć przy realizacji importera.
 
 ## Sprawdzenia schematu
 
-Testy `tests/test_schema.py` wykonują DDL w pamięci i sprawdzają relacje, konwersję jednostek bez zmiany wartości raw, tablice z nieważnymi elementami, uint64, zakaz kilku reprezentacji wartości, zgodność definicji i pochodzenie jednego pliku w wielu archiwach. Nie tworzą kopii bazy danych użytkownika.
+Testy `tests/test_schema.py` wykonują DDL na prawdziwym PostgreSQL w oddzielnym schemacie testowym i sprawdzają relacje, konwersję jednostek bez zmiany wartości raw, tablice z nieważnymi elementami, uint64, zakaz kilku reprezentacji wartości, zgodność definicji i pochodzenie jednego pliku w wielu archiwach. Nie tworzą kopii bazy danych użytkownika.
+
+Połączenia odczytu używają `REPEATABLE READ READ ONLY`; wartości, podsumowania i metadane eksportu pochodzą z jednego obrazu. Szczegóły są pobierane kursorem serwerowym po 1000 wierszy, bez buforowania całego wyniku w pamięci klienta. Rozmiar w statusie pochodzi z `pg_database_size(current_database())` i obejmuje całą wskazaną bazę, nie tylko tabele aplikacji.
+
+Konfiguracja i ochrona danych: [PostgreSQL na Windows, Linux i Raspberry Pi OS](13-postgresql-setup.md). Sama zmiana silnika nie szyfruje plików PostgreSQL ani oryginalnych ZIP/eksportów.

@@ -29,3 +29,5 @@ __pycache__/
 .coverage
 htmlcov/
 *.egg-info/
+
+/work/

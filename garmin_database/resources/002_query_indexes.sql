@@ -5,4 +5,3 @@ CREATE INDEX IF NOT EXISTS catalog_representation
     ON field_catalog(representation, id);
 CREATE INDEX IF NOT EXISTS interpretation_target
     ON interpretation_rules(target_catalog_id, kind, source_catalog_id);
-PRAGMA user_version = 2;

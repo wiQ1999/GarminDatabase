@@ -1,3 +1,4 @@
 -r requirements-probe.txt
 -r requirements-analysis.txt
 PySide6-Essentials==6.12.0
+psycopg[binary]==3.2.13

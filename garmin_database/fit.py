@@ -41,7 +41,7 @@ def json_value(value):
 
 
 def typed_value(value):
-    """Exactly one SQLite column is populated, before any FIT scaling."""
+    """Exactly one PostgreSQL value column is populated, before any FIT scaling."""
     validity = "valid"
     if value is None:
         return ("null", None, None, None, None, "invalid")

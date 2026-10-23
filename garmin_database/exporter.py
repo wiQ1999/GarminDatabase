@@ -223,7 +223,6 @@ class Exporter:
 
         try:
             with self.db.connect(readonly=True) as conn:
-                conn.execute("BEGIN")
                 conn.execute("SELECT revision FROM dataset_state").fetchone()
                 recent_start = max(start, end - timedelta(days=recent_days - 1))
                 for index, param in enumerate(parameters, 1):

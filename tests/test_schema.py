@@ -1,6 +1,12 @@
-import sqlite3
 import unittest
 from pathlib import Path
+
+import psycopg
+import pytest
+
+from garmin_database.storage import Database
+
+pytestmark = pytest.mark.integration
 
 SQL = (Path(__file__).resolve().parents[1] / "schema/001_initial.sql").read_text(
     encoding="utf-8"
@@ -9,14 +15,15 @@ SQL = (Path(__file__).resolve().parents[1] / "schema/001_initial.sql").read_text
 
 class SchemaTests(unittest.TestCase):
     def setUp(self):
-        self.db = sqlite3.connect(":memory:")
+        self.db = Database(Path("unused-test-root")).connect()
+        self.db.autocommit = True
         self.addCleanup(self.db.close)
-        self.db.executescript(SQL)
+        self.db.execute(SQL)
         self.db.execute(
             "INSERT INTO decoder_profiles VALUES(1,'fitdecode','0.11.0','test','{}')"
         )
         self.db.execute(
-            "INSERT INTO fit_files VALUES(1,?,100,16,21000,'valid')", ("a" * 64,)
+            "INSERT INTO fit_files VALUES(1,%s,100,16,21000,'valid')", ("a" * 64,)
         )
         self.db.execute(
             "INSERT INTO decode_runs VALUES(1,1,'2026-10-10',NULL,'running')"
@@ -34,14 +41,14 @@ class SchemaTests(unittest.TestCase):
             byte_offset,byte_length,time_unix_ms,time_basis,time_field_num)
             VALUES(1,1,1,0,25,2,1700000000000,'explicit_utc',253)""")
         self.db.execute("""INSERT INTO field_catalog(id,profile_id,stable_key,message_num,field_num,
-            variant_name,message_name,namespace,semantics_status,units,scale,offset,numeric_projection_enabled,profile_metadata_json)
+            variant_name,message_name,namespace,semantics_status,units,scale,\"offset\",numeric_projection_enabled,profile_metadata_json)
             VALUES(1,1,'55.27.heart_rate',55,27,'heart_rate','monitoring','native','profile_known','bpm',2,1,1,'{}')""")
 
     def field(
         self, kind, integer=None, real=None, text=None, array=None, validity="valid"
     ):
         self.db.execute(
-            "INSERT INTO fit_fields VALUES(1,1,1,1,?,?,?,?,?,?)",
+            "INSERT INTO fit_fields VALUES(1,1,1,1,%s,%s,%s,%s,%s,%s)",
             (kind, integer, real, text, array, validity),
         )
 
@@ -53,7 +60,6 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(
             self.db.execute("SELECT integer_value FROM fit_fields").fetchone()[0], 126
         )
-        self.assertEqual(self.db.execute("PRAGMA foreign_key_check").fetchall(), [])
 
     def test_integer_text_preserves_unsigned_64bit(self):
         value = str(2**64 - 2)
@@ -78,13 +84,13 @@ class SchemaTests(unittest.TestCase):
         self.field("json", array="[1,null,3]", validity="partial_invalid")
         self.assertEqual(
             self.db.execute(
-                "SELECT value FROM fit_fields,json_each(json_value)"
+                "SELECT value::bigint FROM fit_fields, json_array_elements_text(json_value::json)"
             ).fetchall(),
             [(1,), (None,), (3,)],
         )
 
     def test_two_value_columns_rejected(self):
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(psycopg.IntegrityError):
             self.field("integer", integer=1, text="duplicate")
 
     def test_mismatched_definition_rejected(self):
@@ -94,7 +100,7 @@ class SchemaTests(unittest.TestCase):
         self.db.execute(
             "INSERT INTO field_definitions VALUES(2,2,0,27,'native',NULL,2,1)"
         )
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(psycopg.IntegrityError):
             self.db.execute(
                 "INSERT INTO fit_fields VALUES(1,2,1,1,'integer',1,NULL,NULL,NULL,'valid')"
             )
@@ -102,15 +108,15 @@ class SchemaTests(unittest.TestCase):
     def test_shared_file_has_two_provenance_links(self):
         for index, day in enumerate(("2026-10-08", "2026-10-09"), 1):
             self.db.execute(
-                "INSERT INTO import_days(day,download_status) VALUES(?,'downloaded')",
+                "INSERT INTO import_days(day,download_status) VALUES(%s,'downloaded')",
                 (day,),
             )
             self.db.execute(
-                "INSERT INTO archives VALUES(?,?,?,?,?,?,?)",
+                "INSERT INTO archives VALUES(%s,%s,%s,%s,%s,%s,%s)",
                 (index, day, f"raw/{day}.zip", "b" * 64, 100, None, "webapi"),
             )
             self.db.execute(
-                "INSERT INTO archive_entries VALUES(?,?,?,?,?,?)",
+                "INSERT INTO archive_entries VALUES(%s,%s,%s,%s,%s,%s)",
                 (index, index, 0, "sample.fit", "WELLNESS", 1),
             )
         self.assertEqual(
@@ -121,14 +127,14 @@ class SchemaTests(unittest.TestCase):
         )
 
     def test_missing_time_cannot_claim_resolved_timestamp(self):
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(psycopg.IntegrityError):
             self.db.execute("UPDATE fit_messages SET time_basis='missing' WHERE id=1")
 
     def test_compressed_header_retains_its_original_time_bits(self):
         self.db.execute(
             "UPDATE fit_messages SET record_header=133,compressed_time_offset=5,time_basis='compressed_header' WHERE id=1"
         )
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(psycopg.IntegrityError):
             self.db.execute(
                 "UPDATE fit_messages SET compressed_time_offset=6 WHERE id=1"
             )

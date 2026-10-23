@@ -1,15 +1,16 @@
-"""Podsumowania dzienne i miesięczne: docs/05-export.md, docs/10-sqlite-schema.md."""
+"""Podsumowania dzienne i miesięczne: docs/05-export.md, docs/10-postgresql-schema.md."""
 
 import json
 import math
-import sqlite3
 from collections import Counter
 from contextlib import ExitStack
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import psycopg
+
 from .fit import dumps
-from .util import check_stop, utc_now, writer_lock
+from .util import check_stop, utc_now
 
 ALGORITHM_VERSION = 1
 ZONE = ZoneInfo("Europe/Warsaw")
@@ -212,7 +213,7 @@ class Summaries:
             "SELECT revision FROM dataset_state WHERE id=1"
         ).fetchone()[0]
         cache = conn.execute(
-            "SELECT * FROM summary_cache WHERE parameter_key=?", (parameter["key"],)
+            "SELECT * FROM summary_cache WHERE parameter_key=%s", (parameter["key"],)
         ).fetchone()
         if (
             cache
@@ -224,7 +225,7 @@ class Summaries:
         ):
             result = []
             for row in conn.execute(
-                "SELECT * FROM daily_summaries WHERE parameter_key=? AND day BETWEEN ? AND ? ORDER BY day",
+                "SELECT * FROM daily_summaries WHERE parameter_key=%s AND day BETWEEN %s AND %s ORDER BY day",
                 (parameter["key"], start.isoformat(), end.isoformat()),
             ):
                 check_stop(stop)
@@ -245,12 +246,14 @@ class Summaries:
         # newer revision only prevents caching, never changes the exported snapshot.
         with ExitStack() as stack:
             try:
-                stack.enter_context(writer_lock(self.db.root))
+                stack.enter_context(self.db.writer_lock(allow_nested=False))
             except RuntimeError:
                 return
             try:
                 with self.db.connect() as writer:
-                    writer.execute("BEGIN IMMEDIATE")
+                    writer.execute(
+                        "SELECT revision FROM dataset_state WHERE id=1 FOR UPDATE"
+                    )
                     check_stop(stop)
                     if (
                         writer.execute(
@@ -260,11 +263,11 @@ class Summaries:
                     ):
                         return
                     writer.execute(
-                        "DELETE FROM summary_cache WHERE parameter_key=?",
+                        "DELETE FROM summary_cache WHERE parameter_key=%s",
                         (parameter["key"],),
                     )
                     writer.execute(
-                        "INSERT INTO summary_cache VALUES(?,?,?,?,?,?,?)",
+                        "INSERT INTO summary_cache VALUES(%s,%s,%s,%s,%s,%s,%s)",
                         (
                             parameter["key"],
                             summary_method(parameter),
@@ -278,7 +281,7 @@ class Summaries:
                     for row in result:
                         check_stop(stop)
                         writer.execute(
-                            "INSERT INTO daily_summaries VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            "INSERT INTO daily_summaries VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                             (
                                 parameter["key"],
                                 row["day"],
@@ -296,9 +299,5 @@ class Summaries:
                                 row["day_basis"],
                             ),
                         )
-            except sqlite3.OperationalError as error:
-                if error.sqlite_errorcode not in {
-                    sqlite3.SQLITE_BUSY,
-                    sqlite3.SQLITE_LOCKED,
-                }:
-                    raise
+            except (psycopg.errors.LockNotAvailable, psycopg.errors.DeadlockDetected):
+                return

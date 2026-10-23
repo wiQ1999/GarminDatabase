@@ -1,3 +1,4 @@
+import os
 import threading
 from datetime import date
 from types import SimpleNamespace
@@ -34,31 +35,33 @@ def test_indexes_migration_and_crash_marker(tmp_path):
     db.initialize()
     with db.connect() as c:
         profile = c.execute(
-            "INSERT INTO decoder_profiles(parser_name,parser_version,profile_version,options_json) VALUES('test','1','1','{}')"
-        ).lastrowid
+            "INSERT INTO decoder_profiles(parser_name,parser_version,profile_version,options_json) VALUES('test','1','1','{}') RETURNING id"
+        ).fetchone()[0]
         c.execute(
-            "INSERT INTO decode_runs(profile_id,started_at,status) VALUES(?,'test','running')",
+            "INSERT INTO decode_runs(profile_id,started_at,status) VALUES(%s,'test','running')",
             (profile,),
         )
     db.initialize()
     with db.connect() as c:
-        assert c.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert (
+            c.execute("SELECT max(version) FROM schema_migrations").fetchone()[0] == 3
+        )
         assert (
             c.execute("SELECT status FROM decode_runs").fetchone()[0] == "interrupted"
         )
+        c.execute("SET LOCAL enable_seqscan = off")
         plan = c.execute(
-            "EXPLAIN QUERY PLAN SELECT * FROM fit_fields WHERE field_definition_id=1 AND message_definition_id=1"
+            "EXPLAIN SELECT * FROM fit_fields WHERE field_definition_id=1 AND message_definition_id=1"
         ).fetchall()
-        assert any(
-            "SEARCH" in x[3] and "fields_definition_context" in x[3] for x in plan
-        )
+        assert any("fields_definition_context" in x[0] for x in plan)
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 def test_future_schema_is_refused(tmp_path):
     db = Database(tmp_path)
+    db.initialize()
     with db.connect() as c:
-        c.execute("PRAGMA user_version=99")
+        c.execute("INSERT INTO schema_migrations VALUES(99,'test',%s)", ("a" * 64,))
     with pytest.raises(ValueError):
         db.initialize()
 
@@ -220,7 +223,6 @@ def test_export_coverage_uses_the_same_read_snapshot(tmp_path):
     q = Queries(db)
     day = date(2024, 1, 1)
     with db.connect(readonly=True) as snapshot:
-        snapshot.execute("BEGIN")
         snapshot.execute("SELECT count(*) FROM import_days").fetchone()
         with db.connect() as writer:
             writer.execute(
@@ -230,6 +232,9 @@ def test_export_coverage_uses_the_same_read_snapshot(tmp_path):
         assert q.coverage(day, day)["missing_days"] == []
 
 
+@pytest.mark.skipif(
+    os.name != "nt", reason="Windows DPAPI integration requires Windows"
+)
 @pytest.mark.unit
 def test_corrupt_encrypted_session_fails(tmp_path):
     store = SessionStore(tmp_path / "session")

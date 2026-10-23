@@ -1,6 +1,6 @@
 # Plan realizacji i kryteria odbioru
 
-Stan 2026-10-11: zrealizowano rdzeń, importer, eksport i UI Windows. Historia jest w SQLite; testy jednostkowe, integracyjne, UI oraz uruchomienie paczki opisuje [instrukcja](12-running-and-testing.md). Poniższe etapy zachowują wymagania odbioru; etap Raspberry Pi/huba pozostaje przyszłym rozszerzeniem.
+Stan 2026-10-23: zrealizowano rdzeń, importer, eksport i UI Windows. Historia jest w PostgreSQL; testy jednostkowe, integracyjne, UI oraz uruchomienie paczki opisuje [instrukcja](12-running-and-testing.md). Poniższe etapy zachowują wymagania odbioru; etap Raspberry Pi/huba pozostaje przyszłym rozszerzeniem.
 
 ## Etap 0: próba źródła
 
@@ -10,9 +10,9 @@ Odbiór: dowód zgodności zawartości lub jednoznacznie opisane różnice zaakc
 
 ## Etap 1: dekoder i model danych
 
-Stan: przeskanowano całą pobraną historię i ustalono [schemat SQLite v1](10-sqlite-schema.md). Struktura jest odczytywana przez fitdecode 0.11.0, a aktualna semantyka korzysta z profilu Garmin FIT SDK 21.218.0. Wyniki, pokrycie i ograniczenia są w [analizie](08-fit-analysis.md). Importer, kontekst czasu, reguły profilu i zapis do SQLite są zaimplementowane i testowane.
+Historyczny etap analizy SQLite: przeskanowano całą pobraną historię. Obecnie używamy [schematu PostgreSQL v1](10-postgresql-schema.md). Struktura jest odczytywana przez fitdecode 0.11.0, a aktualna semantyka korzysta z profilu Garmin FIT SDK 21.218.0. Wyniki, pokrycie i ograniczenia są w [analizie](08-fit-analysis.md). Importer, kontekst czasu, reguły profilu i zapis do PostgreSQL są zaimplementowane i testowane.
 
-Wybrać parser FIT na podstawie pokrycia wiadomości z próbki. Zidentyfikować wszystkie pola, szczegółowość, jednostki, znaczniki czasu i podsumowania dostarczane przez Garmin. Potwierdzić interpretację czasu na przykładzie pobudki około 07:00, traktując to jako orientacyjny punkt kontrolny, nie sposób przesuwania danych. Zbudować schemat SQLite z pochodzeniem rekordów i ewidencją pól nieznanych. Przypiąć zależności i wersję profilu FIT.
+Wybrać parser FIT na podstawie pokrycia wiadomości z próbki. Zidentyfikować wszystkie pola, szczegółowość, jednostki, znaczniki czasu i podsumowania dostarczane przez Garmin. Potwierdzić interpretację czasu na przykładzie pobudki około 07:00, traktując to jako orientacyjny punkt kontrolny, nie sposób przesuwania danych. Zbudować schemat PostgreSQL z pochodzeniem rekordów i ewidencją pól nieznanych. Przypiąć zależności i wersję profilu FIT.
 
 Odbiór: każdy rekord/nieobsługiwany fragment ma rozliczalne pochodzenie, archiwum pozostaje niezmienione, ponowne przetworzenie nie duplikuje danych.
 
@@ -54,7 +54,7 @@ Aktualizacja pobranych dni, podział dużych eksportów, inne metryki lub trenin
 - Wznowienie po błędzie, po zapisaniu ZIP przed transakcją i po przerwaniu dekodowania.
 - Idempotencja ponownego przetwarzania oraz brak fałszywych duplikatów.
 - Poprawność JSON i zgodność eksportowanych wartości z bazą i źródłem.
-- `git check-ignore` dla archiwów, SQLite, sesji i eksportów; brak sekretów w logach.
+- `git check-ignore` dla archiwów, PostgreSQL, sesji i eksportów; brak sekretów w logach.
 
 ## Pozostałe niewiadome
 
