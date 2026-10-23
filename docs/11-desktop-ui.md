@@ -54,7 +54,7 @@ Zapamiętywać ostatnie ustawienia. Każdy eksport tworzy unikatowy folder `Garm
 
 ## Ustawienia, sesja i lokalizacje
 
-Formularz Garmin obejmuje e-mail, maskowane hasło i kod uwierzytelnienia, jeśli Garmin go wymaga. Hasło i kod MFA są używane do logowania, ale nie są zapisywane. Sesja umożliwia kolejne pobrania bez ponownego podawania hasła do czasu jej wygaśnięcia.
+Formularz Garmin obejmuje e-mail, maskowane hasło i kod uwierzytelnienia, jeśli Garmin go wymaga. Nad polami logowania znajduje się informacja, że dotyczą konta Garmin Connect, oraz klikalny adres `https://connect.garmin.com/`, otwierany w domyślnej przeglądarce. Hasło i kod MFA są używane do logowania, ale nie są zapisywane. Sesja umożliwia kolejne pobrania bez ponownego podawania hasła do czasu jej wygaśnięcia.
 
 Docelowe lokalizacje dla Windows:
 

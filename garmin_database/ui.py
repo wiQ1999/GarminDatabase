@@ -359,6 +359,14 @@ class Window(QMainWindow):
             "Parametry PostgreSQL bez hasła. Hasło: pgpass; puste pole: GARMIN_DATABASE_DSN / libpq."
         )
         form.addRow("Połączenie PostgreSQL", self.database_dsn)
+        garmin_account = QLabel(
+            "Login i hasło do konta "
+            '<a href="https://connect.garmin.com/" style="color:#4fa4f3;">'
+            "Garmin Connect (connect.garmin.com)</a>."
+        )
+        garmin_account.setOpenExternalLinks(True)
+        garmin_account.setWordWrap(True)
+        form.addRow(garmin_account)
         self.email = QLineEdit()
         form.addRow("E-mail Garmin", self.email)
         self.password = QLineEdit()
