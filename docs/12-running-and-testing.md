@@ -213,3 +213,11 @@ Pełny runner Windows przeszedł bez błędów i pominięć; coverage rdzenia/CL
 Build GUI/MCP jest w `dist/settings-refresh`; smoke GUI oraz zbudowanego MCP przeszedł, MCP zaliczył 10 ewaluacji i kontrolę pustego stderr. Sprawdzono wizualnie formularz i okno logowania; podglądy są w `test-results/settings-preview`. Wyniki: `test-results/settings-before.log` (odtworzony błąd), `test-results/settings-focused.log`, `test-results/settings-full-tests.log`, `test-results/settings-build.log` i `test-results/settings-mcp-smoke/mcp-smoke.json`.
 
 Radon: `Window.build_settings` ma złożoność 3 → 1, `Window.closeEvent` 7 → 5; `Window.login` 3 → 5 po dodaniu zabezpieczeń aktywnej próby. Nowe metody `LoginDialog` mają najwyżej 4. Raport: `test-results/settings-refactor.md`. Podział formularza i życia dialogu jest opisany nazwami metod; nie zwiększa zależności rdzenia od Qt.
+
+## Jawny kod MFA i ikona aplikacji — 2026-10-23
+
+Kod MFA jest widoczny podczas wpisywania w obu oknach kodu, natomiast hasło jest nadal maskowane. Na zlecenie użytkownika usunięto zapisaną sesję DPAPI przy zamkniętej aplikacji; ustawienia i dane pozostały na miejscu. Nie wykonywano prawdziwego logowania ani nie potwierdzono, że stara sesja była przyczyną niepowodzenia. Procedura resetu jest w [specyfikacji UI](11-desktop-ui.md#ustawienia-sesja-i-lokalizacje).
+
+Autorska ikona ma źródło w `garmin_database/resources/app-icon.svg`. Polecenie `.venv/Scripts/python.exe scripts/generate_app_icon.py` generuje PNG dla Qt i ICO z dziewięcioma rozmiarami 16–256 px. Wygenerowane pliki są wersjonowane; zwykły build nie wymaga ponownej generacji. `scripts/build.py` przekazuje ICO do obu programów i pakuje wszystkie zasoby ikony.
+
+Zaliczone 24 testy UI, Ruff i kontrola formatowania. Sprawdzono wizualnie ikonę w nagłówku i niezamaskowany syntetyczny kod MFA. Build GUI i MCP jest w `dist/app-icon`; smoke obu paczek poprawny, MCP zaliczył 10 ewaluacji i kontrolę pustego stderr. Oba EXE mają grupę ikon PE z dziewięcioma rozdzielczościami; PNG/ICO/SVG paczki GUI są identyczne ze źródłami. Raporty i podglądy: `test-results/app-icon-ui.log`, `test-results/app-icon-build.log`, `test-results/app-icon-preview` i `test-results/app-icon-mcp-smoke/mcp-smoke.json`. Pełnego runnera rdzenia nie powtarzano po tej zmianie UI i zasobów; jego poprzedni wynik opisano wyżej.

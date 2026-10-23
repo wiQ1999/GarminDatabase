@@ -161,7 +161,7 @@ class LoginDialog(QDialog):
         self.mfa_dialog = prompt
         prompt.setWindowTitle("Garmin — uwierzytelnienie")
         prompt.setLabelText("Podaj kod MFA")
-        prompt.setTextEchoMode(QLineEdit.EchoMode.Password)
+        prompt.setTextEchoMode(QLineEdit.EchoMode.Normal)
         prompt.finished.connect(self.mfa_finished)
         prompt.open()
 

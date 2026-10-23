@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (
 from .auth import GarminSource, SessionRequired, SessionStore
 from .chart import Chart, ChartView
 from .exporter import Exporter, ExportResult
-from .icons import icon, symbol
+from .icons import application_icon, icon, symbol
 from .login_dialog import LoginDialog
 from .mcp_config import client_config
 from .query import Queries
@@ -159,6 +159,7 @@ class Window(QMainWindow):
         self.query_serial = 0
         self.last_export_dir = None
         self.setWindowTitle("GarminDatabase")
+        self.setWindowIcon(application_icon())
         self.resize(1180, 800)
         self.setMinimumSize(900, 650)
         self.setStyleSheet(STYLE)
@@ -167,9 +168,16 @@ class Window(QMainWindow):
         row = QHBoxLayout(root)
         row.setContentsMargins(18, 18, 18, 18)
         nav = QVBoxLayout()
+        heading = QHBoxLayout()
+        heading.setSpacing(8)
+        brand_icon = QLabel()
+        brand_icon.setPixmap(self.windowIcon().pixmap(28, 28))
+        brand_icon.setAccessibleName("Ikona GarminDatabase")
+        heading.addWidget(brand_icon)
         brand = QLabel("GarminDatabase")
-        brand.setStyleSheet("font-size:21px;font-weight:600;padding:14px 4px;")
-        nav.addWidget(brand)
+        brand.setStyleSheet("font-size:18px;font-weight:600;padding:14px 0;")
+        heading.addWidget(brand)
+        nav.addLayout(heading)
         self.navigation = QListWidget()
         self.navigation.addItems(["Start", "Dane", "Eksport", "Ustawienia"])
         self.navigation.setFixedWidth(185)
@@ -901,7 +909,7 @@ class Window(QMainWindow):
             self,
             "Garmin — uwierzytelnienie",
             "Podaj kod MFA",
-            QLineEdit.EchoMode.Password,
+            QLineEdit.EchoMode.Normal,
         )
         self.worker.code = value if ok else None
         self.worker.mfa_ready.set()
@@ -1020,6 +1028,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     app = QApplication(sys.argv[:1])
     app.setApplicationName("GarminDatabase")
+    app.setWindowIcon(application_icon())
     try:
         settings = Settings.load(args.settings_file)
         if args.data_dir:

@@ -1,7 +1,14 @@
 """Small authored SVG symbols following the supplied Garmin visual references."""
 
+from pathlib import Path
+
 from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
+
+
+def application_icon():
+    return QIcon(str(Path(__file__).parent / "resources/app-icon.png"))
+
 
 SYMBOLS = {
     "heart": ("#ff626d", '<path d="M12 21 3 12C-3 4 7-1 12 6 17-1 27 4 21 12Z"/>'),
