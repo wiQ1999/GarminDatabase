@@ -54,7 +54,13 @@ Zapamiętywać ostatnie ustawienia. Każdy eksport tworzy unikatowy folder `Garm
 
 ## Ustawienia, sesja i lokalizacje
 
-Formularz Garmin obejmuje e-mail, maskowane hasło i kod uwierzytelnienia, jeśli Garmin go wymaga. Nad polami logowania znajduje się informacja, że dotyczą konta Garmin Connect, oraz klikalny adres `https://connect.garmin.com/`, otwierany w domyślnej przeglądarce. Hasło i kod MFA są używane do logowania, ale nie są zapisywane. Sesja umożliwia kolejne pobrania bez ponownego podawania hasła do czasu jej wygaśnięcia.
+Ustawienia mają trzy oddzielne sekcje: „Dane lokalne i PostgreSQL”, „Logowanie do Garmin Connect” i „Udostępnianie danych”. Przycisk „Wybierz…” jest na prawym końcu wiersza folderu danych. Przewijana zawartość nie zasłania dolnego przycisku „Zapisz ustawienia” ani komunikatu o zapisie. Zapis konfiguracji nie nadpisuje informacji o stanie logowania.
+
+Formularz Garmin obejmuje e-mail i maskowane hasło. Nad polami logowania znajduje się informacja, że dotyczą konta Garmin Connect, oraz klikalny adres `https://connect.garmin.com/`, otwierany w domyślnej przeglądarce. Po podaniu danych przycisk „Zaloguj do Garmin” otwiera osobne okno z animowanym wskaźnikiem i informacją o postępie. Logowanie ma własny worker, niezależny od importu i eksportu. Błąd pozostaje widoczny w tym oknie i przy formularzu; po powrocie i ponownym wpisaniu hasła można od razu rozpocząć kolejną próbę, bez restartu aplikacji. Każda próba tworzy nowego klienta Garmin. Hasło jest usuwane z pola po rozpoczęciu próby, a zamknięcie wątku zwalnia przechwytującą je funkcję.
+
+Jeśli Garmin wymaga kodu MFA, pojawia się osobne okno nad oknem logowania. Każde żądanie czeka na nowy kod, zerując poprzedni stan potwierdzenia. Anulowanie kodu anuluje logowanie. „Anuluj” lub zamknięcie okna logowania czeka na zakończenie bieżącego żądania sieciowego; wątku nie kończymy siłowo. Po zakończeniu można ponowić logowanie. Anulowana próba nie zastępuje wcześniej zapisanej sesji. Hasło i kod MFA są używane do logowania, ale nie są zapisywane. Sesja umożliwia kolejne pobrania bez ponownego podawania hasła do czasu jej wygaśnięcia.
+
+Punkty wejścia: `Window.build_settings` i `Window.login` w `garmin_database/ui.py`; okno postępu i MFA: `garmin_database/login_dialog.py`; ochrona sesji i sprawdzenie anulowania przed jej zapisem: `GarminSource.login` w `garmin_database/auth.py`.
 
 Docelowe lokalizacje dla Windows:
 

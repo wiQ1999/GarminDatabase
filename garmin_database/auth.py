@@ -7,7 +7,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 from .settings import application_dir
-from .util import atomic_write
+from .util import atomic_write, check_stop
 
 
 class SessionRequired(RuntimeError):
@@ -80,7 +80,9 @@ class GarminSource:
         for name in ("garminconnect", "requests", "urllib3", "curl_cffi"):
             logging.getLogger(name).setLevel(logging.CRITICAL)
 
-    def login(self, email=None, password=None, mfa=None):
+    def login(self, email=None, password=None, mfa=None, stop=None):
+        check_stop(stop)
+        self.api = None
         api = self.factory(
             email=email, password=password, prompt_mfa=mfa, retry_attempts=1
         )
@@ -92,6 +94,7 @@ class GarminSource:
             except FileNotFoundError:
                 raise SessionRequired() from None
             api.login(token)
+            check_stop(stop)
             self.store.save(api.client.dumps())
             self.api = api
         finally:

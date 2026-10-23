@@ -29,7 +29,7 @@ markers = ["unit: fast isolated rules", "integration: database and archive pipel
 
 [tool.coverage.run]
 source = ["garmin_database"]
-omit = ["garmin_database/ui.py", "garmin_database/chart.py", "garmin_database/icons.py", "garmin_database/__main__.py"]
+omit = ["garmin_database/ui.py", "garmin_database/login_dialog.py", "garmin_database/chart.py", "garmin_database/icons.py", "garmin_database/__main__.py"]
 
 [tool.coverage.report]
 show_missing = true

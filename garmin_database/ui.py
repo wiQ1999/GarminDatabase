@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QDateEdit,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
@@ -41,6 +42,7 @@ from .auth import GarminSource, SessionRequired, SessionStore
 from .chart import Chart, ChartView
 from .exporter import Exporter, ExportResult
 from .icons import icon, symbol
+from .login_dialog import LoginDialog
 from .mcp_config import client_config
 from .query import Queries
 from .settings import Settings, application_dir
@@ -66,6 +68,8 @@ QListWidget::item:selected { background:#164e7c; }
 QProgressBar { border:1px solid #303947; border-radius:5px; text-align:center; min-height:22px; }
 QProgressBar::chunk { background:#268ddf; }
 QToolTip { background:#252d3a; color:white; border:1px solid #4fa4f3; }
+QGroupBox { border:1px solid #303947; border-radius:8px; margin-top:12px; padding:16px; }
+QGroupBox::title { subcontrol-origin:margin; left:14px; padding:0 6px; color:#e9eef5; font-weight:600; }
 """
 
 
@@ -83,6 +87,8 @@ class Worker(QThread):
         self.code = None
 
     def ask_mfa(self):
+        self.code = None
+        self.mfa_ready.clear()
         self.mfa_requested.emit()
         while not self.mfa_ready.wait(0.2):
             check_stop(self.stop)
@@ -95,7 +101,10 @@ class Worker(QThread):
 
     def run(self):
         try:
-            self.success.emit(self.operation(self))
+            check_stop(self.stop)
+            result = self.operation(self)
+            check_stop(self.stop)
+            self.success.emit(result)
         except Cancelled:
             self.failure.emit("Zatrzymano. Ukończone dane zostały zachowane.")
         except Exception as error:
@@ -142,6 +151,7 @@ class Window(QMainWindow):
         with self.db.writer_lock():
             self.db.initialize()
         self.worker = None
+        self.login_dialog = None
         self.query_worker = None
         self.closing = False
         self.parameters = []
@@ -344,14 +354,51 @@ class Window(QMainWindow):
         )
         content = QWidget()
         layout = QVBoxLayout(content)
+        layout.setSpacing(16)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(content)
+        scroll.setStyleSheet("QScrollArea { border:0; }")
         outer.addWidget(scroll)
+        self.build_storage_settings(
+            self.settings_section(layout, "Dane lokalne i PostgreSQL")
+        )
+        self.build_login_settings(
+            self.settings_section(layout, "Logowanie do Garmin Connect")
+        )
+        self.build_sharing(self.settings_section(layout, "Udostępnianie danych"))
+        layout.addStretch()
+        footer = QHBoxLayout()
+        self.settings_status = QLabel()
+        self.settings_status.setWordWrap(True)
+        footer.addWidget(self.settings_status, 1)
+        self.save_button = button("Zapisz ustawienia", self.save_settings, True)
+        footer.addWidget(self.save_button)
+        outer.addLayout(footer)
+
+    def settings_section(self, layout, title):
+        group = QGroupBox(title)
+        section = QVBoxLayout(group)
+        section.setSpacing(12)
+        layout.addWidget(group)
+        return section
+
+    def build_storage_settings(self, layout):
         form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.data_path = QLineEdit(self.settings.data_dir)
-        form.addRow("Folder danych", self.data_path)
+        self.data_path.setCursorPosition(0)
+        folder_row = QHBoxLayout()
+        folder_row.addWidget(self.data_path, 1)
+        self.browse_data_button = button(
+            "Wybierz…", lambda: self.pick_folder(self.data_path)
+        )
+        self.browse_data_button.setAccessibleName("Wybierz folder danych")
+        self.browse_data_button.setToolTip("Wybierz folder danych")
+        folder_row.addWidget(self.browse_data_button)
+        form.addRow("Folder danych", folder_row)
         self.database_dsn = QLineEdit(self.settings.database_dsn)
+        self.database_dsn.setCursorPosition(0)
         self.database_dsn.setPlaceholderText(
             "host=localhost port=5432 dbname=garmin user=garmin"
         )
@@ -359,6 +406,17 @@ class Window(QMainWindow):
             "Parametry PostgreSQL bez hasła. Hasło: pgpass; puste pole: GARMIN_DATABASE_DSN / libpq."
         )
         form.addRow("Połączenie PostgreSQL", self.database_dsn)
+        layout.addLayout(form)
+        label = QLabel(
+            "Ustawienia: "
+            + str(self.settings_path or application_dir() / "settings.json")
+        )
+        label.setWordWrap(True)
+        label.setStyleSheet("color:#a3afbf;")
+        layout.addWidget(label)
+        layout.addWidget(QLabel("Strefa zakresu importu i wykresów: Europe/Warsaw"))
+
+    def build_login_settings(self, layout):
         garmin_account = QLabel(
             "Login i hasło do konta "
             '<a href="https://connect.garmin.com/" style="color:#4fa4f3;">'
@@ -366,20 +424,19 @@ class Window(QMainWindow):
         )
         garmin_account.setOpenExternalLinks(True)
         garmin_account.setWordWrap(True)
-        form.addRow(garmin_account)
+        layout.addWidget(garmin_account)
+        form = QFormLayout()
         self.email = QLineEdit()
         form.addRow("E-mail Garmin", self.email)
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow("Hasło Garmin", self.password)
         layout.addLayout(form)
-        layout.addWidget(
-            button("Wybierz folder danych", lambda: self.pick_folder(self.data_path))
-        )
-        self.save_button = button("Zapisz ustawienia", self.save_settings, True)
-        layout.addWidget(self.save_button)
         self.login_button = button("Zaloguj do Garmin", self.login)
-        layout.addWidget(self.login_button)
+        actions = QHBoxLayout()
+        actions.addWidget(self.login_button)
+        actions.addStretch()
+        layout.addLayout(actions)
         self.session_status = QLabel(
             (
                 "Zapisana sesja Garmin jest dostępna. Jej ważność zostanie sprawdzona przy pobraniu. "
@@ -390,18 +447,11 @@ class Window(QMainWindow):
         )
         self.session_status.setWordWrap(True)
         layout.addWidget(self.session_status)
-        label = QLabel(
-            "Ustawienia: "
-            + str(self.settings_path or application_dir() / "settings.json")
-        )
-        label.setWordWrap(True)
-        layout.addWidget(label)
-        layout.addWidget(QLabel("Strefa zakresu importu i wykresów: Europe/Warsaw"))
-        self.build_sharing(layout)
-        layout.addStretch()
 
     def build_sharing(self, layout):
-        layout.addWidget(QLabel("Udostępnianie danych — niezależny wybór parametrów"))
+        layout.addWidget(
+            QLabel("Niezależny wybór parametrów dla eksportu i lokalnego MCP.")
+        )
         self.mcp_enabled = QCheckBox("Zezwalaj na odczyt przez lokalny MCP")
         self.mcp_enabled.setChecked(self.settings.mcp_enabled)
         layout.addWidget(self.mcp_enabled)
@@ -723,7 +773,7 @@ class Window(QMainWindow):
         self.chart_message.setText(message)
 
     def start_work(self, operation):
-        if self.worker and self.worker.isRunning():
+        if self.work_is_running():
             return
         worker = Worker(operation, self)
         self.worker = worker
@@ -744,6 +794,9 @@ class Window(QMainWindow):
         self.stop_button.setEnabled(True)
         self.stage.setText("Rozpoczynanie…")
         worker.start()
+
+    def work_is_running(self):
+        return self.worker is not None and self.worker.isRunning()
 
     def on_progress(self, day, stage, index, total):
         self.progress.setRange(0, max(1, total))
@@ -772,10 +825,6 @@ class Window(QMainWindow):
             self.export_result.setText(
                 f"Folder: {result.directory}\nWygenerowano {len(result.files)} plików danych "
                 + f"({sum(result.files.values()) / 1024:.1f} KB). Historia: history; szczegóły: details."
-            )
-        if result == "login":
-            self.session_status.setText(
-                "Zalogowano. Sesja została zaszyfrowana i zapisana."
             )
 
     def work_finished(self):
@@ -813,6 +862,12 @@ class Window(QMainWindow):
         )
 
     def login(self):
+        if self.login_dialog is not None:
+            self.login_dialog.raise_()
+            self.login_dialog.activateWindow()
+            return
+        if self.work_is_running():
+            return
         email = self.email.text().strip()
         password = self.password.text()
         self.password.clear()
@@ -822,10 +877,24 @@ class Window(QMainWindow):
 
         def operation(w):
             source = GarminSource()
-            source.login(email, password, w.ask_mfa)
+            source.login(email, password, w.ask_mfa, stop=w.stop)
             return "login"
 
-        self.start_work(operation)
+        dialog = LoginDialog(Worker(operation), self)
+        self.login_dialog = dialog
+        dialog.status_changed.connect(self.session_status.setText)
+        dialog.finished.connect(self.login_closed)
+        dialog.open()
+        dialog.start()
+
+    def login_closed(self, result):
+        dialog = self.login_dialog
+        self.login_dialog = None
+        dialog.deleteLater()
+        if self.closing:
+            QTimer.singleShot(0, self.close)
+        elif not dialog.authenticated:
+            self.password.setFocus()
 
     def mfa(self):
         value, ok = QInputDialog.getText(
@@ -899,35 +968,48 @@ class Window(QMainWindow):
             self.settings = candidate
             self.db = db
             self.refresh()
-            self.session_status.setText("Ustawienia zapisane")
+            self.settings_status.setText("Ustawienia zapisane")
         except Exception as e:
             (
                 self.settings.data_dir,
                 self.settings.database_dsn,
                 self.settings.export_dir,
             ) = old
-            self.session_status.setText(
+            self.settings_status.setText(
                 "Nie można zapisać ustawień: " + type(e).__name__
             )
 
     def closeEvent(self, event):
-        if self.worker and self.worker.isRunning():
-            if (
-                not self.closing
-                and QMessageBox.question(
-                    self, "Trwa operacja", "Zatrzymać operację i zamknąć aplikację?"
-                )
-                != QMessageBox.StandardButton.Yes
-            ):
-                event.ignore()
-                return
-            self.closing = True
-            self.stop_work()
+        if self.cancel_active_login():
+            event.ignore()
+            return
+        if self.work_is_running():
+            self.confirm_stop_work()
             event.ignore()
             return
         if self.query_worker and self.query_worker.isRunning():
             self.query_worker.wait()
         event.accept()
+
+    def cancel_active_login(self):
+        dialog = self.login_dialog
+        if dialog is None or not dialog.worker.isRunning():
+            return False
+        self.closing = True
+        dialog.reject()
+        return True
+
+    def confirm_stop_work(self):
+        if (
+            not self.closing
+            and QMessageBox.question(
+                self, "Trwa operacja", "Zatrzymać operację i zamknąć aplikację?"
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        self.closing = True
+        self.stop_work()
 
 
 def main(argv=None):

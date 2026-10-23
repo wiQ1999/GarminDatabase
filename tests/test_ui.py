@@ -331,6 +331,158 @@ def test_mfa_worker_prompt(qtbot, tmp_path, monkeypatch):
     assert captured == ["123456"] and w.worker.code is None
 
 
+def test_worker_waits_for_a_fresh_code_on_each_mfa_request(qtbot):
+    captured = []
+    requested = []
+    worker = Worker(lambda w: captured.extend([w.ask_mfa(), w.ask_mfa()]))
+
+    def answer():
+        requested.append(True)
+        worker.code = str(len(requested)) * 6
+        worker.mfa_ready.set()
+
+    worker.mfa_requested.connect(answer)
+    with qtbot.waitSignal(worker.finished, timeout=3000):
+        worker.start()
+    worker.wait()
+    assert captured == ["111111", "222222"]
+    assert worker.code is None
+
+
+@pytest.mark.parametrize("error_kind", ["credentials", "network"])
+def test_login_failure_allows_a_new_attempt_without_restarting(
+    qtbot, tmp_path, monkeypatch, error_kind
+):
+    from garminconnect import GarminConnectAuthenticationError
+
+    attempts = []
+    release = threading.Event()
+
+    class Source:
+        def login(self, email, password, mfa, stop=None):
+            attempts.append((email, password))
+            if len(attempts) == 1:
+                error = (
+                    GarminConnectAuthenticationError
+                    if error_kind == "credentials"
+                    else RuntimeError
+                )
+                raise error("synthetic-private-detail")
+            assert release.wait(3)
+
+    monkeypatch.setattr("garmin_database.ui.GarminSource", Source)
+    w = window(qtbot, tmp_path)
+    w.email.setText("synthetic@example.invalid")
+    w.password.setText("wrong-synthetic-password")
+    w.login()
+    first = w.login_dialog
+    qtbot.waitUntil(lambda: not first.spinner.timer.isActive())
+    assert not first.authenticated and first.worker.operation is None
+    assert "synthetic-private-detail" not in first.message.text()
+    assert w.worker is None and w.password.text() == ""
+    first.reject()
+    assert w.login_dialog is None and w.login_button.isEnabled()
+    w.password.setText("new-synthetic-password")
+    w.login()
+    second = w.login_dialog
+    try:
+        assert second is not first and second.worker is not first.worker
+        assert second.isVisible() and second.spinner.timer.isActive()
+        angle = second.spinner.angle
+        qtbot.waitUntil(lambda: second.spinner.angle != angle)
+    finally:
+        release.set()
+    qtbot.waitUntil(lambda: not second.spinner.timer.isActive())
+    assert second.authenticated and second.worker.operation is None
+    assert "Zalogowano" in w.session_status.text()
+    second.reject()
+    assert len(attempts) == 2 and w.login_dialog is None
+    assert "synthetic-password" not in (tmp_path / "settings.json").read_text()
+
+
+def test_login_cancellation_waits_for_worker_and_allows_retry(
+    qtbot, tmp_path, monkeypatch
+):
+    started = threading.Event()
+    calls = []
+
+    class Source:
+        def login(self, email, password, mfa, stop=None):
+            calls.append(True)
+            started.set()
+            if len(calls) == 1:
+                assert stop.wait(3)
+
+    monkeypatch.setattr("garmin_database.ui.GarminSource", Source)
+    w = window(qtbot, tmp_path)
+    w.email.setText("synthetic@example.invalid")
+    w.password.setText("synthetic-password")
+    w.login()
+    first = w.login_dialog
+    qtbot.waitUntil(started.is_set)
+    first.close()
+    qtbot.waitUntil(lambda: w.login_dialog is None)
+    assert "anulowane" in w.session_status.text()
+    assert w.login_button.isEnabled()
+    w.password.setText("synthetic-password")
+    w.login()
+    second = w.login_dialog
+    qtbot.waitUntil(lambda: not second.spinner.timer.isActive())
+    assert second.authenticated and len(calls) == 2
+    second.reject()
+
+
+def test_login_mfa_cancel_then_fresh_codes_on_retry(qtbot, tmp_path, monkeypatch):
+    codes = []
+
+    class Source:
+        def login(self, email, password, mfa, stop=None):
+            codes.extend([mfa(), mfa()])
+
+    monkeypatch.setattr("garmin_database.ui.GarminSource", Source)
+    w = window(qtbot, tmp_path)
+    w.email.setText("synthetic@example.invalid")
+    w.password.setText("synthetic-password")
+    w.login()
+    first = w.login_dialog
+    qtbot.waitUntil(lambda: first.mfa_dialog is not None)
+    first.mfa_dialog.reject()
+    qtbot.waitUntil(lambda: w.login_dialog is None)
+    assert "anulowane" in w.session_status.text()
+    w.password.setText("synthetic-password")
+    w.login()
+    second = w.login_dialog
+    for code in ("123456", "654321"):
+        qtbot.waitUntil(lambda: second.mfa_dialog is not None)
+        second.mfa_dialog.setTextValue(code)
+        second.mfa_dialog.accept()
+    qtbot.waitUntil(lambda: not second.spinner.timer.isActive())
+    assert codes == ["123456", "654321"]
+    assert second.authenticated and second.worker.code is None
+    second.reject()
+
+
+def test_closing_window_cancels_login_before_destroying_the_worker(
+    qtbot, tmp_path, monkeypatch
+):
+    started = threading.Event()
+
+    class Source:
+        def login(self, email, password, mfa, stop=None):
+            started.set()
+            assert stop.wait(3)
+
+    monkeypatch.setattr("garmin_database.ui.GarminSource", Source)
+    w = window(qtbot, tmp_path)
+    w.email.setText("synthetic@example.invalid")
+    w.password.setText("synthetic-password")
+    w.login()
+    qtbot.waitUntil(started.is_set)
+    w.close()
+    qtbot.waitUntil(lambda: not w.isVisible())
+    assert w.login_dialog is None
+
+
 def test_missing_session_is_explained_in_settings_and_worker(
     qtbot, tmp_path, monkeypatch
 ):
@@ -395,6 +547,6 @@ def test_postgresql_password_is_not_persisted_from_ui(qtbot, tmp_path):
     w.database_dsn.setText("host=localhost dbname=garmin password=private-secret")
     w.save_settings()
     assert w.db is original_db
-    assert "ValueError" in w.session_status.text()
-    assert "private-secret" not in w.session_status.text()
+    assert "ValueError" in w.settings_status.text()
+    assert "private-secret" not in w.settings_status.text()
     assert (tmp_path / "settings.json").read_bytes() == previous

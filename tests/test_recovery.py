@@ -309,6 +309,23 @@ def test_missing_session_has_actionable_error_without_api_login(tmp_path):
     assert calls == []
 
 
+@pytest.mark.unit
+def test_cancelled_login_does_not_replace_the_previous_session(tmp_path):
+    stop = threading.Event()
+    store = SessionStore(tmp_path / "session.bin", lambda value, decrypt=False: value)
+    store.save("previous-synthetic-session")
+    api = SimpleNamespace(
+        password="synthetic-password",
+        login=lambda token: stop.set(),
+        client=SimpleNamespace(dumps=lambda: "new-synthetic-session"),
+    )
+    source = GarminSource(store, lambda **kwargs: api)
+    with pytest.raises(Cancelled):
+        source.login("synthetic@example.invalid", "synthetic-password", stop=stop)
+    assert store.load() == "previous-synthetic-session"
+    assert source.api is None and api.password is None
+
+
 @pytest.mark.integration
 def test_missing_session_is_not_retried_as_network_error(tmp_path):
     class Source:
