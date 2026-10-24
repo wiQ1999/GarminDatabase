@@ -45,6 +45,7 @@ Pamięć projektu utrzymuj jako aktualne decyzje i ograniczenia, nie dziennik se
 - `trend.linear_trend`: regresja względem rzeczywistego czasu, skończone wartości, minimum dwa różne czasy. Przerywana linia tylko w UI, bez zmiany danych i JSON. `time_axis` dobiera podpisy Europe/Warsaw i offset DST po pomiarze szerokości, z odstępem co najmniej 12 px.
 - Eksport v2: strumieniowy i atomowy per plik, nowy folder z datą/czasem, manifest, `history/{parametr}.json`, `details/{parametr}.json`. Nie usuwać starych eksportów, nie tworzyć recent.json ani pełnych próbek w historii. `full_samples` jest ignorowane, `summary_period` wybiera dzień/miesiąc. `ExportResult` zwraca folder i rozmiary.
 - Ponowienia respektują Retry-After w sekundach i HTTP-date. 401/403/429 zatrzymują pobieranie. Oczekiwanie przez Event.wait, aby można było zatrzymać operację.
+- `not_found_unverified` po HTTP 404 pozostaje nierozstrzygnięty także przy wznowieniu: bez ponownego żądania, ale z komunikatem i niezerowym wynikiem. Importer emituje bezpieczne szczegóły błędu FIT po rollbacku; UI rozwija szczegóły również po wyniku liczbowym z błędami. Kontrakt: [docs/04-synchronization.md](docs/04-synchronization.md).
 
 ## Walidacja i workflow
 

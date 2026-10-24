@@ -236,6 +236,7 @@ class Window(QMainWindow):
         self.progress.setValue(0)
         layout.addWidget(self.progress)
         self.stage = QLabel("Gotowe do pracy")
+        self.stage.setWordWrap(True)
         layout.addWidget(self.stage)
         self.stop_button = button("Zatrzymaj", self.stop_work)
         self.stop_button.setEnabled(False)
@@ -603,6 +604,9 @@ class Window(QMainWindow):
 
     def toggle_details(self):
         self.details.setVisible(not self.details.isVisible())
+        self.details_button.setText(
+            "Ukryj szczegóły" if self.details.isVisible() else "Pokaż szczegóły"
+        )
 
     def pick_folder(self, field):
         folder = QFileDialog.getExistingDirectory(self, "Wybierz folder", field.text())
@@ -801,6 +805,7 @@ class Window(QMainWindow):
             b.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.stage.setText("Rozpoczynanie…")
+        self.details.clear()
         worker.start()
 
     def work_is_running(self):
@@ -821,13 +826,18 @@ class Window(QMainWindow):
         self.stage.setText(message)
         self.details.append(message)
         self.details.show()
+        self.details_button.setText("Ukryj szczegóły")
 
     def on_success(self, result):
         self.stage.setText(
             "Ukończono"
             if not isinstance(result, int) or result == 0
-            else f"Ukończono z błędami: {result}"
+            else f"Błędy lub nierozstrzygnięte dni/pliki: {result}. Sprawdź szczegóły operacji."
         )
+        self.details.append(self.stage.text())
+        if isinstance(result, int) and result > 0:
+            self.details.show()
+            self.details_button.setText("Ukryj szczegóły")
         if isinstance(result, ExportResult):
             self.last_export_dir = result.directory
             self.export_result.setText(

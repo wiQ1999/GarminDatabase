@@ -255,6 +255,12 @@ class Importer:
                             (fid,),
                         )
                         conn.commit()
+                        progress(
+                            day,
+                            f"Błąd importu FIT — {type(error).__name__}. Archiwum ZIP zachowano; nieukończony zapis FIT wycofano.",
+                            index + 1,
+                            len(entries),
+                        )
                 conn.execute(
                     "UPDATE decode_runs SET finished_at=%s,status=%s WHERE id=%s",
                     (utc_now(), "partial" if failed else "complete", run),

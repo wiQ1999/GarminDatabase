@@ -5,7 +5,7 @@ from email.utils import parsedate_to_datetime
 from io import BytesIO
 from zipfile import ZipFile
 
-from .auth import SessionRequired
+from .auth import LoginFailed, SessionRequired
 from .importer import Importer
 from .util import Cancelled, atomic_write, check_stop, dates, utc_now
 
@@ -36,6 +36,23 @@ def validate_zip(payload):
         if z.testzip() is not None:
             raise ValueError("Nieprawidłowy CRC ZIP")
         return bool([x for x in z.infolist() if not x.is_dir()])
+
+
+def download_error_message(error, status):
+    """Explain failures without exposing upstream responses or credentials."""
+    if isinstance(error, (SessionRequired, LoginFailed)):
+        return str(error)
+    explanations = {
+        401: "Sesja Garmin wygasła lub została odrzucona. Zaloguj się w Ustawieniach. Pobieranie zatrzymano.",
+        403: "Garmin odmówił dostępu do archiwum. Pobieranie zatrzymano.",
+        404: "Garmin nie zwrócił archiwum dla tej daty. Dzień pozostaje nierozstrzygnięty; sprawdzam kolejne dni.",
+        429: "Garmin ograniczył liczbę żądań. Pobieranie zatrzymano; odczekaj przed wznowieniem.",
+    }
+    code = f"HTTP {status}" if status is not None else type(error).__name__
+    explanation = explanations.get(
+        status, "Nie udało się pobrać lub zweryfikować ZIP z Garmin."
+    )
+    return f"Błąd pobierania — {code}: {explanation}"
 
 
 def retry_after(error, fallback, now=None):
@@ -147,6 +164,14 @@ class Sync:
                     "not_found_unverified",
                     "no_data_confirmed",
                 }:
+                    if old["download_status"] == "not_found_unverified":
+                        errors += 1
+                        progress(
+                            text,
+                            "Nierozstrzygnięty dzień — poprzednio HTTP 404. Pominięto ponowne żądanie; nie potwierdzono braku danych.",
+                            index,
+                            len(requested),
+                        )
                     continue
                 next_wait = self.delay
                 for attempt in range(3):
@@ -179,9 +204,7 @@ class Sync:
                             )
                         progress(
                             text,
-                            str(error)
-                            if isinstance(error, SessionRequired)
-                            else f"Błąd {status or type(error).__name__}",
+                            download_error_message(error, status),
                             index,
                             len(requested),
                         )

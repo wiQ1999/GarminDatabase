@@ -353,6 +353,55 @@ def test_missing_session_is_not_retried_as_network_error(tmp_path):
 
 
 @pytest.mark.integration
+def test_404_is_explained_and_next_day_downloads_then_resume_reports_unresolved(
+    tmp_path,
+):
+    from fixtures import zip_bytes
+
+    class Source:
+        calls = []
+
+        def download_health_snapshot(self, day):
+            self.calls.append(day)
+            if day == "2024-01-01":
+                error = RuntimeError("private-token private-response")
+                error.response = SimpleNamespace(status_code=404)
+                raise error
+            return zip_bytes()
+
+    source = Source()
+    db = Database(tmp_path)
+    stages = []
+
+    def progress(day, stage, i, total):
+        stages.append(stage)
+
+    sync = Sync(db, source, 0)
+    begin, end = date(2024, 1, 1), date(2024, 1, 2)
+    assert sync.run(begin, end, threading.Event(), progress) == 1
+    assert source.calls == ["2024-01-01", "2024-01-02"]
+    assert any("HTTP 404" in stage and "nierozstrzygnięty" in stage for stage in stages)
+    assert not any("private" in stage for stage in stages)
+    assert db.status()["archives"] == 1
+    stages.clear()
+    assert sync.run(begin, end, threading.Event(), progress) == 1
+    assert len(source.calls) == 2
+    assert any("poprzednio HTTP 404" in stage for stage in stages)
+    assert db.status()["days"] == {"not_found_unverified": 1, "downloaded": 1}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("status", [401, 403, 429, 503, None])
+def test_download_error_details_exclude_private_response(status):
+    from garmin_database.sync import download_error_message
+
+    message = download_error_message(RuntimeError("private-token"), status)
+    assert "private" not in message
+    assert "Błąd pobierania" in message
+    assert (f"HTTP {status}" if status else "RuntimeError") in message
+
+
+@pytest.mark.integration
 def test_reimport_does_not_add_fictitious_decode_history(tmp_path):
     db = Database(tmp_path)
     db.initialize()

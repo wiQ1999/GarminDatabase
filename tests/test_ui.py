@@ -291,6 +291,28 @@ def test_ui_export_and_settings(qtbot, tmp_path):
     assert w.export_button.isEnabled()
 
 
+def test_failed_days_show_details_and_summary_after_worker_finishes(qtbot, tmp_path):
+    w = window(qtbot, tmp_path)
+    w.details.append("Poprzednia operacja")
+
+    def operation(worker):
+        worker.progress.emit("2024-01-01", "Błąd pobierania — HTTP 404", 1, 2)
+        worker.progress.emit("2024-01-02", "import", 2, 2)
+        return 1
+
+    w.start_work(operation)
+    qtbot.waitUntil(lambda: not w.stop_button.isEnabled(), timeout=5000)
+    assert w.details.isVisible()
+    assert "HTTP 404" in w.details.toPlainText()
+    assert "nierozstrzygnięte" in w.stage.text()
+    assert w.stage.text() in w.details.toPlainText()
+    assert "Poprzednia operacja" not in w.details.toPlainText()
+    assert w.details_button.text() == "Ukryj szczegóły"
+    w.toggle_details()
+    assert not w.details.isVisible()
+    assert w.details_button.text() == "Pokaż szczegóły"
+
+
 def test_worker_cancel(qtbot):
     from garmin_database.util import Cancelled
 

@@ -27,6 +27,10 @@ Sprawdzać cały zakres od 2024-01-01: nie kończyć wyszukiwania przy pierwszym
 
 Nie logować odpowiedzi zawierających zdrowotne dane, hasła, kody MFA, ciasteczka ani tokeny. W panelu szczegółów UI oraz przyszłym trybie bez UI wystarczą data, etap, status i bezpieczny kod błędu.
 
+HTTP 404 jest opisywane jako brak zwróconego archiwum dla konkretnej daty, bez rozstrzygania, czy konto nie ma wtedy danych. Synchronizacja sprawdza kolejne dni. Przy wznowieniu zapisany `not_found_unverified` nie wysyła ponownego żądania, ale pozostaje w liczbie nierozstrzygniętych dni i otrzymuje osobny komunikat w szczegółach. Nie wolno prezentować takiego wznowienia jako pełnego sukcesu.
+
+Błąd importu FIT emituje komunikat z datą, numerem pliku w archiwum i klasą błędu; oryginalny ZIP pozostaje zachowany, a nieukończona transakcja FIT jest wycofana. Po zakończeniu z błędami lub nierozstrzygniętymi dniami UI automatycznie rozwija szczegóły i dopisuje podsumowanie. Nowa operacja czyści panel poprzedniej operacji.
+
 „Pobierz dane” wykonuje pobieranie i import do PostgreSQL. Osobna operacja ponownego przetwarzania korzysta wyłącznie z lokalnych ZIP. Pasek postępu pokazuje aktualny dzień, etap i licznik ukończonych dni. „Zatrzymaj” bezpiecznie kończy pracę z zachowaniem transakcji i postępu. Zamknięcie okna podczas pracy wymaga potwierdzenia zatrzymania i wyjścia. Zwykłe zamknięcie kończy aplikację; pierwsza wersja nie pracuje w zasobniku ani według harmonogramu. Szczegóły w [specyfikacji UI](11-desktop-ui.md).
 
 ## Logowanie

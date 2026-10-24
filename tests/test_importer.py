@@ -68,7 +68,17 @@ def test_bad_crc_has_no_partial_rows(tmp_path):
     db.initialize()
     raw = fit_bytes()
     raw = raw[:-1] + bytes([raw[-1] ^ 1])
-    assert Importer(db).archive(archive(tmp_path, payload=raw)) == 1
+    stages = []
+    assert (
+        Importer(db).archive(
+            archive(tmp_path, payload=raw),
+            progress=lambda day, stage, index, total: stages.append(stage),
+        )
+        == 1
+    )
+    assert any(
+        "Błąd importu FIT" in stage and "FitCRCError" in stage for stage in stages
+    )
     assert db.status()["messages"] == 0
 
 
