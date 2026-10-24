@@ -6,7 +6,7 @@ Ten katalog opisuje aktualny stan aplikacji, jej kontrakty, wymagania, cele rozw
 | --- | --- |
 | [Cel i wymagania](01-requirements.md) | Obsługiwany zakres, ograniczenia i kierunki rozwoju |
 | [Źródło danych](02-source-validation.md) | Archiwa Garmin, format FIT, granice interpretacji i weryfikacja zgodności |
-| [Architektura](03-architecture.md) | Moduły, przepływ danych, trwałość, wspólny odczyt eksportu i MCP |
+| [Architektura](03-architecture.md) | Clean Architecture, reguły zależności, moduły, przepływ danych, trwałość, wspólny odczyt eksportu i MCP |
 | [Synchronizacja](04-synchronization.md) | Pobieranie, wznowienie, logowanie, stany i obsługa błędów |
 | [Eksport JSON](05-export.md) | Kontrakt v2, agregacje, kompletność i wybór parametrów |
 | [Schemat PostgreSQL](10-postgresql-schema.md) | Tabele, migracje, typy, czas, deduplikacja i podsumowania |

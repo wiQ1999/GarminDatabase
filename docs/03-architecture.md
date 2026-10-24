@@ -1,4 +1,64 @@
-# Architektura i przechowywanie
+# Clean Architecture i przechowywanie
+
+## Warstwy i zależności
+
+Projekt stosuje Clean Architecture. Pakiet Pythona znajduje się w `src/garmin_database`, a testy w `tests/`. Reguły danych i przypadki użycia są niezależne od PostgreSQL, Qt, SDK Garmin i SDK MCP. Zewnętrzne technologie realizują kontrakty wymagane przez aplikację. Zależności przekazuje się przez konstruktory; składanie obiektów odbywa się w `bootstrap/`.
+
+```mermaid
+flowchart TD
+    B[Bootstrap: składanie procesów] --> I[Adaptery wejściowe: GUI, CLI, MCP]
+    B --> O[Adaptery wyjściowe: PostgreSQL, Garmin, FIT, pliki, DPAPI]
+    I --> A[Application: przypadki użycia i porty]
+    O --> A
+    A --> D[Domain: reguły i wartości]
+```
+
+Strzałki oznaczają zależności kodu. W czasie wykonania przypadek użycia wywołuje port, którego implementację dostarcza adapter. Nie tworzy połączenia SQL ani klienta Garmin.
+
+```text
+src/garmin_database/
+  domain/                 wartości, czas, anulowanie i czyste agregacje
+  application/
+    ports.py              kontrakty odczytu, importu, archiwów i eksportu
+    settings.py           model ustawień i reguły udostępniania
+    read_models.py        wybór parametrów i opisy agregacji
+    dto.py                wyniki operacji bez zależności technicznych
+    use_cases/            synchronizacja, logowanie, odczyt i eksport
+  adapters/
+    inbound/
+      desktop/            okno, dialog MFA, workery i wykresy Qt
+      cli/                argumenty poleceń i prezentacja wyników
+      mcp/                protokół stdio, walidacja wejścia, konfiguracja klienta
+    outbound/
+      postgres/           transakcje, SQL, import, snapshoty i cache
+      fit/                interpretacja fizycznych ramek i publiczny profil FIT
+      garmin/             klient sieciowy i klasyfikacja błędów dostawcy
+      filesystem/         ZIP, ustawienia JSON i atomowy eksport
+      security/           magazyn sesji Windows DPAPI
+      diagnostics/        bezpieczne komunikaty startowe
+  bootstrap/              niezależne punkty wejścia GUI, CLI i MCP
+  resources/              migracje SQL oraz ikony
+tests/
+  unit/                   reguły i przypadki użycia z atrapami portów
+  integration/            prawdziwy PostgreSQL, FIT, zapis plików i rollback
+  contracts/              kontrakt MCP, polityka i rzeczywisty transport stdio
+  ui/                     zachowanie aplikacji Qt
+  architecture/           automatyczne reguły zależności
+  support/                syntetyczne generatory FIT/ZIP
+schema/                   referencyjny SQL identyczny z zasobami pakietu
+scripts/                  narzędzia deweloperskie; entrypoints/ dla PyInstaller
+docs/                     aktualna dokumentacja produktu
+local-runtime/            ignorowane launchery i lokalna sesja kolektora
+local-notes/               ignorowane analizy i jednorazowe materiały administracyjne
+test-results/             ignorowane wyniki testów i coverage
+build/, dist/             ignorowane pliki budowania i dystrybucje
+```
+
+`domain` korzysta wyłącznie z biblioteki standardowej. `application` może importować domenę i własne kontrakty, lecz nie adaptery ani biblioteki dostawców. Adaptery wejściowe nie importują adapterów wyjściowych. Adaptery wyjściowe nie importują GUI, CLI ani MCP. Testy w `tests/architecture/` egzekwują te granice, a osobny test sprawdza brak Qt, klienta Garmin i dekoderów FIT po złożeniu procesu MCP.
+
+Port odczytu udostępnia cały spójny snapshot, a nie niezależne repozytoria otwierające osobne transakcje. Port importu zachowuje atomowość jednego FIT; adapter PostgreSQL odpowiada za rollback, blokady i rewizję. Przypadek użycia eksportu wybiera dozwolone parametry w snapshotcie, a adapter plikowy zapisuje JSON. Te same czyste reguły agregacji obowiązują w eksporcie i MCP.
+
+`bootstrap/desktop.py`, `bootstrap/cli.py` i `bootstrap/mcp.py` są niezależnymi punktami uruchomienia. MCP składa wyłącznie zależności odczytowe, nie inicjalizuje bazy, nie ładuje Qt ani usług importu i nie uruchamia GUI. Jest osobnym procesem EXE w tej samej dystrybucji. CLI korzysta z tych samych operacji co GUI bez importowania Qt.
 
 ## Przepływ
 
@@ -18,7 +78,7 @@ Pobieranie, dekodowanie i eksport to odrębne operacje. Zmiana parsera nie wymag
 ```text
 data/
   raw/YYYY-MM-DD.zip
-private/                 # lokalne zasoby wdrożenia; poza Git
+local-runtime/                 # lokalne zasoby wdrożenia; poza Git
 exports/GarminDatabase_DATA_CZAS/  # osobny pakiet: history/, details/, manifest.json
 logs/                    # log techniczny, bez wartości zdrowotnych i sekretów
 ```
@@ -43,7 +103,7 @@ Model opisuje [schemat PostgreSQL](10-postgresql-schema.md), a jego wykonywalne 
 
 Model rozdziela daty pobrania, oryginalne archiwa, wystąpienia FIT w ZIP, unikatowe treści FIT, przebiegi dekodowania, definicje wiadomości i pól, wiadomości danych oraz wartości pól. Katalog profilu przechowuje rozpoznane nazwy, jednostki i reguły dekodowania; pola nieznane pozostają w bazie pod identyfikatorami źródłowymi. Wartości skalarne mają typowane kolumny, tablice i struktury — JSON. Nie powielamy wartości dla rozwiniętych komponentów.
 
-Migracja 003 dodaje odtwarzalną warstwę podsumowań. `summaries.py` liczy małe zestawienia dzienne na podstawie spójnego odczytu źródeł. Cache zapisuje osobnym połączeniem tylko wtedy, gdy nie trwa import i numer rewizji danych jest nadal ten sam. Zajęty writer albo nowy import nie unieważnia samego eksportu: wyniki odpowiadają jego wcześniejszemu obrazowi bazy. `v_current_daily_summaries` ukrywa nieaktualne cache; ponowny odczyt je odbudowuje. Podsumowania miesięczne powstają z dziennych i nie wymagają dodatkowej trwałej kopii.
+Migracja 003 dodaje odtwarzalną warstwę podsumowań. `domain/aggregation.py` i adapter `adapters/outbound/postgres/summaries.py` liczy małe zestawienia dzienne na podstawie spójnego odczytu źródeł. Cache zapisuje osobnym połączeniem tylko wtedy, gdy nie trwa import i numer rewizji danych jest nadal ten sam. Zajęty writer albo nowy import nie unieważnia samego eksportu: wyniki odpowiadają jego wcześniejszemu obrazowi bazy. `v_current_daily_summaries` ukrywa nieaktualne cache; ponowny odczyt je odbudowuje. Podsumowania miesięczne powstają z dziennych i nie wymagają dodatkowej trwałej kopii.
 
 Identyczny FIT obecny w kilku archiwach ma jedną reprezentację danych i wiele powiązań pochodzenia. Wartość identyfikuje klucz `(message_id, field_definition_id)`; definicja zachowuje przestrzeń nazw i indeks deweloperski w kontekście pliku. Indeksy obejmują czas, parametr, kategorię i hash pliku. Szczegółowe reguły integralności, czasu, ponownego przetwarzania i widoki są opisane w specyfikacji schematu.
 
@@ -58,15 +118,15 @@ Identyczny FIT obecny w kilku archiwach ma jedną reprezentację danych i wiele 
 
 ## Wspólny odczyt eksportu i MCP
 
-`data_access.py` jest wspólną warstwą wyboru parametrów, opisu agregacji i odczytu podsumowań. `DataAccess.snapshot` otwiera jedno połączenie PostgreSQL `REPEATABLE READ READ ONLY`, katalog i rewizję. Wszystkie metryki oraz metadane kompletności jednej odpowiedzi korzystają z tego samego obrazu. Eksporter ponownie rozwiązuje klucze do aktualnych opisów katalogu, więc podanie własnych identyfikatorów pól lub skalowania nie omija wyboru użytkownika.
+`application/read_models.py` definiuje wspólny wybór parametrów i opis agregacji, a adapter `adapters/outbound/postgres/readings.py` realizuje odczyt podsumowań. `DataAccess.snapshot` otwiera jedno połączenie PostgreSQL `REPEATABLE READ READ ONLY`, katalog i rewizję. Wszystkie metryki oraz metadane kompletności jednej odpowiedzi korzystają z tego samego obrazu. Eksporter ponownie rozwiązuje klucze do aktualnych opisów katalogu, więc podanie własnych identyfikatorów pól lub skalowania nie omija wyboru użytkownika.
 
 Eksport i MCP używają tych samych jednostek, reguł wykluczenia próbek, granic dni i niezaokrąglonych obliczeń. `period_summary` łączy średnie dni z wagą `valid_count`; korzysta z niego zarówno eksport miesięczny, jak i odczyt całego okresu. Źródłowe podsumowania Garmin, kategorie i liczniki nadal zachowują dotychczasowe znaczenie w plikach. MCP v1 obsługuje wyłącznie pięć jawnych `MEAN_PARAMETERS`, bez zgadywanych aliasów nocnego HRV lub tętna spoczynkowego.
 
 `Summaries.daily(..., publish_cache=False)` odczytuje aktualny cache albo liczy wynik bez jego publikacji. MCP używa wyłącznie tego trybu i nie inicjalizuje/migruje bazy. Nie korzysta z sesji Garmin ani sieci Garmin. Eksport może publikować cache przez dodatkowe połączenie według dotychczasowych zasad rewizji i blokady writera. Rdzeń odczytu nie importuje Qt ani SDK MCP.
 
-`mcp_data.py` zapewnia wybór metryk, kontrolę zapisanych ustawień przed i po odczycie, lokalne formatowanie czasu oraz limity. Zmiana bazy, rewizji danych lub polityki MCP unieważnia kursor powiązany z zapytaniem i podpisany kluczem procesu. Restart procesu także unieważnia kursory. Nie utrzymujemy otwartej transakcji między stronami. Po unieważnieniu klient rozpoczyna zapytanie od początku, aby nie łączyć różnych obrazów danych.
+`application/use_cases/read_health.py` zapewnia wybór metryk, kontrolę zapisanych ustawień przed i po odczycie, lokalne formatowanie czasu oraz limity. Zmiana bazy, rewizji danych lub polityki MCP unieważnia kursor powiązany z zapytaniem i podpisany kluczem procesu. Restart procesu także unieważnia kursory. Nie utrzymujemy otwartej transakcji między stronami. Po unieważnieniu klient rozpoczyna zapytanie od początku, aby nie łączyć różnych obrazów danych.
 
-`mcp_server.py` jest adapterem oficjalnego SDK `mcp==1.28.0`, uruchamianym przez `mcp_stdio.py`. Używa lokalnego transportu `stdio`: klient uruchamia proces, a standardowe wyjście zawiera tylko protokół. Wynik jest w `structuredContent`; krótka część tekstowa nie powiela danych. Schematy wejściowe odrzucają dodatkowe pola, wymagają jawnych metryk, a wszystkie narzędzia są oznaczone jako odczytowe. Wyjątki techniczne są zastępowane krótkimi komunikatami bez danych i surowego SQL. Pojedynczy proces wykonuje jedno zapytanie danych naraz; anulowanie sygnalizuje przerwanie obliczeń i zapytania PostgreSQL przez anulowanie sterownika i statement_timeout.
+`adapters/inbound/mcp/server.py` jest adapterem oficjalnego SDK `mcp==1.28.0`, uruchamianym przez `scripts/entrypoints/mcp_stdio.py`. Używa lokalnego transportu `stdio`: klient uruchamia proces, a standardowe wyjście zawiera tylko protokół. Wynik jest w `structuredContent`; krótka część tekstowa nie powiela danych. Schematy wejściowe odrzucają dodatkowe pola, wymagają jawnych metryk, a wszystkie narzędzia są oznaczone jako odczytowe. Wyjątki techniczne są zastępowane krótkimi komunikatami bez danych i surowego SQL. Pojedynczy proces wykonuje jedno zapytanie danych naraz; anulowanie sygnalizuje przerwanie obliczeń i zapytania PostgreSQL przez anulowanie sterownika i statement_timeout.
 
 Warstwa nie udostępnia operacji zapisu, SQL, plików FIT ani zdalnego HTTP. Obsługa aktywności, źródłowych podsumowań nocnych, okien godzinowych, median, odchylenia standardowego i porównywania okresów pozostaje późniejszym zakresem. Statystyki opisują obserwacje i nie zawierają interpretacji medycznej. Kontrakt narzędzi i uruchamianie opisuje [instrukcja](12-running-and-testing.md).
 

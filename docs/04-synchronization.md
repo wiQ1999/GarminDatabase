@@ -40,10 +40,10 @@ Logowanie odbywa się w formularzu ustawień Windows: e-mail, maskowane hasło i
 ## Polecenia realizowane przez moduł CLI
 
 ```text
-python -m garmin_database.cli sync
-python -m garmin_database.cli sync --from 2024-01-01 --to 2026-09-30
-python -m garmin_database.cli status
-python -m garmin_database.cli reprocess --from 2024-01-01
+python -m garmin_database.bootstrap.cli sync
+python -m garmin_database.bootstrap.cli sync --from 2024-01-01 --to 2026-09-30
+python -m garmin_database.bootstrap.cli status
+python -m garmin_database.bootstrap.cli reprocess --from 2024-01-01
 ```
 
 `sync` nadgania brakujące dni do wczoraj. `reprocess` działa wyłącznie na lokalnych archiwach. Aktualizowanie archiwów przez ponowne pobranie to osobny, późniejszy etap.

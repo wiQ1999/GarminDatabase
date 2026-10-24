@@ -17,7 +17,7 @@ Aplikacja wymaga **PostgreSQL 16+**. Serwer działa osobno i nie jest częścią
 
 Najpierw [przygotuj PostgreSQL i połączenie](docs/13-postgresql-setup.md). Użytkownik paczki Windows uruchamia `GarminDatabase.exe`, zachowując cały folder dystrybucji z `_internal`. W Ustawieniach konfiguruje folder danych, połączenie i logowanie Garmin, a następnie wybiera „Pobierz dane”.
 
-Ze źródeł: `python -m garmin_database`. Instalację zależności, CLI, build i testy opisuje [instrukcja uruchamiania](docs/12-running-and-testing.md). Szczegóły istniejącej lokalnej instalacji i jej launchera znajdują się w ignorowanym `private/README-local.md`.
+Kod ma układ `src/` i stosuje [Clean Architecture](docs/03-architecture.md). Ze źródeł: po instalacji `python -m pip install -e .` uruchom `python -m garmin_database`. Instalację zależności, CLI, build i testy opisuje [instrukcja uruchamiania](docs/12-running-and-testing.md). Szczegóły istniejącej lokalnej instalacji i jej launchera znajdują się w ignorowanym `local-runtime/README-local.md`.
 
 Hasło PostgreSQL dostarcza pgpass lub środowisko procesu. Dane, sesje i eksporty są poza Git; wykluczenie z repozytorium nie zastępuje ochrony nośnika ani kopii zapasowej.
 

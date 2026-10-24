@@ -4,6 +4,8 @@ Aplikacja Windows i rdzeń bez UI używają wyłącznie PostgreSQL 16+. Ten sam 
 
 ## Uruchomienie
 
+Projekt ma układ `src/`. Przed uruchomieniem źródeł, testów lub budowania zainstaluj pakiet w środowisku: `python -m pip install -e .` (albo `uv pip install --python .venv/Scripts/python.exe -e .`). Samo dodanie katalogu projektu do `PYTHONPATH` nie zastępuje instalacji. Punkty wejścia to `garmin-database`, `garmin-db` i `garmin-db-mcp`; działają także moduły `garmin_database.bootstrap.desktop`, `.cli` i `.mcp`.
+
 Windows: `.venv/Scripts/python.exe -m garmin_database` lub `dist/GarminDatabase/GarminDatabase.exe` po standardowym buildzie. Ścieżka paczki przy własnym `--destination` ma ten sam układ we wskazanym folderze. Zachowaj cały folder dystrybucji z `_internal`. PostgreSQL działa niezależnie od EXE. Hasło PostgreSQL pobierane jest z pgpass lub środowiska, a hasło Garmin służy wyłącznie logowaniu i nie jest zapisywane. Sesja Garmin tej wersji nadal wymaga Windows DPAPI.
 
 1. W Ustawieniach sprawdź folder archiwów i połączenie PostgreSQL. Nie podawaj hasła w polu połączenia; ustawienia je odrzucą.
@@ -19,7 +21,7 @@ Skonfiguruj `GARMIN_TEST_DATABASE_DSN` na osobną bazę testową PostgreSQL. Fix
 Windows PowerShell:
 
 ```powershell
-uv pip install --cache-dir .uv-cache --python .venv/Scripts/python.exe -r requirements-dev.txt
+uv pip install --cache-dir .uv-cache --python .venv/Scripts/python.exe -r requirements-dev.txt -e .
 $env:GARMIN_TEST_DATABASE_DSN = 'host=localhost port=5432 dbname=garmin_tests user=garmin_test'
 powershell -NoProfile -File scripts/run_tests.ps1
 ```
@@ -27,7 +29,7 @@ powershell -NoProfile -File scripts/run_tests.ps1
 Linux/Raspberry Pi OS:
 
 ```sh
-uv pip install --cache-dir .uv-cache --python .venv/bin/python -r requirements-dev.txt
+uv pip install --cache-dir .uv-cache --python .venv/bin/python -r requirements-dev.txt -e .
 export GARMIN_TEST_DATABASE_DSN='host=localhost port=5432 dbname=garmin_tests user=garmin_test'
 .venv/bin/python scripts/run_tests.py
 ```
@@ -36,6 +38,7 @@ export GARMIN_TEST_DATABASE_DSN='host=localhost port=5432 dbname=garmin_tests us
 
 | Warstwa | Zakres |
 | --- | --- |
+| Architektury | Kierunek importów między warstwami, brak bibliotek dostawców w rdzeniu i niezależny proces MCP |
 | Jednostkowe | Typy FIT, precyzja, timestampy, strefa/DST, reguły podsumowań, HTTP, ustawienia i odrzucanie haseł w DSN |
 | Integracyjne | Prawdziwy PostgreSQL, DDL i ograniczenia, atomowe migracje i SHA, import/rollback/CRC, idempotencja, advisory lock między katalogami, spójne snapshoty, cache i anulowanie, eksport i kursory serwerowe, brak fallbacku przy niedostępnej bazie |
 | UI | Nawigacja, zakresy i daty, spinner, nieaktualne odpowiedzi, trend, eksport, ustawienia PostgreSQL, zatrzymanie, MFA |
@@ -45,8 +48,8 @@ Dwa istniejące testy integracji Windows DPAPI są pomijane na innych systemach,
 Kontrola statyczna:
 
 ```sh
-python -m ruff check garmin_database tests desktop.py scripts/build.py scripts/run_tests.py scripts/smoke.py
-python -m ruff format --check garmin_database tests desktop.py scripts/build.py scripts/run_tests.py scripts/smoke.py
+python -m ruff check src tests scripts/entrypoints scripts/build.py scripts/run_tests.py scripts/smoke.py
+python -m ruff format --check src tests scripts/entrypoints scripts/build.py scripts/run_tests.py scripts/smoke.py
 ```
 
 ## Build i smoke
@@ -69,7 +72,7 @@ Linux:
 
 `smoke.py` uruchamia zbudowaną aplikację w oddzielnym schemacie bazy testowej, zapisuje syntetyczny zrzut i usuwa schemat także po błędzie. Nie używa ustawień ani bazy użytkownika. Przyjmuje opcjonalną ścieżkę do programu. Windows EXE wymaga buildu i uruchomienia na Windows; wynik paczki Linux tego nie zastępuje.
 
-Pakiet Pythona można zbudować poleceniem `python -m build`; zarówno wheel, jak i sdist muszą zawierać migracje `garmin_database/resources/*.sql`.
+Pakiet Pythona można zbudować poleceniem `uv build --python .venv/Scripts/python.exe --out-dir dist/python`; zarówno wheel, jak i sdist muszą zawierać migracje `garmin_database/resources/*.sql` wewnątrz pakietu.
 
 ### Zasoby TLS i kryteria paczki
 
@@ -82,10 +85,10 @@ Raporty testów, coverage, wyniki smoke i notatki odbioru pozostają w ignorowan
 ## Operacje bez UI
 
 ```sh
-python -m garmin_database.cli status --data-dir data
-python -m garmin_database.cli import-local --data-dir data
-python -m garmin_database.cli reprocess --data-dir data --from 2026-09-01
-python -m garmin_database.cli export --data-dir data --parameters monitoring.heart_rate --from 2026-09-01 --to 2026-09-30 --recent-days 30 --summary-period day --output exports
+python -m garmin_database.bootstrap.cli status --data-dir data
+python -m garmin_database.bootstrap.cli import-local --data-dir data
+python -m garmin_database.bootstrap.cli reprocess --data-dir data --from 2026-09-01
+python -m garmin_database.bootstrap.cli export --data-dir data --parameters monitoring.heart_rate --from 2026-09-01 --to 2026-09-30 --recent-days 30 --summary-period day --output exports
 ```
 
 CLI i UI czytają ten sam `database_dsn`, `GARMIN_DATABASE_DSN` i konfigurację libpq. Opcjonalne `--settings-file` wskazuje osobne ustawienia. `sync` nadal wymaga sesji Windows; ochrona sesji Linux pozostaje osobnym zakresem.
@@ -120,7 +123,7 @@ Przykład standardowej dystrybucji (przy innym `-Destination` użyj ścieżek sk
 }
 ```
 
-W źródłach odpowiednikiem jest `.venv/Scripts/python.exe mcp_stdio.py --settings-file ŚCIEŻKA`. Serwer czeka na protokół na standardowym wejściu; nie jest interaktywną konsolą. Konfiguracja z UI wskazuje bezwzględny skrypt i działa również z innego katalogu. Dla instalacji pakietu dostępne jest `garmin-db-mcp`.
+W źródłach odpowiednikiem jest `.venv/Scripts/python.exe scripts/entrypoints/mcp_stdio.py --settings-file ŚCIEŻKA`. Serwer czeka na protokół na standardowym wejściu; nie jest interaktywną konsolą. Konfiguracja z UI wskazuje bezwzględny `bootstrap/mcp.py` wewnątrz zainstalowanego pakietu i działa również z innego katalogu. Dla instalacji pakietu dostępne jest `garmin-db-mcp`.
 
 ### Narzędzia MCP v1
 

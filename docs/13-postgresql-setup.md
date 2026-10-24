@@ -57,7 +57,7 @@ Przed pierwszym uruchomieniem ustaw połączenie w środowisku lub w pliku ustaw
 
 ```powershell
 $env:GARMIN_DATABASE_DSN = 'host=localhost port=5432 dbname=garmin user=garmin'
-.\.venv\Scripts\python.exe -m garmin_database.cli status --data-dir data
+.\.venv\Scripts\python.exe -m garmin_database.bootstrap.cli status --data-dir data
 .\.venv\Scripts\python.exe -m garmin_database
 ```
 
@@ -65,7 +65,7 @@ Linux/Raspberry Pi OS:
 
 ```sh
 export GARMIN_DATABASE_DSN='host=localhost port=5432 dbname=garmin user=garmin'
-.venv/bin/python -m garmin_database.cli status --data-dir data
+.venv/bin/python -m garmin_database.bootstrap.cli status --data-dir data
 ```
 
 Zapisane ustawienia mogą zawierać np. `"database_dsn": "host=localhost port=5432 dbname=garmin user=garmin"`. Dane logowania Garmin i PostgreSQL są niezależne.
@@ -112,6 +112,6 @@ Lokalna instalacja PostgreSQL 16.15 korzysta z [oficjalnej paczki binarnej EDB](
 
 Hasła kont `garmin_admin`, `garmin` i `garmin_test` są w standardowym pliku klienta `%APPDATA%/postgresql/pgpass.conf`, poza katalogiem instancji. Plik ma ACL ograniczony do użytkownika, SYSTEM i administratorów. Ustawienia aplikacji i lokalny DSN testów jawnie wskazują tę samą standardową ścieżkę przez `passfile`, bez hasła. Nie przechowywać drugiej kopii haseł przy silniku. DSN testów znajduje się w `E:/Databases/PostgreSQL/16/test-dsn.txt` i nie należy wypisywać jego treści.
 
-Uruchom lokalny `private/Uruchom-GarminDatabase.cmd`. Plik włącza PostgreSQL na E:, jeśli jest zatrzymany, a potem paczkę GUI wskazaną w `private/start-garmin.ps1`. Nie utworzono usługi systemowej ani automatycznego startu przy logowaniu, dlatego po restarcie komputera należy użyć tego pliku. Lokalne szczegóły obsługi są w `private/README-local.md`; pliki lokalne i serwer pozostają poza Git. Nie usuwać `E:/Databases` w ramach sprzątania katalogów roboczych. Zmiana lokalizacji SQL nie zmienia folderu surowych archiwów Garmin wybieranego przez `data_dir`. Nie skonfigurowano szyfrowania nośnika ani automatycznych kopii zapasowych.
+Uruchom lokalny `local-runtime/Uruchom-GarminDatabase.cmd`. Plik włącza PostgreSQL na E:, jeśli jest zatrzymany, a potem paczkę GUI wskazaną w `local-runtime/start-garmin.ps1`. Nie utworzono usługi systemowej ani automatycznego startu przy logowaniu, dlatego po restarcie komputera należy użyć tego pliku. Lokalne szczegóły obsługi są w `local-runtime/README-local.md`; pliki lokalne i serwer pozostają poza Git. Nie usuwać `E:/Databases` w ramach sprzątania katalogów roboczych. Zmiana lokalizacji SQL nie zmienia folderu surowych archiwów Garmin wybieranego przez `data_dir`. Nie skonfigurowano szyfrowania nośnika ani automatycznych kopii zapasowych.
 
 Launcher wskazuje katalog klastra przez `pg_ctl -D E:/Databases/PostgreSQL/16/data`. Nowe bazy w domyślnej przestrzeni `pg_default` zapisują pliki pod `data/base`, w technicznych podfolderach zarządzanych przez PostgreSQL; nie podaje się osobnej ścieżki przy każdym `CREATE DATABASE`. Inne lokalizacje wymagają świadomego użycia [przestrzeni tabel](https://www.postgresql.org/docs/16/manage-ag-tablespaces.html).

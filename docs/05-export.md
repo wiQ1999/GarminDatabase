@@ -82,16 +82,16 @@ To dwa poprawne pomiary o średniej 50 ms, minimum 40 i maksimum 60 oraz jeden n
 ## Uruchamianie i ograniczanie rozmiaru
 
 ```text
-python -m garmin_database.cli export --recent-days 90 --output exports
-python -m garmin_database.cli export --parameters hrv_value.value --summary-period month --recent-days 30 --output exports
-python -m garmin_database.cli export --from 2026-09-01 --to 2026-09-30 --parameters monitoring.heart_rate --recent-days 30 --output exports
+python -m garmin_database.bootstrap.cli export --recent-days 90 --output exports
+python -m garmin_database.bootstrap.cli export --parameters hrv_value.value --summary-period month --recent-days 30 --output exports
+python -m garmin_database.bootstrap.cli export --from 2026-09-01 --to 2026-09-30 --parameters monitoring.heart_rate --recent-days 30 --output exports
 ```
 
 Opcja `--full-samples` została usunięta. Początek szczegółów to późniejsza z dat: początek historii i koniec minus N−1 dni. Koniec domyślny to wczoraj. W UI „Podsumowania historii” wybiera dzień lub miesiąc, „Szczegółowe ostatnie dni” wybiera N, a „Folder na eksporty” jest katalogiem nadrzędnym nowych pakietów. „Otwórz folder eksportu” otwiera ostatni ukończony pakiet w bieżącym oknie. Wybory są zapisywane w `%LOCALAPPDATA%/GarminDatabase/settings.json`; dawny `full_samples` jest ignorowany.
 
 Pliki szczegółowe nadal mogą być duże: 90 dni nie oznacza limitu liczby tokenów. Można zawęzić liczbę dni lub parametrów, bez automatycznego obcinania danych. Nie dzielimy pojedynczego parametru na miesiące ani nie obiecujemy zgodności z konkretnym limitem modelu.
 
-Punkt wejścia: `Exporter.generate` w `garmin_database/exporter.py`; obliczenia i cache: `garmin_database/summaries.py`. Eksport nie korzysta z dodatkowej usługi sieciowej.
+Punkt wejścia: `Exporter.generate` w `src/garmin_database/application/use_cases/export_data.py`; czyste obliczenia: `src/garmin_database/domain/aggregation.py`; cache: `src/garmin_database/adapters/outbound/postgres/summaries.py`; zapis JSON: `src/garmin_database/adapters/outbound/filesystem/json_export.py`. Eksport nie korzysta z dodatkowej usługi sieciowej.
 
 ## Wspólne reguły z MCP i wybór parametrów
 
