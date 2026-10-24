@@ -33,7 +33,7 @@ def main():
         "--name",
         "GarminDatabase",
         "--icon",
-        str(root / "garmin_database/resources/app-icon.ico"),
+        str(root / "src/garmin_database/resources/app-icon.ico"),
         "--distpath",
         str(Path(args.destination).resolve()),
         "--specpath",
@@ -57,9 +57,9 @@ def main():
         "--copy-metadata",
         "garmin-fit-sdk",
         "--add-data",
-        str(root / "garmin_database/resources") + ":garmin_database/resources",
+        str(root / "src/garmin_database/resources") + ":garmin_database/resources",
         *ssl_runtime_arguments(),
-        str(root / "desktop.py"),
+        str(root / "scripts/entrypoints/desktop.py"),
     ]
     result = subprocess.call(command, cwd=root)
     if result:
@@ -78,7 +78,7 @@ def main():
         "--name",
         "GarminDatabaseMCP",
         "--icon",
-        str(root / "garmin_database/resources/app-icon.ico"),
+        str(root / "src/garmin_database/resources/app-icon.ico"),
         "--distpath",
         str(Path(args.destination).resolve()),
         "--specpath",
@@ -104,7 +104,7 @@ def main():
         "--exclude-module",
         "garminconnect",
         *ssl_runtime_arguments(),
-        str(root / "mcp_stdio.py"),
+        str(root / "scripts/entrypoints/mcp_stdio.py"),
     ]
     return subprocess.call(mcp_command, cwd=root)
 

@@ -18,14 +18,12 @@ from psycopg.conninfo import make_conninfo
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "tests"))
 
-from fixtures import archive, fit_bytes  # noqa: E402
-
-from garmin_database.fit import FIT_EPOCH  # noqa: E402
-from garmin_database.importer import Importer  # noqa: E402
-from garmin_database.settings import Settings  # noqa: E402
-from garmin_database.storage import Database  # noqa: E402
+from garmin_database.adapters.outbound.filesystem.settings_json import Settings  # noqa: E402
+from garmin_database.adapters.outbound.postgres.database import Database  # noqa: E402
+from garmin_database.adapters.outbound.postgres.imports import Importer  # noqa: E402
+from garmin_database.domain.values import FIT_EPOCH  # noqa: E402
+from tests.support.fixtures import archive, fit_bytes  # noqa: E402
 
 
 def result_row(result):
@@ -98,7 +96,7 @@ async def smoke(executable, result_dir):
         mcp_enabled=True,
     )
     settings.save(path)
-    args = [] if executable else [str(ROOT / "mcp_stdio.py")]
+    args = [] if executable else [str(ROOT / "scripts/entrypoints/mcp_stdio.py")]
     params = StdioServerParameters(
         command=str(executable or sys.executable),
         env=dict(os.environ),
@@ -113,7 +111,7 @@ async def smoke(executable, result_dir):
                 tools = await session.list_tools()
                 assert len(tools.tools) == 3
                 catalog = await session.call_tool("garmin_catalog", {})
-                assert not catalog.isError
+                assert not catalog.isError, catalog.content
                 evaluation_count = await evaluate(session, key)
                 for name in ("get_daily", "get_period_stats"):
                     result = await session.call_tool(
@@ -150,7 +148,7 @@ def main():
     parser.add_argument(
         "--output",
         type=lambda p: Path(p).resolve(),
-        default=ROOT / "test-results/mcp-smoke",
+        default=ROOT / "test-results" / ("mcp-smoke-" + uuid4().hex),
     )
     args = parser.parse_args()
     dsn = os.environ.get("GARMIN_TEST_DATABASE_DSN")

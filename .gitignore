@@ -2,6 +2,7 @@
 /data/
 /exports/
 /private/
+/local-runtime/
 /logs/
 .env
 .env.*

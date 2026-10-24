@@ -209,7 +209,7 @@ def main():
     parser.add_argument('--from', dest='start', type=date.fromisoformat, default=date(2024, 1, 1))
     parser.add_argument('--to', dest='end', type=date.fromisoformat, default=yesterday)
     parser.add_argument('--data-dir', type=Path, default=PROJECT / 'data')
-    parser.add_argument('--session-dir', type=Path, default=PROJECT / 'private' / 'garmin-session')
+    parser.add_argument('--session-dir', type=Path, default=PROJECT / 'local-runtime' / 'collector-session')
     parser.add_argument('--delay', type=float, default=3, help='Seconds between download attempts')
     parser.add_argument('--attempts', type=int, default=3)
     parser.add_argument('--max-failures', type=int, default=5)

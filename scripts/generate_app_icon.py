@@ -23,7 +23,7 @@ def render_png(renderer, size):
 
 
 def main():
-    resources = Path(__file__).resolve().parents[1] / "garmin_database/resources"
+    resources = Path(__file__).resolve().parents[1] / "src/garmin_database/resources"
     renderer = QSvgRenderer(str(resources / "app-icon.svg"))
     if not renderer.isValid():
         raise ValueError("Invalid application icon SVG")

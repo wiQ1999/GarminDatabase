@@ -18,7 +18,8 @@ def isolated_postgresql(request, monkeypatch, tmp_path):
     """
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
     needs_database = (
-        "source" in request.fixturenames and request.node.module.__name__ == "test_mcp"
+        "source" in request.fixturenames
+        and request.node.module.__name__.endswith("test_mcp")
     )
     if not needs_database and not any(
         request.node.get_closest_marker(m) for m in ("integration", "ui")

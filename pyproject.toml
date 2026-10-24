@@ -10,13 +10,17 @@ description = "Private Garmin wellness archive and desktop viewer"
 dependencies = ["psycopg[binary]==3.2.13", "mcp==1.28.0", "fitdecode==0.11.0", "garmin-fit-sdk==21.218.0", "garminconnect==0.3.20", "tzdata==2026.5", "PySide6-Essentials==6.12.0"]
 
 [project.scripts]
-garmin-db = "garmin_database.cli:main"
-garmin-db-mcp = "garmin_database.mcp_server:main"
+garmin-db = "garmin_database.bootstrap.cli:main"
+garmin-db-mcp = "garmin_database.bootstrap.mcp:main"
 
 [project.gui-scripts]
-garmin-database = "garmin_database.ui:main"
+garmin-database = "garmin_database.bootstrap.desktop:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["garmin_database*"]
 
 [tool.setuptools.package-data]
@@ -24,12 +28,11 @@ garmin_database = ["resources/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
 markers = ["unit: fast isolated rules", "integration: database and archive pipeline", "ui: desktop interaction"]
 
 [tool.coverage.run]
 source = ["garmin_database"]
-omit = ["garmin_database/ui.py", "garmin_database/login_dialog.py", "garmin_database/chart.py", "garmin_database/icons.py", "garmin_database/__main__.py"]
+omit = ["*/adapters/inbound/desktop/*", "*/bootstrap/desktop.py", "*/__main__.py"]
 
 [tool.coverage.report]
 show_missing = true
