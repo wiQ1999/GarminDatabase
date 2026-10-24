@@ -7,7 +7,50 @@ from ctypes import wintypes
 from pathlib import Path
 
 from .settings import application_dir
-from .util import atomic_write, check_stop
+from .util import Cancelled, atomic_write, check_stop
+
+LOGIN_STAGES = {
+    "connect": "łączenie z Garmin Connect",
+    "mfa_wait": "oczekiwanie na kod MFA",
+    "mfa_verify": "potwierdzanie kodu MFA i dostępu aplikacji do Garmin",
+    "session_save": "zabezpieczanie i zapis sesji Windows",
+    "ready": "sesja gotowa",
+}
+
+
+def login_http_status(error):
+    """Read only structured status codes; never include upstream error text."""
+    for _ in range(8):
+        if error is None:
+            return None
+        status = getattr(getattr(error, "response", None), "status_code", None)
+        if type(status) is int and 100 <= status <= 599:
+            return status
+        error = error.__cause__ or error.__context__
+    return None
+
+
+class LoginFailed(RuntimeError):
+    """A safe diagnostic for UI/CLI; never contains a response or credentials."""
+
+    def __init__(self, stage, error):
+        self.stage = stage if stage in LOGIN_STAGES else "connect"
+        self.http_status = login_http_status(error)
+        reasons = {
+            "GarminConnectAuthenticationError": "ACCESS_DENIED",
+            "GarminConnectTooManyRequestsError": "RATE_LIMIT",
+            "GarminConnectConnectionError": "CONNECTION",
+        }
+        reason = reasons.get(type(error).__name__, "CLIENT_ERROR")
+        if self.stage == "session_save":
+            reason = "LOCAL_SESSION"
+        self.code = f"{self.stage.upper()}/{reason}"
+        message = f"Etap: {LOGIN_STAGES[self.stage]}.\nKod diagnostyczny: {self.code}"
+        if self.http_status is not None:
+            message += f"; HTTP {self.http_status}"
+        if reason == "RATE_LIMIT":
+            message += ". Odczekaj przed ponowieniem logowania."
+        super().__init__(message)
 
 
 class SessionRequired(RuntimeError):
@@ -76,29 +119,65 @@ class GarminSource:
         self.factory = factory
         self.store = store or SessionStore()
         self.api = None
+        self.login_stage = "connect"
         # The upstream client may log response bodies; app reports only error codes.
         for name in ("garminconnect", "requests", "urllib3", "curl_cffi"):
             logging.getLogger(name).setLevel(logging.CRITICAL)
 
-    def login(self, email=None, password=None, mfa=None, stop=None):
+    def login(self, email=None, password=None, mfa=None, stop=None, progress=None):
         check_stop(stop)
         self.api = None
-        api = self.factory(
-            email=email, password=password, prompt_mfa=mfa, retry_attempts=1
-        )
+        self.set_login_stage("connect", progress)
+        api = None
         try:
+            api = self.factory(
+                email=email,
+                password=password,
+                prompt_mfa=self.mfa_prompt(mfa, stop, progress),
+                retry_attempts=1,
+            )
             # Inline JSON explicitly overrides upstream GARMINTOKENS environment
             # paths, so the library cannot persist an unencrypted token store.
-            try:
-                token = self.store.load() if email is None else "{}"
-            except FileNotFoundError:
-                raise SessionRequired() from None
-            api.login(token)
+            api.login(self.login_token(email))
             check_stop(stop)
+            self.set_login_stage("session_save", progress)
             self.store.save(api.client.dumps())
             self.api = api
+            self.set_login_stage("ready", progress)
+        except (Cancelled, SessionRequired):
+            raise
+        except Exception as error:
+            raise LoginFailed(self.login_stage, error) from error
         finally:
-            api.password = None
+            if api is not None:
+                api.password = None
+                api.prompt_mfa = None
+
+    def login_token(self, email):
+        if email is not None:
+            return "{}"
+        try:
+            return self.store.load()
+        except FileNotFoundError:
+            raise SessionRequired() from None
+
+    def set_login_stage(self, stage, progress):
+        self.login_stage = stage
+        if progress is not None:
+            progress(stage)
+
+    def mfa_prompt(self, callback, stop, progress):
+        if callback is None:
+            return None
+
+        def prompt():
+            self.set_login_stage("mfa_wait", progress)
+            code = callback().strip()
+            check_stop(stop)
+            self.set_login_stage("mfa_verify", progress)
+            return code
+
+        return prompt
 
     def download_health_snapshot(self, day):
         if self.api is None:

@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .auth import LOGIN_STAGES
+
 
 class LoginSpinner(QWidget):
     def __init__(self, parent=None):
@@ -86,10 +88,14 @@ class LoginDialog(QDialog):
         worker.failure.connect(self.failed)
         worker.finished.connect(self.work_finished)
         worker.mfa_requested.connect(self.request_mfa)
+        worker.login_stage.connect(self.show_login_stage)
 
     def start(self):
         self.spinner.timer.start()
         self.worker.start()
+
+    def show_login_stage(self, stage):
+        self.message.setText(LOGIN_STAGES.get(stage, "Łączenie z Garmin Connect") + "…")
 
     def succeeded(self, result):
         self.authenticated = True
@@ -98,7 +104,8 @@ class LoginDialog(QDialog):
     def failed(self, message):
         errors = {
             "GarminConnectAuthenticationError": (
-                "Nie udało się zalogować. Sprawdź e-mail, hasło i kod MFA."
+                "Garmin nie potwierdził logowania aplikacji. "
+                "Możliwa jest odmowa dostępu klienta, nawet gdy strona Garmin działa."
             ),
             "GarminConnectTooManyRequestsError": (
                 "Garmin ograniczył próby logowania. Odczekaj przed kolejną próbą."
@@ -169,7 +176,9 @@ class LoginDialog(QDialog):
         prompt = self.mfa_dialog
         self.mfa_dialog = None
         self.worker.code = (
-            prompt.textValue() if result == QDialog.DialogCode.Accepted else None
+            prompt.textValue().strip()
+            if result == QDialog.DialogCode.Accepted
+            else None
         )
         if result != QDialog.DialogCode.Accepted:
             self.worker.stop.set()

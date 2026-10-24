@@ -33,7 +33,7 @@ Endpoint jest nieoficjalny; nie zakładamy stałej dostępności ani opublikowan
 
 Skrypt `scripts/probe_wellness.py` ma dwie funkcje: pobranie pojedynczego ZIP i porównanie go z ręcznym eksportem albo porównanie dwóch lokalnych ZIP bez logowania. Nie implementuje jeszcze dekodowania FIT.
 
-W projekcie przygotowano `.venv` z `garminconnect==0.3.17` i `tzdata==2026.5`. Sprawdzono obecność kandydata metody, sygnaturę logowania i dostępność strefy `Europe/Warsaw`. Dla tego środowiska uruchomienie z katalogu projektu:
+Pierwotną próbę wykonano z `garminconnect==0.3.17` i `tzdata==2026.5`. Obecnie projekt przypina `garminconnect==0.3.20`, z poprawką przygotowania sesji logowania mobilnego; szczegóły i granice odbioru opisuje [instrukcja testów](12-running-and-testing.md#aktualizacja-klienta-garmin-i-diagnostyka-mfa--2026-10-24). Sprawdzono obecność kandydata metody, sygnaturę logowania i dostępność strefy `Europe/Warsaw`. Uruchomienie z katalogu projektu:
 
 ```powershell
 .venv/Scripts/python.exe scripts/probe_wellness.py --date 2026-10-09 --reference "C:/Users/wikto/Downloads/2026-10-09.zip"

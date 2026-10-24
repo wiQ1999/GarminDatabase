@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .auth import GarminSource, SessionRequired, SessionStore
+from .auth import GarminSource, LoginFailed, SessionRequired, SessionStore
 from .chart import Chart, ChartView
 from .exporter import Exporter, ExportResult
 from .icons import application_icon, icon, symbol
@@ -78,6 +78,7 @@ class Worker(QThread):
     failure = Signal(str)
     progress = Signal(str, str, int, int)
     mfa_requested = Signal()
+    login_stage = Signal(str)
 
     def __init__(self, operation, parent=None):
         super().__init__(parent)
@@ -110,7 +111,7 @@ class Worker(QThread):
         except Exception as error:
             self.failure.emit(
                 str(error)
-                if isinstance(error, SessionRequired)
+                if isinstance(error, (SessionRequired, LoginFailed))
                 else "Operacja nie powiodła się: "
                 + type(error).__name__
                 + ". Sprawdź połączenie, sesję i katalog docelowy."
@@ -885,7 +886,9 @@ class Window(QMainWindow):
 
         def operation(w):
             source = GarminSource()
-            source.login(email, password, w.ask_mfa, stop=w.stop)
+            source.login(
+                email, password, w.ask_mfa, stop=w.stop, progress=w.login_stage.emit
+            )
             return "login"
 
         dialog = LoginDialog(Worker(operation), self)

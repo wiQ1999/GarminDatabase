@@ -1,3 +1,3 @@
 # Zależności próby pobrania; parser FIT zostanie wybrany po weryfikacji źródła.
-garminconnect==0.3.17
+garminconnect==0.3.20
 tzdata==2026.5

@@ -349,6 +349,34 @@ def test_worker_waits_for_a_fresh_code_on_each_mfa_request(qtbot):
     assert worker.code is None
 
 
+def test_login_dialog_reports_phase_and_safe_diagnostic(qtbot):
+    from garmin_database.auth import LoginFailed
+    from garmin_database.login_dialog import LoginDialog
+
+    release = threading.Event()
+
+    def operation(worker):
+        worker.login_stage.emit("mfa_verify")
+        assert release.wait(3)
+        raise LoginFailed("mfa_verify", RuntimeError("synthetic-private-response"))
+
+    worker = Worker(operation)
+    dialog = LoginDialog(worker)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    dialog.start()
+    try:
+        qtbot.waitUntil(lambda: "dostępu aplikacji" in dialog.message.text())
+        assert dialog.spinner.timer.isActive()
+    finally:
+        release.set()
+    qtbot.waitUntil(lambda: not dialog.spinner.timer.isActive())
+    assert "MFA_VERIFY/CLIENT_ERROR" in dialog.message.text()
+    assert "synthetic-private-response" not in dialog.message.text()
+    assert not dialog.authenticated and worker.operation is None
+    dialog.reject()
+
+
 @pytest.mark.parametrize("error_kind", ["credentials", "network"])
 def test_login_failure_allows_a_new_attempt_without_restarting(
     qtbot, tmp_path, monkeypatch, error_kind
@@ -359,7 +387,7 @@ def test_login_failure_allows_a_new_attempt_without_restarting(
     release = threading.Event()
 
     class Source:
-        def login(self, email, password, mfa, stop=None):
+        def login(self, email, password, mfa, stop=None, progress=None):
             attempts.append((email, password))
             if len(attempts) == 1:
                 error = (
@@ -407,7 +435,7 @@ def test_login_cancellation_waits_for_worker_and_allows_retry(
     calls = []
 
     class Source:
-        def login(self, email, password, mfa, stop=None):
+        def login(self, email, password, mfa, stop=None, progress=None):
             calls.append(True)
             started.set()
             if len(calls) == 1:
@@ -436,7 +464,7 @@ def test_login_mfa_cancel_then_fresh_codes_on_retry(qtbot, tmp_path, monkeypatch
     codes = []
 
     class Source:
-        def login(self, email, password, mfa, stop=None):
+        def login(self, email, password, mfa, stop=None, progress=None):
             codes.extend([mfa(), mfa()])
 
     monkeypatch.setattr("garmin_database.ui.GarminSource", Source)
@@ -468,7 +496,7 @@ def test_closing_window_cancels_login_before_destroying_the_worker(
     started = threading.Event()
 
     class Source:
-        def login(self, email, password, mfa, stop=None):
+        def login(self, email, password, mfa, stop=None, progress=None):
             started.set()
             assert stop.wait(3)
 

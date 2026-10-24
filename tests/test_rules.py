@@ -5,7 +5,7 @@ from types import SimpleNamespace as Obj
 import pytest
 from fixtures import archive, fit_bytes
 
-from garmin_database.auth import GarminSource, SessionStore
+from garmin_database.auth import GarminSource, LoginFailed, SessionStore
 from garmin_database.cli import main
 from garmin_database.fit import (
     FIT_EPOCH,
@@ -162,7 +162,7 @@ def test_login_failure_clears_password(tmp_path):
             raise ValueError("private response")
 
     source = GarminSource(SessionStore(tmp_path / "session"), Api)
-    with pytest.raises(ValueError):
+    with pytest.raises(LoginFailed):
         source.login("email", "secret")
     assert instances[0].password is None
 
