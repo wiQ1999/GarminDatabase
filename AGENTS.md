@@ -43,6 +43,8 @@ Przed uruchomieniem źródeł i testów zainstalować pakiet editable (`uv pip i
 - Indeks `fit_fields(field_definition_id, message_definition_id)` jest konieczny przy zastępowaniu dekodowania. Nie uruchamiać automatycznie `VACUUM FULL`. PostgreSQL używa autovacuum; wzrost rozmiaru nie oznacza powielenia pomiarów.
 - Cache opisów FIT używa współrzędnych semantycznych, nigdy `id(field_def)`. Regresja: 300 redefinicji. Nieznany czas pozostaje NULL; dzień żądania jest osobnym metadanym, również w eksporcie. Skrócone czasy rekonstruować tylko z kontekstu FIT.
 
+Przed zmianą współbieżności importu uwzględnić, że blokada writera jest zagnieżdżalna tylko w tym samym wątku, a triggery rewizji blokują wspólny wiersz `dataset_state` do końca transakcji FIT. Obecne remisy czasów używają ID nadawanych przy imporcie, więc `last_value` może zależeć od kolejności pierwszej rejestracji FIT. Dowolna kolejność wymaga stabilnego porządku źródłowego oraz unieważnienia cache po zmianie reguły. Kierunek optymalizacji i warunki odbioru: [synchronizacja](docs/04-synchronization.md#wydajność-i-warunki-przyszłej-współbieżności); równoległy potok nie jest jeszcze zaimplementowany.
+
 ## UI, podsumowania i eksport
 
 - Start/Dane/Eksport/Ustawienia, ciemny motyw. „Pobierz dane” pobiera tylko do wczoraj Europe/Warsaw i importuje. Brak sesji to `SessionRequired` z instrukcją logowania, bez sieciowych ponowień. Import lokalny nie wymaga logowania i nie dowodzi pobrania nowych danych.

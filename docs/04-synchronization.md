@@ -47,3 +47,19 @@ python -m garmin_database.bootstrap.cli reprocess --from 2024-01-01
 ```
 
 `sync` nadgania brakujące dni do wczoraj. `reprocess` działa wyłącznie na lokalnych archiwach. Aktualizowanie archiwów przez ponowne pobranie to osobny, późniejszy etap.
+
+## Wydajność i warunki przyszłej współbieżności
+
+Obecna implementacja obsługuje dzień sekwencyjnie: przerwa, pobranie, walidacja i zapis ZIP, import wszystkich jego FIT. Worker Qt odciąża okno, ale nie uruchamia równoległych importerów. Lokalne kompletne ZIP również przechodzą odczyt SHA-256 i kontrolę CRC przed rozpoznaniem ukończonego importu. Podsumowania powstają dopiero na żądanie odczytu; import ich nie przelicza dla każdego dnia.
+
+Blokada writera obejmuje całą synchronizację, a jej zagnieżdżenie działa wyłącznie na tym samym obiekcie i wątku. Drugi wątek importera otrzymuje błąd zajętego writera. Niezależnie od tej blokady triggery `file_decodes` i `archive_entries` aktualizują jeden wiersz `dataset_state`; blokada tego wiersza trwa do końca transakcji FIT. Usunięcie samej blokady aplikacji nie zapewni równoległego zapisu. Współdzielenie jednego połączenia psycopg przez taski także nie daje równoległych zapytań ani niezależnych transakcji.
+
+Kierunek optymalizacji do realizacji: najpierw ograniczyć liczbę synchronizacji SQL przez większe, ograniczone pamięciowo partie pól i rozważyć `COPY`. Kolejny etap to nakładanie pojedynczego sekwencyjnego pobierania na import poprzedniego ZIP, z ograniczoną kolejką gotowych archiwów i jednym właścicielem zapisów SQL. Należy zachować zasady odstępów sieciowych, zatrzymania po 401/403/429, wznowienia i transakcji per FIT. Próby powinny mieć jednego właściciela: parametr SDK `retry_attempts` oznacza dodatkowe ponowienia, więc obecne `retry_attempts=1` może ponowić żądanie wewnątrz każdej z trzech prób aplikacji.
+
+Równoległe dekodowanie CPU można rozważyć dopiero po pomiarze zoptymalizowanego zapisu. Jednostką pracy jest cały FIT; kolejność ramek, redefinicje, skrócone timestampy i stan dekodera wewnątrz pliku muszą zostać zachowane. Procesy robocze powinny zwracać ograniczone partie danych do pojedynczego writera, bez współdzielenia połączenia PostgreSQL, klienta Garmin i sesji. Pakowanie procesów wymaga osobnego odbioru Windows/PyInstaller. Ten potok i procesy robocze nie są obecnie dostępne.
+
+Kolejność importu całych FIT nie zmienia ich typowanych wartości, skalowania ani przypisania rozpoznanych czasów do dni Europe/Warsaw. Deduplikacja pozostaje oparta o SHA-256 całego FIT; różne pliki z takimi samymi czasami nie mogą być scalane jako duplikaty. Średnia dzienna obejmuje wszystkie poprawne próbki, a okresowa używa wag `valid_count`; nie wolno uśredniać wyników tasków z jednakową wagą ani przypisywać całego FIT do dnia ZIP. Zmiana porządku sumowania zmiennoprzecinkowego może powodować drobne różnice numeryczne.
+
+Obecny odczyt rozstrzyga identyczne czasy przez `fit_file_id`, `message_index` i `field_definition_id`. ID pliku zależy od kolejności pierwszej rejestracji, dlatego `last_value` oraz kolejność szczegółów przy takim remisie mogą zależeć od importu. Przed dopuszczeniem dowolnej kolejności potrzebny jest stabilny porządek oparty na treści FIT i pozycji w źródle, np. SHA-256 pliku, indeksie wiadomości oraz pozycji definicji/pola. Zmiana reguły wymaga unieważnienia cache przez wersję algorytmu oraz testów zgodności eksportu i MCP. Nie wolno deklarować pełnej niezależności wyników od kolejności na podstawie samej zgodności średnich.
+
+Odbiór optymalizacji musi obejmować tę samą kolekcję syntetycznych FIT importowaną chronologicznie, odwrotnie i w przemieszanej kolejności: zgodność wartości fizycznych, deduplikacji, średnich i liczników, stabilne remisy czasów, dane przekraczające północ/DST, CRC, anulowanie po rozpoczęciu zapisu partii, wymianę wcześniejszego dekodowania, wznowienie i spójność cache. Pomiary czasu wykonuje się w osobnej bazie testowej, bez pomiarów zdrowotnych i bez sekretów w raportach.
