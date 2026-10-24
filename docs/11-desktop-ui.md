@@ -2,6 +2,8 @@
 
 Dokument opisuje dostępny interfejs Windows, jego zachowanie i wymagania prezentacji. Procedury startu, budowania i testowania znajdują się w [instrukcji uruchamiania](12-running-and-testing.md).
 
+Błąd startu pokazuje zrozumiałą przyczynę i kod diagnostyczny, np. `STARTUP/PASSWORD_MISSING`, `STARTUP/PASSWORD_REJECTED` lub `STARTUP/SERVER_UNAVAILABLE`. Nie ogranicza się do nazwy `OperationalError`. Bezpieczny zapis w `%LOCALAPPDATA%/GarminDatabase/logs/startup-failure.json` zawiera kategorię, typ, opcjonalny SQLSTATE, ścieżkę programu i ustawień oraz wynik kontroli dostępu do pliku haseł. Nie zapisuje haseł, connection stringu ani treści wyjątku PostgreSQL. Brak uprawnień do zapisania diagnostyki nie zasłania pierwotnego komunikatu błędu.
+
 ## Uruchamianie i wygląd
 
 - Windows 11, samodzielne okno uruchamiane z `.exe` w folderze aplikacji. Bez instalatora, konsoli, przeglądarki i konieczności osobnej instalacji Pythona. Można utworzyć skrót na pulpicie.

@@ -72,6 +72,8 @@ Zapisane ustawienia mogą zawierać np. `"database_dsn": "host=localhost port=54
 
 Hasło PostgreSQL umieść w pliku libpq: `%APPDATA%/postgresql/pgpass.conf` na Windows lub `~/.pgpass` z uprawnieniami `0600` na Linux. Format pojedynczego wpisu: `host:port:baza:użytkownik:hasło`. Ogranicz uprawnienia pliku Windows do konta uruchamiającego aplikację. Możesz wskazać inną ścieżkę przez `PGPASSFILE`. `PGPASSWORD` jest alternatywą procesową dla automatyzacji; nie zapisuj jej w repozytorium ani logach. Ustawienia aplikacji odrzucają DSN zawierający `password`, również w URI.
 
+Na Windows narzędzie uruchomione w kontekście pakietu MSIX może przekierować nowy plik AppData do prywatnego `LocalCache`, mimo użycia standardowej ścieżki. Przy konfiguracji pliku dla innej aplikacji potwierdź jego fizyczną lokalizację przez `GetFinalPathNameByHandle` i sprawdź odczyt ze zwykłego procesu użytkownika. Samo `Test-Path`, porównanie sum lub udane połączenie z tego samego kontekstu MSIX nie wystarcza. Plik `pgpass` musi być widoczny dla normalnie uruchamianego EXE. Zasady: [przekierowanie AppData w MSIX](https://learn.microsoft.com/en-us/windows/uwp/porting/desktop-to-uwp-behind-the-scenes).
+
 Na zdalnym serwerze użyj np. `host=db.example.internal port=5432 dbname=garmin user=garmin sslmode=verify-full sslrootcert=/ścieżka/ca.crt`. Certyfikat musi pasować do nazwy hosta. Samo `sslmode=prefer` może dopuścić połączenie nieszyfrowane i nie jest ustawieniem docelowym dla przesyłania danych medycznych.
 
 `status` tworzy pusty schemat i weryfikuje jego wersje/sumy kontrolne. Brak serwera lub bazy kończy operację bez utworzenia pliku SQLite. UI/CLI prezentują typ błędu bez treści wyjątku sterownika i danych połączenia.

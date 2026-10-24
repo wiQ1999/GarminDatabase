@@ -586,3 +586,30 @@ def test_postgresql_password_is_not_persisted_from_ui(qtbot, tmp_path):
     assert "ValueError" in w.settings_status.text()
     assert "private-secret" not in w.settings_status.text()
     assert (tmp_path / "settings.json").read_bytes() == previous
+
+
+def test_startup_database_error_explains_password_failure(
+    qtbot, qapp, tmp_path, monkeypatch
+):
+    from psycopg import OperationalError
+
+    from garmin_database import ui
+
+    monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
+    settings_path = tmp_path / "settings.json"
+    Settings(data_dir=str(tmp_path / "data")).save(settings_path)
+    monkeypatch.setattr(ui, "QApplication", lambda argv: qapp)
+
+    def fail(*args):
+        raise OperationalError("no password supplied private-secret")
+
+    messages = []
+    monkeypatch.setattr(ui, "Window", fail)
+    monkeypatch.setattr(
+        ui.QMessageBox,
+        "critical",
+        lambda parent, title, message: messages.append(message),
+    )
+    assert ui.main(["--settings-file", str(settings_path)]) == 1
+    assert "STARTUP/PASSWORD_MISSING" in messages[0]
+    assert "pgpass" in messages[0] and "private-secret" not in messages[0]

@@ -46,6 +46,7 @@ from .login_dialog import LoginDialog
 from .mcp_config import client_config
 from .query import Queries
 from .settings import Settings, application_dir
+from .startup import startup_failure
 from .storage import Database
 from .summaries import MEAN_PARAMETERS, has_chart_summary, summary_method
 from .sync import Sync
@@ -1031,6 +1032,7 @@ def main(argv=None):
     app = QApplication(sys.argv[:1])
     app.setApplicationName("GarminDatabase")
     app.setWindowIcon(application_icon())
+    settings = None
     try:
         if args.smoke_screenshot:
             # A visible window alone does not verify the frozen HTTPS runtime.
@@ -1060,7 +1062,7 @@ def main(argv=None):
         QMessageBox.critical(
             None,
             "GarminDatabase",
-            "Nie można uruchomić aplikacji: " + type(error).__name__,
+            startup_failure(error, settings, args.settings_file),
         )
         return 1
 
