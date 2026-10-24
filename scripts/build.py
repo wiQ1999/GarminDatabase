@@ -1,9 +1,21 @@
 """Build an onedir desktop distribution on the current operating system."""
 
 import argparse
+import ssl
 import subprocess
 import sys
 from pathlib import Path
+
+
+def ssl_runtime_arguments():
+    """Bundle the adjacent PEM required by the managed Python SSL module.
+
+    Standard Python has no such file. Preserve the runtime's certificate policy
+    when it is present; never bypass the SSLContext constructor or verification.
+    See docs/12-running-and-testing.md.
+    """
+    resource = Path(ssl.__file__).with_name("codex-rejected-cas.pem")
+    return ["--add-data", str(resource) + ":."] if resource.is_file() else []
 
 
 def main():
@@ -46,6 +58,7 @@ def main():
         "garmin-fit-sdk",
         "--add-data",
         str(root / "garmin_database/resources") + ":garmin_database/resources",
+        *ssl_runtime_arguments(),
         str(root / "desktop.py"),
     ]
     result = subprocess.call(command, cwd=root)
@@ -90,6 +103,7 @@ def main():
         "PySide6",
         "--exclude-module",
         "garminconnect",
+        *ssl_runtime_arguments(),
         str(root / "mcp_stdio.py"),
     ]
     return subprocess.call(mcp_command, cwd=root)

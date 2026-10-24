@@ -187,3 +187,19 @@ def test_login_diagnostic_uses_structured_status_without_upstream_message():
     assert "synthetic" not in str(diagnostic)
     limited = LoginFailed("connect", GarminConnectTooManyRequestsError("private"))
     assert limited.code == "CONNECT/RATE_LIMIT" and "Odczekaj" in str(limited)
+
+
+def test_missing_runtime_file_is_not_reported_as_garmin_access_denied():
+    from garminconnect import GarminConnectAuthenticationError
+
+    missing = FileNotFoundError("synthetic-private-path")
+    transport = requests.ConnectionError("synthetic-private-response")
+    transport.__cause__ = missing
+    auth = GarminConnectAuthenticationError("synthetic-private-profile-error")
+    auth.__cause__ = transport
+    diagnostic = LoginFailed("mfa_verify", auth)
+    assert diagnostic.code == "MFA_VERIFY/LOCAL_RUNTIME"
+    assert "składnika lokalnej paczki" in str(diagnostic)
+    assert "synthetic" not in str(diagnostic)
+    local_save = LoginFailed("session_save", missing)
+    assert local_save.code == "SESSION_SAVE/LOCAL_SESSION"

@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import ssl
 import sys
 import threading
 from datetime import date, timedelta
@@ -1033,6 +1034,9 @@ def main(argv=None):
     app.setApplicationName("GarminDatabase")
     app.setWindowIcon(application_icon())
     try:
+        if args.smoke_screenshot:
+            # A visible window alone does not verify the frozen HTTPS runtime.
+            ssl.create_default_context()
         settings = Settings.load(args.settings_file)
         if args.data_dir:
             settings.data_dir = args.data_dir

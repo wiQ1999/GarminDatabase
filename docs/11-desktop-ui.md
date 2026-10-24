@@ -67,6 +67,8 @@ Biblioteka `garminconnect==0.3.20` przygotowuje sesję mobilną przez pobranie s
 
 Przed wysłaniem kodu MFA usuwane są białe znaki z jego początku i końca. Po błędzie nadal można ponowić próbę z nowym klientem; wcześniejsza zapisana sesja zostaje zachowana, dopóki nowa próba nie zakończy się pomyślnie. Aktualizacja klienta nie wykonuje automatycznego resetu sesji.
 
+Biblioteka Garmin może opakować lokalny błąd transportu w wyjątek uwierzytelnienia. Jeśli łańcuch zawiera brak lokalnego pliku, aplikacja pokazuje kategorię `LOCAL_RUNTIME` i informację o pełnej paczce, zamiast przypisywać przyczynę danym konta. Potwierdzony przypadek brakującego zasobu TLS w EXE oraz jego naprawę opisuje [odbiór pakowania](12-running-and-testing.md#potwierdzona-przyczyna-i-poprawka-pakowania-tls--2026-10-24).
+
 Docelowe lokalizacje dla Windows:
 
 ```text

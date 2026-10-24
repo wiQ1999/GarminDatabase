@@ -18,15 +18,21 @@ LOGIN_STAGES = {
 }
 
 
-def login_http_status(error):
-    """Read only structured status codes; never include upstream error text."""
+def login_causes(error):
+    """Bound traversal, including libraries that wrap local I/O as auth errors."""
     for _ in range(8):
         if error is None:
-            return None
+            break
+        yield error
+        error = error.__cause__ or error.__context__
+
+
+def login_http_status(error):
+    """Read only structured status codes; never include upstream error text."""
+    for error in login_causes(error):
         status = getattr(getattr(error, "response", None), "status_code", None)
         if type(status) is int and 100 <= status <= 599:
             return status
-        error = error.__cause__ or error.__context__
     return None
 
 
@@ -42,6 +48,8 @@ class LoginFailed(RuntimeError):
             "GarminConnectConnectionError": "CONNECTION",
         }
         reason = reasons.get(type(error).__name__, "CLIENT_ERROR")
+        if any(isinstance(cause, FileNotFoundError) for cause in login_causes(error)):
+            reason = "LOCAL_RUNTIME"
         if self.stage == "session_save":
             reason = "LOCAL_SESSION"
         self.code = f"{self.stage.upper()}/{reason}"
@@ -50,6 +58,8 @@ class LoginFailed(RuntimeError):
             message += f"; HTTP {self.http_status}"
         if reason == "RATE_LIMIT":
             message += ". Odczekaj przed ponowieniem logowania."
+        if reason == "LOCAL_RUNTIME":
+            message += ". Brakuje składnika lokalnej paczki. Uruchom pełną aktualną wersję aplikacji."
         super().__init__(message)
 
 
