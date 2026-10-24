@@ -317,20 +317,6 @@ def test_close_stops_operation(qtbot, tmp_path, monkeypatch):
     assert w.worker.stop.is_set()
 
 
-def test_mfa_worker_prompt(qtbot, tmp_path, monkeypatch):
-    from PySide6.QtWidgets import QInputDialog
-
-    w = window(qtbot, tmp_path)
-    monkeypatch.setattr(QInputDialog, "getText", lambda *a: ("123456", True))
-    captured = []
-    w.start_work(lambda worker: captured.append(worker.ask_mfa()))
-    qtbot.waitUntil(
-        lambda: w.worker is not None and not w.worker.isRunning(), timeout=5000
-    )
-    qtbot.waitUntil(lambda: not w.stop_button.isEnabled())
-    assert captured == ["123456"] and w.worker.code is None
-
-
 def test_worker_waits_for_a_fresh_code_on_each_mfa_request(qtbot):
     captured = []
     requested = []

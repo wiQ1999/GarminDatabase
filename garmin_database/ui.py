@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -791,7 +790,6 @@ class Window(QMainWindow):
         worker.failure.connect(self.on_failure)
         worker.success.connect(self.on_success)
         worker.finished.connect(self.work_finished)
-        worker.mfa_requested.connect(self.mfa)
         for b in [
             self.download_button,
             self.import_button,
@@ -907,16 +905,6 @@ class Window(QMainWindow):
             QTimer.singleShot(0, self.close)
         elif not dialog.authenticated:
             self.password.setFocus()
-
-    def mfa(self):
-        value, ok = QInputDialog.getText(
-            self,
-            "Garmin — uwierzytelnienie",
-            "Podaj kod MFA",
-            QLineEdit.EchoMode.Normal,
-        )
-        self.worker.code = value if ok else None
-        self.worker.mfa_ready.set()
 
     def export(self):
         params = [

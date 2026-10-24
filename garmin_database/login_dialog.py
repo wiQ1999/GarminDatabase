@@ -102,21 +102,8 @@ class LoginDialog(QDialog):
         self.message.setText("Zalogowano. Sesja została zaszyfrowana i zapisana.")
 
     def failed(self, message):
-        errors = {
-            "GarminConnectAuthenticationError": (
-                "Garmin nie potwierdził logowania aplikacji. "
-                "Możliwa jest odmowa dostępu klienta, nawet gdy strona Garmin działa."
-            ),
-            "GarminConnectTooManyRequestsError": (
-                "Garmin ograniczył próby logowania. Odczekaj przed kolejną próbą."
-            ),
-        }
-        self.message.setText(
-            next(
-                (text for name, text in errors.items() if name in message),
-                "Nie udało się zalogować. " + message,
-            )
-        )
+        # Worker forwards only the safe core diagnostic or a generic error code.
+        self.message.setText("Nie udało się zalogować. " + message)
 
     def work_finished(self):
         self.worker.operation = None  # Release captured credentials on every outcome.
