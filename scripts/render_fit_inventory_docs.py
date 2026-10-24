@@ -1,13 +1,15 @@
-"""Render schema metadata documentation, with no health measurement values."""
+"""Render local FIT metadata reports outside the tracked product documentation."""
 
-from collections import defaultdict
 import json
+from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
+    output = ROOT / 'local-notes/fit-reports'
+    output.mkdir(parents=True, exist_ok=True)
     report = json.loads((ROOT / 'data/fit_inventory.json').read_text(encoding='utf-8'))
     manifest = json.loads((ROOT / 'data/collection.json').read_text(encoding='utf-8'))
     summary = report['summary']
@@ -60,10 +62,10 @@ def main():
             names = sorted(set(field['name'] if field['parser_named'] else field['sdk_name']
                                for field in fields if field['parser_named'] or field['sdk_name']))
             known_messages.append((number, name, count, names))
-    (ROOT / 'docs/09-fit-field-catalog.md').write_text('\n'.join(catalog), encoding='utf-8')
+    (output / '09-fit-field-catalog.md').write_text('\n'.join(catalog), encoding='utf-8')
     lines = [
         '# Analiza pełnej pobranej historii FIT', '',
-        'Stan z 2026-10-10. Analiza dotyczy plików uzyskanych z jednego endpointu dobrostanu, '
+        'Raport lokalnego skanu. Analiza dotyczy plików uzyskanych z jednego endpointu dobrostanu, '
         'nie wszystkich informacji dostępnych na platformie Garmin Connect.', '',
         '## Metoda', '',
         'Każdy ZIP otwarto lokalnie, a FIT odczytywano pojedynczo. Nie rozpakowywano plików na dysk '
@@ -115,9 +117,8 @@ def main():
         f"Pierwsze niepuste archiwum: **{summary['first_archive']}**, ostatnie: **{summary['last_archive']}**. "
         f"Ciągła sekwencja dostępnych archiwów zaczyna się **{summary['continuous_archive_history_from']}**. "
         f"Pozostaje **{summary['unresolved_days']}** dni z odpowiedzią 404 oznaczoną jako nierozstrzygnięta.", '',
-        'Archiwum 2024-02-17 zawiera pojedynczy plik METRICS; nie jest początkiem pełnego '
-        'zapisu dobrostanu. Od 2024-06-19 występuje ciągła historia ZIP do 2026-10-09. '
-        'Brak ZIP na wcześniejsze daty nie rozstrzyga, czy pomiary nigdy nie istniały, '
+        'Zakres archiwów opisuje dostępność tego zbioru, nie początek używania urządzenia. '
+        'Brak ZIP na inne daty nie rozstrzyga, czy pomiary nigdy nie istniały, '
         'czy nie są udostępniane przez ten endpoint.', '',
         f"Zakres rozpoznanych pól czasu UTC, obejmujący również metadane plików: "
         f"`{summary['min_known_utc_time']}` – `{summary['max_known_utc_time']}`. "
@@ -143,15 +144,14 @@ def main():
         'że rozumiemy każdą metrykę. W szczególności wiele pól METRICS i niektóre serie '
         'WELLNESS pozostają identyfikatorami numerycznymi. Nie przypisujemy im nazw '
         'Body Battery, Training Readiness ani innych nazw na podstawie przypuszczeń.', '',
-        'Pliki ACTIVITY znaleziono wewnątrz otrzymanych ZIP. Zachowujemy je zgodnie z zasadą '
-        'pełnego zachowania źródła. Dziewięć wystąpień nie stanowi dowodu pełnej historii '
+        'Pliki ACTIVITY obecne wewnątrz ZIP zachowujemy zgodnie z zasadą '
+        'pełnego zachowania źródła. Ich obecność nie stanowi dowodu pełnej historii '
         'treningów; osobne pobieranie aktywności pozostaje poza zakresem.', '',
         'Tablice, nieważne wartości, subpola i komponenty wymagają reprezentacji bardziej '
         'ogólnej niż tabela z jednym zestawem kolumn zdrowotnych. Ustalony '
-        '[schemat SQLite](10-sqlite-schema.md) zachowuje fizyczne pola oraz osobny katalog '
-        'ich interpretacji. Nie liczy własnych podsumowań zdrowotnych.', '',
-        'Rozmiar przyszłego eksportu JSON i bazy nie jest jeszcze zmierzony: raport obejmuje '
-        'rozmiary źródeł. Baza i JSON będą miały narzut struktury; nie można utożsamić go '
+        '[schemat PostgreSQL](../../docs/10-postgresql-schema.md) zachowuje fizyczne pola oraz osobny katalog '
+        'ich interpretacji. Reguły podsumowań opisuje dokumentacja aplikacji.', '',
+        'Raport obejmuje rozmiary źródeł. Baza i JSON mają narzut struktury; nie można utożsamić go '
         'z rozmiarem ZIP ani obiecać zmieszczenia szczegółowych 90 dni w kontekście AI.', '',
         '## Odtworzenie analizy', '', '```powershell',
         r'.\.venv\Scripts\python.exe -m pip install -r requirements-analysis.txt',
@@ -160,10 +160,10 @@ def main():
         'Raport szczegółowy: `data/fit_inventory.json` (ignorowany przez Git). '
         'Przejściowy checkpoint zawiera tylko metadane i jest usuwany po udanej analizie. '
         'Wyniki dla ograniczenia `--limit` służą wyłącznie próbie skryptu i nie zastępują pełnego skanu. '
-        'Pełny katalog w dokumentacji: [09-fit-field-catalog.md](09-fit-field-catalog.md).',
+        'Pełny katalog tego skanu: [09-fit-field-catalog.md](09-fit-field-catalog.md).',
     ])
-    (ROOT / 'docs/08-fit-analysis.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
-    print('Wrote docs/08-fit-analysis.md and docs/09-fit-field-catalog.md')
+    (output / '08-fit-analysis.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    print('Wrote local reports in local-notes/fit-reports')
 
 
 if __name__ == '__main__':

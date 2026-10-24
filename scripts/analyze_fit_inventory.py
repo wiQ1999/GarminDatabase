@@ -1,6 +1,6 @@
 """Stream FITs from ZIPs; retain schema/count metadata, never measurement payloads.
 
-See docs/08-fit-analysis.md for method, coverage and limitations.
+Source rules: docs/02-source-validation.md. Local reports are not product docs.
 """
 
 import argparse

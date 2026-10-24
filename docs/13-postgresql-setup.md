@@ -1,6 +1,6 @@
 # PostgreSQL: konfiguracja i ochrona danych
 
-Od 2026-10-23 jedynym silnikiem aplikacji jest darmowy PostgreSQL Community 16 lub nowszy. Instalacja lokalna i docelowy serwer używają identycznego schematu i sterownika psycopg 3. Nie ma automatycznego powrotu do SQLite ani migracji jego danych.
+Jedynym silnikiem aplikacji jest darmowy PostgreSQL Community 16 lub nowszy. Instalacja lokalna i docelowy serwer używają identycznego schematu i sterownika psycopg 3. Nie ma automatycznego powrotu do SQLite ani migracji jego danych.
 
 ## Instalacja serwera
 
@@ -76,11 +76,9 @@ Na zdalnym serwerze użyj np. `host=db.example.internal port=5432 dbname=garmin 
 
 `status` tworzy pusty schemat i weryfikuje jego wersje/sumy kontrolne. Brak serwera lub bazy kończy operację bez utworzenia pliku SQLite. UI/CLI prezentują typ błędu bez treści wyjątku sterownika i danych połączenia.
 
-## Usunięcie starego SQLite przed testami lokalnymi
+## Dane ze starszych wersji
 
-Zatrzymaj starą aplikację i procesy importu. W rzeczywistym katalogu `data_dir` usuń wyłącznie `garmin.sqlite3` i istniejące pliki pomocnicze `garmin.sqlite3-wal`, `garmin.sqlite3-shm`, `garmin.sqlite3-journal`. To świadoma rezygnacja z poprzedniej bazy: użytkownik zdecydował ponownie pobrać historię, bez migracji danych. Nie usuwaj ZIP z `raw/`, sesji, ustawień, eksportów ani nowej bazy PostgreSQL.
-
-Po skonfigurowaniu połączenia uruchom aplikację i „Pobierz dane”. Istniejące poprawne archiwa można również ponownie zaimportować. `data_dir` wskazuje teraz archiwa i metadane lokalne, a nie plik SQL. Przeniesienie samego folderu `data/` nie przenosi PostgreSQL; do przenoszenia nowej bazy służą narzędzia PostgreSQL.
+Aplikacja nie migruje danych SQLite. Pustą bazę PostgreSQL zasila ponowne pobranie lub import zachowanych ZIP. `data_dir` wskazuje archiwa i metadane lokalne, nie plik SQL. Przeniesienie folderu `data/` nie przenosi bazy; do przenoszenia PostgreSQL służą jego narzędzia administracyjne. Usuwanie danych użytkownika nie jest częścią konfiguracji nowej bazy ani testów.
 
 ## Ochrona danych na dysku
 
@@ -106,10 +104,8 @@ export GARMIN_TEST_DATABASE_DSN='host=localhost port=5432 dbname=garmin_tests us
 
 Każdy test integracyjny/UI tworzy unikatowy schemat, a po teście go usuwa. To samo robi smoke paczki. Rola testowa potrzebuje CREATE w swojej bazie, bez superuser. Brak konfiguracji kończy pełny zestaw błędem zamiast pomijania testów bazy lub zastępowania jej SQLite. Testy jednostkowe można uruchomić bez serwera przez `pytest -m 'unit and not integration and not ui'`.
 
-## Przygotowana instalacja lokalna Windows — 2026-10-23
+## Lokalna instalacja projektu na Windows
 
 W checkoutcie `D:/Projects/GarminDatabase` przygotowano PostgreSQL 16.15 z [oficjalnej paczki binarnej EDB](https://www.enterprisedb.com/download-postgresql-binaries). Serwer jest niezależnym procesem i nasłuchuje wyłącznie na `127.0.0.1:5432`. Programy są w `private/postgresql-runtime/pgsql`, a trwałe dane serwera w `private/postgresql-runtime/data`. Baza aplikacji `garmin` i baza testów `garmin_tests` mają osobne role bez uprawnień administracyjnych. Losowe hasła są w pliku `private/postgresql-runtime/pgpass.conf`; katalog ma ACL ograniczony do użytkownika, SYSTEM i administratorów. Ustawienia wskazują `passfile`, bez hasła.
 
-Uruchom lokalny `private/Uruchom-GarminDatabase.cmd`. Plik włącza PostgreSQL, jeśli jest zatrzymany, a potem aktualną paczkę GUI z `dist/login-cleanup`. Nie utworzono usługi systemowej ani automatycznego startu przy logowaniu, dlatego po restarcie komputera należy użyć tego pliku. Lokalne szczegóły obsługi są w `private/README-local.md`; te pliki i serwer pozostają poza Git. Nie usuwać `private/postgresql-runtime` w ramach sprzątania katalogów roboczych, ponieważ zawiera nową bazę i jej dane dostępowe. Nie skonfigurowano szyfrowania nośnika ani automatycznych kopii zapasowych.
-
-Na wyraźne zlecenie i po dodatkowym potwierdzeniu użytkownika jednorazowo usunięto stary SQLite, jego pliki WAL/SHM, 845 archiwów w rzeczywistym `data/raw` oraz `collection.json` i `fit_inventory.json`. Sesję Garmin, ustawienia i eksporty zachowano. To wyjątek dotyczący tego resetu, nie ogólna instrukcja usuwania oryginalnych ZIP. Nowa baza jest pusta; pobieranie historii nie zostało rozpoczęte. Ustawienia zachowują początek 2024-01-01, a pusty `history_to` oznacza automatycznie wczoraj w Warszawie. Stan technicznego odbioru opisuje [instrukcja testów](12-running-and-testing.md#lokalny-odbiór-windows--2026-10-23).
+Uruchom lokalny `private/Uruchom-GarminDatabase.cmd`. Plik włącza PostgreSQL, jeśli jest zatrzymany, a potem paczkę GUI wskazaną w `private/start-garmin.ps1`. Nie utworzono usługi systemowej ani automatycznego startu przy logowaniu, dlatego po restarcie komputera należy użyć tego pliku. Lokalne szczegóły obsługi są w `private/README-local.md`; te pliki i serwer pozostają poza Git. Nie usuwać `private/postgresql-runtime` w ramach sprzątania katalogów roboczych, ponieważ zawiera nową bazę i jej dane dostępowe. Nie skonfigurowano szyfrowania nośnika ani automatycznych kopii zapasowych.

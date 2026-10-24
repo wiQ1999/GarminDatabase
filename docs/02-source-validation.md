@@ -1,77 +1,25 @@
-# Źródło danych i jego weryfikacja
+# Źródło danych i zasady weryfikacji
 
-## Ręczny wzorzec
+## Obsługiwane źródło
 
-Garmin Connect → [Informacje o koncie](https://connect.garmin.com/app/settings/accountInformation) → „Eksportuj dane dotyczące dobrostanu” → wskazana data.
+Aplikacja używa `Garmin.download_health_snapshot(requested_date)` z przypiętej biblioteki `garminconnect`. Metoda pobiera dzienny ZIP z `/download-service/files/wellness/{requested_date}`. Ręcznym odpowiednikiem jest Garmin Connect → Informacje o koncie → „Eksportuj dane dotyczące dobrostanu” dla wskazanej daty.
 
-Próbka użytkownika: `C:/Users/wikto/Downloads/2026-10-09.zip`, 58 033 bajty. Lista wpisów została sprawdzona bez ekstrakcji:
+To nieoficjalny endpoint. Dostępność archiwum zależy od Garmin, konta i daty. Aplikacja nie zastępuje nieudanego pobrania danymi z innych endpointów i nie dodaje osobnego źródła treningów. Zgodność jednej próbki nie gwarantuje dostępności wszystkich dat ani wszystkich danych widocznych w Garmin Connect.
 
-| Typ nazwy pliku | Liczba | Łączny rozmiar po rozpakowaniu, bajty |
-| --- | ---: | ---: |
-| WELLNESS | 10 | 102001 |
-| METRICS | 6 | 3236 |
-| HRV_STATUS | 1 | 1281 |
-| SKIN_TEMP | 1 | 13696 |
-| SLEEP_DATA | 1 | 933 |
-| SLEEP_DISRUPTIONS | 1 | 420 |
-| Razem | 20 | 121567 |
+Wersje bibliotek są określone w `requirements-probe.txt`, `requirements-analysis.txt` i `pyproject.toml`; procedurę instalacji opisuje [uruchamianie](12-running-and-testing.md).
 
-Nazwy nie stanowią dowodu konkretnego zestawu pól. Użytkownik tego dnia zarejestrował dwie jazdy rowerowe. W archiwum nie ma osobno nazwanego pliku aktywności; nie potwierdzono, czy jakieś rekordy opisują te jazdy. Nie dodajemy osobnego źródła treningów.
+## Oryginał i dekodowanie
 
-## Kandydat WebAPI
+ZIP jest zachowywany bez ponownego pakowania. FIT odczytuje się bez trwałego rozpakowywania całego archiwum. Strukturalny dekoder `fitdecode` dostarcza fizyczne definicje i wartości raw, a przypięty publiczny profil Garmin FIT SDK — nazwy, jednostki i reguły interpretacji.
 
-W kodzie `python-garminconnect`, sprawdzonym 2026-10-10, `download_health_snapshot(requested_date)` pobiera bajty z `/download-service/files/wellness/{requested_date}`. Test na koncie użytkownika potwierdził zgodność z ręcznym eksportem dobrostanu dla 2026-10-09. Wynik dotyczy tej próbki; nie dowodzi dostępności wszystkich dat ani parametrów widocznych w Garmin Connect.
+Nazwy plików i wiadomości nie dowodzą dostępności konkretnej metryki. Brak nazwy w profilu nie powoduje odrzucenia pola; dane pozostają pod identyfikatorami źródłowymi. Pokrycie strukturalne i rozpoznanie semantyki są różnymi informacjami. Reguły zachowania danych opisują [architektura](03-architecture.md) i [schemat](10-postgresql-schema.md).
 
-Źródła pierwotne:
+## Weryfikacja zgodności archiwów
 
-- [Implementacja biblioteki](https://github.com/cyberjunky/python-garminconnect/blob/master/garminconnect/__init__.py)
-- [Przykład logowania i obsługi MFA](https://github.com/cyberjunky/python-garminconnect/blob/master/example.py)
+Porównanie ręcznego i automatycznego eksportu obejmuje poprawność ZIP, listę wpisów, rozmiary i SHA-256 rozpakowanej zawartości. Należy porównać też multizbiór hashy niezależnie od nazw i kolejności. Różna kompresja lub metadane ZIP nie muszą oznaczać zmiany FIT.
 
-Endpoint jest nieoficjalny; nie zakładamy stałej dostępności ani opublikowanych limitów. Przed implementacją trzeba przypiąć sprawdzoną wersję biblioteki i parsera. Nie zastępować nieudanego pobrania danymi z innych endpointów.
+Jeżeli FIT się różnią, sprawdza się definicje, typy, wartości, jednostki, czasy i liczbę rekordów. Sama zgodność liczby plików lub wiadomości nie dowodzi zgodności wartości. Brak danych i błędy sieciowe muszą zachować odrębne statusy zgodnie z [synchronizacją](04-synchronization.md).
 
-## Próba przed budową aplikacji
+Pomocniczy `scripts/probe_wellness.py` porównuje dwa lokalne ZIP (`--reference`, `--candidate`) albo pobiera jedną próbkę po lokalnym logowaniu. Nie zastępuje zwykłego procesu pobierania/importu w aplikacji. `scripts/analyze_fit_inventory.py` i `scripts/render_fit_inventory_docs.py` służą analizom metadanych; ich wyniki są lokalnymi raportami poza `docs/`, a nie kontraktem aplikacji.
 
-Skrypt `scripts/probe_wellness.py` ma dwie funkcje: pobranie pojedynczego ZIP i porównanie go z ręcznym eksportem albo porównanie dwóch lokalnych ZIP bez logowania. Nie implementuje jeszcze dekodowania FIT.
-
-Pierwotną próbę wykonano z `garminconnect==0.3.17` i `tzdata==2026.5`. Obecnie projekt przypina `garminconnect==0.3.20`, z poprawką przygotowania sesji logowania mobilnego; szczegóły i granice odbioru opisuje [instrukcja testów](12-running-and-testing.md#aktualizacja-klienta-garmin-i-diagnostyka-mfa--2026-10-24). Sprawdzono obecność kandydata metody, sygnaturę logowania i dostępność strefy `Europe/Warsaw`. Uruchomienie z katalogu projektu:
-
-```powershell
-.venv/Scripts/python.exe scripts/probe_wellness.py --date 2026-10-09 --reference "C:/Users/wikto/Downloads/2026-10-09.zip"
-```
-
-Skrypt pyta lokalnie o login, hasło i ewentualny kod MFA. Nie wpisywać ich do czatu. Próbny skrypt nie zapisuje sesji ani hasła. Pobranie trafia do `data/raw/2026-10-09.zip`; skrypt odmawia nadpisania istniejącego pliku.
-
-Porównanie lokalne:
-
-```powershell
-.venv/Scripts/python.exe scripts/probe_wellness.py --date 2026-10-09 --reference "C:/Users/wikto/Downloads/2026-10-09.zip" --candidate "data/raw/2026-10-09.zip"
-```
-
-### Ocena rezultatu
-
-1. Sprawdzić poprawność ZIP i sumy kontrolne wpisów.
-2. Porównać nazwy, rozmiary i SHA-256 rozpakowanej zawartości; porównać również multizbiór hashy niezależnie od nazw i kolejności plików.
-3. Zgodność zawartości FIT jest silniejszym dowodem niż zgodność binarna całych ZIP, których metadane i kompresja mogą się różnić.
-4. Jeśli FIT różnią się, zdekodować oba zestawy: porównać identyfikatory wiadomości i pól, wartości, jednostki, znaczniki czasu oraz liczbę rekordów. Wyjaśnić różnice; nie deklarować zgodności na podstawie liczby plików.
-5. Ustalić faktyczną obecność parametrów i pól nieobsługiwanych przez parser.
-6. Sprawdzić próbkę starszego dnia oraz kontrolowany dzień bez danych. Nie utożsamiać dowolnego 404 z brakiem danych.
-
-Pełny import historii jest następnym etapem dopiero po pozytywnym wyniku próby. Nie można obiecać, że Garmin nadal udostępnia wszystkie dawne pomiary.
-
-## Stan weryfikacji
-
-- Lista plików ręcznego ZIP: sprawdzona.
-- Kod kandydata WebAPI: sprawdzony.
-- Lokalne porównanie próbki z nią samą, wykrycie zmienionej zawartości, zmian nazw/kolejności i nieprawidłowego ZIP: sprawdzone. To test porównywarki, nie dowód zgodności WebAPI.
-- Pobranie na koncie użytkownika dla 2026-10-09: wykonane przez użytkownika; raport przekazany w rozmowie.
-- Zgodność próbki: wszystkie 20 plików mają identyczne nazwy, rozmiary i SHA-256; `entries_equal_including_names=true`, `content_equal_ignoring_names=true`. Potwierdzono również przez lokalne porównanie zapisanych archiwów.
-- Całe ZIP nie są identyczne binarnie (`zip_bytes_equal=false`); różnica nie dotyczy zawartości plików FIT. Dokładnych różnic opakowania ZIP nie analizowano.
-- Zakres pól FIT i dostępność starszych dat: przeskanowano całą pobraną historię, wyniki w [analizie FIT](08-fit-analysis.md). Pobrano 844 archiwa; 169 dat ma nierozstrzygnięte 404. Znaczenie tych 404 nadal nie jest potwierdzone.
-- Logowanie umożliwiło użytkownikowi pobranie próbki. Nie ustalono, czy użyto MFA; ponowne użycie zapisanej sesji nie jest testowane przez skrypt.
-
-Odtworzenie środowiska na innym komputerze z Pythonem:
-
-```powershell
-python -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements-probe.txt
-```
+Źródła formatu: [protokół FIT](https://developer.garmin.com/fit/protocol/) i [oficjalny SDK Python](https://github.com/garmin/fit-python-sdk). Implementacja klienta: [python-garminconnect](https://github.com/cyberjunky/python-garminconnect). Lokalne wyniki prób i skanów przechowuje się w ignorowanych folderach.

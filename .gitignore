@@ -31,3 +31,6 @@ htmlcov/
 *.egg-info/
 
 /work/
+
+# Lokalne analizy, raporty, opisy incydentów i archiwum dokumentacji
+/local-notes/

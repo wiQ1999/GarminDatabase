@@ -1,42 +1,28 @@
 # GarminDatabase
 
-Prywatna aplikacja okienkowa dla Windows 11 do pobierania dziennych archiwów dobrostanu z Garmin Connect, przechowywania danych, przeglądania prostych wykresów i eksportowania JSON dla Claude i ChatGPT. Docelowo wspólna logika będzie również działać bez UI na Raspberry Pi.
+Prywatna aplikacja Windows do pobierania dziennych archiwów dobrostanu z Garmin Connect, zachowania źródłowych danych FIT w PostgreSQL, przeglądania wykresów i eksportu JSON. Lokalny serwer MCP udostępnia wybrane podsumowania tylko do odczytu przez `stdio`.
 
-## Stan projektu
+## Możliwości aplikacji
 
-Zaimplementowano aplikację Windows, importer PostgreSQL, klienta Garmin z sesją DPAPI, wykresy i strumieniowy eksport JSON. Paczka jest w `dist/GarminDatabase/GarminDatabase.exe`; należy zachować cały folder dystrybucji. [Uruchamianie i testy](docs/12-running-and-testing.md).
+- Pobieranie brakujących dni od wybranego początku do wczoraj według Europe/Warsaw, import i wznowienie przerwanej pracy.
+- Zachowanie oryginalnych ZIP i fizycznych pól FIT, w tym pól bez rozpoznanej semantyki.
+- Szczegóły pojedynczego dnia, podsumowania Garmin i jawnie oznaczone średnie dzienne obsługiwanych pomiarów.
+- Eksport v2: nowy folder z manifestem oraz osobnymi plikami historii i szczegółów dla każdego parametru.
+- Niezależny wybór parametrów eksportu i MCP. MCP nie pobiera danych z Garmin i nie zapisuje do bazy.
+- Logowanie z MFA i sesją chronioną Windows DPAPI. Hasła i kody nie są zapisywane.
 
-Eksport v2 tworzy osobny folder z datą i czasem, historię podsumowań oraz szczegóły w osobnych plikach każdego parametru. Schemat aplikacji v3 w PostgreSQL zachowuje źródła i dodatkowy, odtwarzalny cache podsumowań dziennych; eksport może wybrać podsumowania miesięczne. [Format i reguły podsumowań](docs/05-export.md).
+Aplikacja wymaga **PostgreSQL 16+**. Serwer działa osobno i nie jest częścią EXE. Nie ma wariantu SQLite ani migracji jego danych. Rdzeń importu i eksportu działa bez UI; harmonogram, ochrona sesji Linux i hub Raspberry Pi pozostają kierunkami rozwoju.
 
-Od 2026-10-23 aplikacja używa wyłącznie PostgreSQL 16+ — lokalnie i na serwerze. Nie przenosi danych ze starego SQLite; nową bazę zasila ponowne pobranie lub import oryginalnych ZIP. Najpierw skonfiguruj serwer i połączenie: [PostgreSQL na Windows, Linux i Raspberry Pi OS](docs/13-postgresql-setup.md).
+## Uruchomienie
 
-Hasła połączenia nie zapisują się w ustawieniach. PostgreSQL wymaga osobnego zabezpieczenia nośnika i TLS; oryginalne ZIP oraz eksporty również zawierają dane wrażliwe.
+Najpierw [przygotuj PostgreSQL i połączenie](docs/13-postgresql-setup.md). Użytkownik paczki Windows uruchamia `GarminDatabase.exe`, zachowując cały folder dystrybucji z `_internal`. W Ustawieniach konfiguruje folder danych, połączenie i logowanie Garmin, a następnie wybiera „Pobierz dane”.
+
+Ze źródeł: `python -m garmin_database`. Instalację zależności, CLI, build i testy opisuje [instrukcja uruchamiania](docs/12-running-and-testing.md). Szczegóły istniejącej lokalnej instalacji i jej launchera znajdują się w ignorowanym `private/README-local.md`.
+
+Hasło PostgreSQL dostarcza pgpass lub środowisko procesu. Dane, sesje i eksporty są poza Git; wykluczenie z repozytorium nie zastępuje ochrony nośnika ani kopii zapasowej.
 
 ## Dokumentacja
 
-1. [Cel i wymagania](docs/01-requirements.md)
-2. [Źródło danych i jego weryfikacja](docs/02-source-validation.md)
-3. [Architektura i przechowywanie](docs/03-architecture.md)
-4. [Synchronizacja i obsługa błędów](docs/04-synchronization.md)
-5. [Eksport JSON](docs/05-export.md)
-6. [Plan realizacji i kryteria odbioru](docs/06-implementation.md)
-7. [Pobranie surowej historii — uruchomienie i wznowienie](docs/07-history-collection.md)
-8. [Wyniki analizy pełnej historii FIT](docs/08-fit-analysis.md)
-9. [Kompletny katalog wykrytych pól](docs/09-fit-field-catalog.md)
-10. [Schemat PostgreSQL i podsumowania](docs/10-postgresql-schema.md) — [DDL źródeł](schema/001_initial.sql), [podsumowania v3](schema/003_summaries.sql)
-11. [Interfejs Windows i ustawienia aplikacji](docs/11-desktop-ui.md)
-12. [Uruchamianie, budowanie i testy](docs/12-running-and-testing.md)
-13. [Konfiguracja PostgreSQL i ochrona danych](docs/13-postgresql-setup.md)
+[Indeks dokumentacji](docs/README.md) prowadzi do aktualnych wymagań, architektury, reguł synchronizacji, eksportu, schematu, UI i instrukcji obsługi. Opisy dotyczą stanu aplikacji i jawnie określonych celów rozwoju.
 
-## Pobranie historii do analizy
-
-```powershell
-cd D:\Projects\GarminDatabase
-.\.venv\Scripts\python.exe .\scripts\download_history.py
-```
-
-Zakres domyślny: 2024-01-01 do wczoraj. Skrypt zapisuje oryginalne ZIP-y i raport metadanych, zachowuje postęp i może korzystać z lokalnie zapisanej sesji. Nie dekoduje jeszcze FIT ani nie buduje bazy. Szczegóły w instrukcji powyżej.
-
-Pierwszy etap realizacji opisano w dokumencie źródła danych. Dane prywatne, sesje logowania i eksporty są wykluczone z Git przez `.gitignore`. Wykluczenie z Git nie szyfruje plików i nie tworzy kopii zapasowej.
-
-Lokalny serwer MCP udostępnia jawnie wybrane metryki tylko do odczytu przez stdio, z tego samego PostgreSQL co UI i eksport. Konfiguracja i odbiór: [uruchamianie](docs/12-running-and-testing.md).
+Analizy pojedynczych zbiorów, raporty testów, opisy incydentów i wcześniejsze wersje dokumentów trafiają do ignorowanego `local-notes/` lub `test-results/`. Nie są częścią dokumentacji produktu w `docs/`.

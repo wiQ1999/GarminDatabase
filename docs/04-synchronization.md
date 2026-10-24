@@ -1,6 +1,6 @@
 # Synchronizacja i obsługa błędów
 
-## Reguły pierwszej wersji
+## Przebieg synchronizacji
 
 1. Ustal aktualną datę w `Europe/Warsaw`; maksymalny dzień importu to wczoraj. Brak dodatkowego opóźnienia po północy.
 2. Domyślny początek historii: 2024-01-01. Użytkownik może podać węższy okres.
@@ -8,7 +8,7 @@
 4. Jeżeli poprawny ZIP istnieje lokalnie, zarejestruj go i przetwórz bez pobierania.
 5. Pobierz brakujący dzień, zweryfikuj ZIP i zapisz oryginał. Błąd nie oznacza zakończenia dnia.
 6. Przetwórz ZIP do PostgreSQL. Błąd parsera nie unieważnia udanego pobrania; ponawiaj przetwarzanie lokalnego pliku.
-7. Wyświetl liczbę dni pobranych, pominiętych, bez danych i z błędem. W przyszłym trybie bez UI przy błędach zwróć niezerowy kod zakończenia; w aplikacji Windows pokaż status i bezpieczne szczegóły błędu.
+7. Wyświetl liczbę dni pobranych, pominiętych, bez danych i z błędem. CLI zwraca niezerowy kod zakończenia przy błędzie; aplikacja Windows pokazuje status i bezpieczne szczegóły błędu.
 
 Nie aktualizujemy automatycznie zakończonych dni. Użytkownik świadomie akceptuje, że późniejsze zmiany Garmin nie zostaną w tej wersji pobrane.
 
@@ -31,13 +31,13 @@ Nie logować odpowiedzi zawierających zdrowotne dane, hasła, kody MFA, ciastec
 
 ## Logowanie
 
-Docelowe logowanie odbywa się w formularzu ustawień Windows: e-mail, maskowane hasło i kod MFA, jeśli konto go wymaga. Hasło i kod nie są zapisywane. Sesja jest przechowywana poza projektem i bazą, w `%LOCALAPPDATA%/GarminDatabase/auth/session.bin`, zaszyfrowana DPAPI w zakresie użytkownika Windows. Wygaśnięcie sesji wymaga ponownego logowania i nie niszczy istniejących danych. Przeniesienie na inny komputer wymaga nowego logowania. Istniejące skrypty próbne i historyczne nadal mają dotychczasowe logowanie konsolowe; nie są jeszcze docelowym UI.
+Logowanie odbywa się w formularzu ustawień Windows: e-mail, maskowane hasło i kod MFA, jeśli konto go wymaga. Hasło i kod nie są zapisywane. Sesja jest przechowywana poza projektem i bazą, w `%LOCALAPPDATA%/GarminDatabase/auth/session.bin`, zaszyfrowana DPAPI w zakresie użytkownika Windows. Wygaśnięcie sesji wymaga ponownego logowania i nie niszczy istniejących danych. Przeniesienie na inny komputer wymaga nowego logowania. Import lokalny i odczyty MCP nie wymagają logowania Garmin.
 
 ## Polecenia realizowane przez moduł CLI
 
 ```text
 python -m garmin_database.cli sync
-python -m garmin_database.cli sync --from 2024-01-01 --to 2026-10-09
+python -m garmin_database.cli sync --from 2024-01-01 --to 2026-09-30
 python -m garmin_database.cli status
 python -m garmin_database.cli reprocess --from 2024-01-01
 ```

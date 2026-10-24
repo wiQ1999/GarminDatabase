@@ -1,6 +1,6 @@
 # Interfejs Windows i ustawienia aplikacji
 
-Uzgodnione wymagania z 2026-10-11, zrealizowane w aplikacji opisanej w [instrukcji uruchamiania](12-running-and-testing.md). Dokument zastępuje wcześniejsze założenie pierwszej wersji konsolowej. Zakres pozyskiwania i zachowania danych pozostaje bez zmian.
+Dokument opisuje dostępny interfejs Windows, jego zachowanie i wymagania prezentacji. Procedury startu, budowania i testowania znajdują się w [instrukcji uruchamiania](12-running-and-testing.md).
 
 ## Uruchamianie i wygląd
 
@@ -43,7 +43,7 @@ Zakresy: **Dzień**, **7 dni**, **30 dni**, **90 dni**, **Cała historia**, wła
 
 Checkbox **„Linia trendu”** jest domyślnie odznaczony. Włącza przerywaną linię z podpisem „Trend liniowy (obliczony)”, dopasowaną metodą najmniejszych kwadratów względem rzeczywistego czasu. Obejmuje poprawne skończone wartości liczbowe aktualnego wykresu. Nie dodaje punktów w lukach ani nie zmienia próbek; sama prosta trendu jest wskazówką wizualną i może przebiegać przez okresy bez pomiarów. Checkbox jest niedostępny podczas ładowania, dla kategorii i przy braku co najmniej dwóch obserwacji z różnymi czasami. Wybór obowiązuje w bieżącym oknie, bez zapisu w ustawieniach.
 
-Linia trendu jest obliczana wyłącznie na wykresie i nie jest podsumowaniem Garmin. Nie trafia do PostgreSQL lub JSON. Późniejsze wymaganie użytkownika wprowadza średnie i podsumowania historii w bazie i eksporcie; opisuje je [eksport](05-export.md). Nie redukować źródłowych próbek w bazie lub plikach szczegółowych na potrzeby UI. Zapytanie pobiera wybrany parametr i okres, a nie całą bazę. Nie dodawać ocen ani interpretacji medycznych.
+Linia trendu jest obliczana wyłącznie na wykresie i nie jest podsumowaniem Garmin. Nie trafia do PostgreSQL lub JSON. Średnie i podsumowania historii w bazie i eksporcie opisuje [eksport](05-export.md). Nie redukować źródłowych próbek w bazie lub plikach szczegółowych na potrzeby UI. Zapytanie pobiera wybrany parametr i okres, a nie całą bazę. Nie dodawać ocen ani interpretacji medycznych.
 
 Nierozpoznane pola zachować w PostgreSQL. UI pokazuje ich obecność i liczbę z jednoznaczną etykietą, że chodzi o warianty pól, a nie liczbę parametrów zdrowotnych; bez zgadywanych nazw i wykresów. Pełne rekordy można przeglądać narzędziem PostgreSQL, np. psql lub pgAdmin, poza zakresem interfejsu.
 
@@ -63,13 +63,13 @@ Jeśli Garmin wymaga kodu MFA, pojawia się osobne okno nad oknem logowania. Kod
 
 Punkty wejścia: `Window.build_settings` i `Window.login` w `garmin_database/ui.py`; okno postępu i MFA: `garmin_database/login_dialog.py`; ochrona sesji i sprawdzenie anulowania przed jej zapisem: `GarminSource.login` w `garmin_database/auth.py`.
 
-MFA obsługuje wyłącznie `LoginDialog`; ogólny worker importu i eksportu nie otwiera drugiego okna kodu. Dialog wyświetla bezpieczny komunikat przygotowany przez rdzeń/worker i nie rozpoznaje ponownie błędów przez przeszukiwanie tekstu. Potwierdzoną przyczynę awarii EXE, ograniczenia wcześniejszych testów i końcowy przegląd opisuje [analiza logowania](14-login-analysis.md).
+MFA obsługuje wyłącznie `LoginDialog`; ogólny worker importu i eksportu nie otwiera drugiego okna kodu. Dialog wyświetla bezpieczny komunikat przygotowany przez rdzeń/worker i nie rozpoznaje ponownie błędów przez przeszukiwanie tekstu.
 
-Biblioteka `garminconnect==0.3.20` przygotowuje sesję mobilną przez pobranie strony logowania przed wysłaniem danych, zgodnie z [poprawką upstream](https://github.com/cyberjunky/python-garminconnect/releases/tag/0.3.20). Samo poprawne logowanie w przeglądarce nie potwierdza, że Garmin zaakceptuje token aplikacji w API. Okno pokazuje etap połączenia, oczekiwania na kod, potwierdzania MFA i dostępu aplikacji oraz lokalnego zapisu sesji. Błąd `LoginFailed` zawiera wyłącznie etap, dozwoloną kategorię i ewentualny strukturalny status HTTP; nie pokazuje treści wyjątku biblioteki ani odpowiedzi Garmin. Przykłady kodów: `MFA_VERIFY/ACCESS_DENIED`, `MFA_VERIFY/CONNECTION`, `CONNECT/RATE_LIMIT`, `SESSION_SAVE/LOCAL_SESSION`. Etap MFA obejmuje również wymianę tokenów i pobranie profilu, więc sam kod etapu nie dowodzi niepoprawności kodu MFA. Biblioteka czasem usuwa status HTTP podczas opakowania błędu; wtedy aplikacja go nie zgaduje.
+Biblioteka `garminconnect==0.3.20` przygotowuje sesję mobilną przez pobranie strony logowania przed wysłaniem danych. Samo poprawne logowanie w przeglądarce nie potwierdza, że Garmin zaakceptuje token aplikacji w API. Okno pokazuje etap połączenia, oczekiwania na kod, potwierdzania MFA i dostępu aplikacji oraz lokalnego zapisu sesji. Błąd `LoginFailed` zawiera wyłącznie etap, dozwoloną kategorię i ewentualny strukturalny status HTTP; nie pokazuje treści wyjątku biblioteki ani odpowiedzi Garmin. Przykłady kodów: `MFA_VERIFY/ACCESS_DENIED`, `MFA_VERIFY/CONNECTION`, `CONNECT/RATE_LIMIT`, `SESSION_SAVE/LOCAL_SESSION`. Etap MFA obejmuje również wymianę tokenów i pobranie profilu, więc sam kod etapu nie dowodzi niepoprawności kodu MFA. Biblioteka czasem usuwa status HTTP podczas opakowania błędu; wtedy aplikacja go nie zgaduje.
 
 Przed wysłaniem kodu MFA usuwane są białe znaki z jego początku i końca. Po błędzie nadal można ponowić próbę z nowym klientem; wcześniejsza zapisana sesja zostaje zachowana, dopóki nowa próba nie zakończy się pomyślnie. Aktualizacja klienta nie wykonuje automatycznego resetu sesji.
 
-Biblioteka Garmin może opakować lokalny błąd transportu w wyjątek uwierzytelnienia. Jeśli łańcuch zawiera brak lokalnego pliku, aplikacja pokazuje kategorię `LOCAL_RUNTIME` i informację o pełnej paczce, zamiast przypisywać przyczynę danym konta. Potwierdzony przypadek brakującego zasobu TLS w EXE oraz jego naprawę opisuje [odbiór pakowania](12-running-and-testing.md#potwierdzona-przyczyna-i-poprawka-pakowania-tls--2026-10-24).
+Biblioteka Garmin może opakować lokalny błąd transportu w wyjątek uwierzytelnienia. Jeśli łańcuch zawiera brak lokalnego pliku, aplikacja pokazuje kategorię `LOCAL_RUNTIME` i informację o pełnej paczce, zamiast przypisywać przyczynę danym konta. Wymagane zasoby TLS i kontrolę paczki opisuje [instrukcja budowania](12-running-and-testing.md#build-i-smoke).
 
 Docelowe lokalizacje dla Windows:
 
@@ -83,13 +83,13 @@ D:/Projects/GarminDatabase/
   exports/
 ```
 
-`settings.json` przechowuje ostatnie wybory eksportu, lokalizacje danych i preferencje interfejsu; nie zawiera sekretów. Na koncie użytkownika odpowiada ścieżce `C:/Users/wikto/AppData/Local/GarminDatabase/settings.json`. Ustawienia zapisywać atomowo. Lokalizacje archiwów i eksportów są konfigurowalne. Baza PostgreSQL jest wskazana przez `database_dsn` w ustawieniach lub `GARMIN_DATABASE_DSN`/libpq. Pole połączenia w UI nie przyjmuje hasła; hasło dostarcza plik pgpass lub środowisko procesu. Serwer musi działać przed uruchomieniem UI. Zobacz [konfigurację PostgreSQL](13-postgresql-setup.md).
+`settings.json` przechowuje ostatnie wybory eksportu, lokalizacje danych i preferencje interfejsu; nie zawiera sekretów. Ustawienia zapisywać atomowo. Lokalizacje archiwów i eksportów są konfigurowalne. Baza PostgreSQL jest wskazana przez `database_dsn` w ustawieniach lub `GARMIN_DATABASE_DSN`/libpq. Pole połączenia w UI nie przyjmuje hasła; hasło dostarcza plik pgpass lub środowisko procesu. Serwer musi działać przed uruchomieniem UI. Zobacz [konfigurację PostgreSQL](13-postgresql-setup.md).
 
 Tokeny sesji w `auth/session.bin` szyfrować Windows DPAPI w zakresie użytkownika, bez opcji ochrony wspólnej dla wszystkich kont komputera. Nie zapisywać sesji w PostgreSQL ani w Temp. Sam katalog lub zapis w bazie nie zapewniają szyfrowania. Domyślnie odszyfrowanie wymaga tego samego użytkownika Windows i komputera; po przeniesieniu potrzebne jest ponowne logowanie. Nie dodawać własnego stałego klucza szyfrującego w aplikacji. Zobacz [DPAPI](https://learn.microsoft.com/en-us/windows/win32/SecCrypto/example-c-program-using-cryptprotectdata) i [zalecenia lokalizacji danych aplikacji](https://github.com/MicrosoftDocs/windows-dev-docs/blob/docs/hub/apps/develop/windows-app-restore.md).
 
 Reset logowania wykonuje się przy zamkniętej aplikacji przez usunięcie wyłącznie `%LOCALAPPDATA%/GarminDatabase/auth/session.bin`, na wyraźne zlecenie użytkownika. Aplikacja nie ma drugiego dyskowego cache logowania, a ręczna próba używa nowego klienta i danych podanych w formularzu. Reset nie wymaga usuwania `settings.json`, połączenia PostgreSQL, bazy, eksportów ani plików pgpass. Nie kasujemy sesji automatycznie podczas startu ani po każdym błędzie.
 
-Istniejący skrypt historyczny może korzystać z sesji w `private/garmin-session`; ten dokument nie zmienia jego implementacji ani nie oznacza, że sesja skryptu została zaszyfrowana. Docelowa aplikacja ma własne bezpieczne logowanie. Wszystkie archiwa, baza, eksporty, logi i sesje pozostają poza Git.
+Wszystkie archiwa, baza, eksporty, logi i sesje pozostają poza Git. Zasady tej sekcji dotyczą aplikacji, nie pomocniczych skryptów analitycznych.
 
 ## Udostępnianie danych i lokalny MCP
 

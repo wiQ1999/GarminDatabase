@@ -43,19 +43,7 @@ Ostatnia obserwacja kroków, dystansu, kalorii lub czasu ruchu **nie jest dzienn
 
 ## Reguły obliczeń i kompletność
 
-Średnia dzienna jest arytmetyczną średnią poprawnych skończonych skalarnych próbek z rozpoznanym czasem UTC, przypisanych do dnia kalendarzowego Europe/Warsaw. Każda obserwacja ma jednakową wagę; to średnia **dostępnych próbek**, bez domniemania pełnego pokrycia doby i bez ważenia czasem lub interpolacji przez luki. Źródła często mają interwał około minuty, a HRV około pięciu minut, ale zachowują przerwy i różną częstotliwość. Dni przy zmianie czasu mają prawidłowe granice lokalne.
-
-Skan bieżącej bazy dla zakresu 2024-01-01–2026-10-10 obejmował wyłącznie liczniki i strukturę, bez publikowania wartości zdrowotnych. Wyniki uzasadniają dzienną podstawę i opcjonalną redukcję do miesiąca:
-
-| Parametr szczegółowy | Rekordy | Dni z rekordami | Nieprawidłowe wg FIT | Dodatkowo wykluczone ze średniej |
-| --- | ---: | ---: | ---: | ---: |
-| Oddech | 1 193 524 | 844 | 0 | 0 |
-| Saturacja | 400 646 | 841 | 712 | 0 |
-| Tętno | 974 247 | 844 | 0 | 0 |
-| HRV | 74 027 | 834 | 549 | 0 |
-| Stres | 1 188 232 | 844 | 0 | 174 389 ujemnych wartości |
-
-Żadna z tych pięciu serii nie miała nierozpoznanego czasu. Różna liczba dni i przerwy między odczytami pokazują, dlaczego liczba poprawnych próbek powinna być jawna, a braków nie można wypełniać zerem. Te liczniki są stanem konkretnego skanu, nie stałymi cechami parametru.
+Średnia dzienna jest arytmetyczną średnią poprawnych skończonych skalarnych próbek z rozpoznanym czasem UTC, przypisanych do dnia kalendarzowego Europe/Warsaw. Każda obserwacja ma jednakową wagę; to średnia **dostępnych próbek**, bez domniemania pełnego pokrycia doby i bez ważenia czasem lub interpolacji przez luki. Aplikacja nie zakłada stałej częstotliwości źródła i zachowuje przerwy między odczytami. Dni przy zmianie czasu mają prawidłowe granice lokalne.
 
 Średnia miesięczna jest ważona liczbą poprawnych próbek dni: `sum(mean_day * valid_count_day) / sum(valid_count_day)`. Nie jest nieważoną średnią średnich dziennych. Minimum i maksimum obejmują te same poprawne próbki. Miesięczny rekord podaje `valid_days`, `period_from` i `period_to`, także dla niepełnego miesiąca. Brak jakiejkolwiek poprawnej próbki daje `null`, a nie zero.
 

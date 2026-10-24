@@ -4,9 +4,7 @@ Aplikacja Windows i rdzeń bez UI używają wyłącznie PostgreSQL 16+. Ten sam 
 
 ## Uruchomienie
 
-Windows: `.venv/Scripts/python.exe -m garmin_database` lub `dist/GarminDatabase/GarminDatabase.exe`. Zachowaj cały folder dystrybucji z `_internal`. PostgreSQL działa jako osobna usługa. Hasło PostgreSQL pobierane jest z pgpass lub środowiska, a hasło Garmin służy wyłącznie logowaniu i nie jest zapisywane. Sesja Garmin tej wersji nadal wymaga Windows DPAPI.
-
-Przed pierwszymi testami lokalnymi zamknij starą aplikację i usuń `garmin.sqlite3` oraz jego `-wal`, `-shm`, `-journal` z rzeczywistego katalogu danych. Nie usuwaj oryginalnych ZIP ani eksportów. Nie implementujemy migracji danych SQLite; historię zapisujemy od nowa w PostgreSQL.
+Windows: `.venv/Scripts/python.exe -m garmin_database` lub `dist/GarminDatabase/GarminDatabase.exe` po standardowym buildzie. Ścieżka paczki przy własnym `--destination` ma ten sam układ we wskazanym folderze. Zachowaj cały folder dystrybucji z `_internal`. PostgreSQL działa niezależnie od EXE. Hasło PostgreSQL pobierane jest z pgpass lub środowiska, a hasło Garmin służy wyłącznie logowaniu i nie jest zapisywane. Sesja Garmin tej wersji nadal wymaga Windows DPAPI.
 
 1. W Ustawieniach sprawdź folder archiwów i połączenie PostgreSQL. Nie podawaj hasła w polu połączenia; ustawienia je odrzucą.
 2. Zaloguj się do Garmin, jeśli chcesz pobierać nowe dni. Import lokalnych ZIP nie wymaga sesji.
@@ -42,7 +40,7 @@ export GARMIN_TEST_DATABASE_DSN='host=localhost port=5432 dbname=garmin_tests us
 | Integracyjne | Prawdziwy PostgreSQL, DDL i ograniczenia, atomowe migracje i SHA, import/rollback/CRC, idempotencja, advisory lock między katalogami, spójne snapshoty, cache i anulowanie, eksport i kursory serwerowe, brak fallbacku przy niedostępnej bazie |
 | UI | Nawigacja, zakresy i daty, spinner, nieaktualne odpowiedzi, trend, eksport, ustawienia PostgreSQL, zatrzymanie, MFA |
 
-Dwa istniejące testy integracji Windows DPAPI są pomijane na innych systemach, z jawnym powodem; muszą zostać uruchomione na Windows. Sam backend PostgreSQL nie wymaga Windows.
+Dwa istniejące testy integracji Windows DPAPI są pomijane na innych systemach, z jawnym powodem; muszą zostać uruchomione na Windows. Sam backend PostgreSQL nie wymaga Windows. Testy protokołu MCP sprawdzają także dostępność transportu, politykę udostępniania, limity i anulowanie.
 
 Kontrola statyczna:
 
@@ -73,6 +71,14 @@ Linux:
 
 Pakiet Pythona można zbudować poleceniem `python -m build`; zarówno wheel, jak i sdist muszą zawierać migracje `garmin_database/resources/*.sql`.
 
+### Zasoby TLS i kryteria paczki
+
+Build dołącza SQL, zasoby UI, ikonę, biblioteki psycopg/libpq i dane stref czasowych. Jeśli używany runtime Pythona dostarcza sąsiedni plik `codex-rejected-cas.pem`, skrypt pakuje go obok modułu `ssl` w obu EXE; standardowy Python nie wymaga tego zasobu. Zachować politykę certyfikatów i weryfikację TLS.
+
+Smoke GUI tworzy rzeczywisty kontekst TLS przed otwarciem okna, a następnie sprawdza uruchomienie na syntetycznej bazie. Sam import bibliotek lub pojawienie się okna nie wystarcza. Testy SDK z atrapą transportu nie zastępują tej kontroli. Rzeczywiste logowanie do konta i pobieranie historii są osobnymi czynnościami odbiorowymi, wykonywanymi przez użytkownika.
+
+Raporty testów, coverage, wyniki smoke i notatki odbioru pozostają w ignorowanych `test-results/` lub `local-notes/`. W dokumentacji utrzymuje się procedurę i wymagania, nie historię kolejnych wyników.
+
 ## Operacje bez UI
 
 ```sh
@@ -90,20 +96,7 @@ Ponowne odwiedzenie kompletnego ZIP nie tworzy fikcyjnego przebiegu importu. Wym
 
 Rozmiar w Start to `pg_database_size` całej wskazanej bazy. MVCC może pozostawiać martwe wersje wierszy; utrzymaniem zajmuje się PostgreSQL autovacuum. Aplikacja nie wykonuje automatycznie `VACUUM FULL`. Długie eksporty utrzymują snapshot do końca operacji; nie pozostawiaj otwartych transakcji bez potrzeby.
 
-Historyczne wyniki odbioru pełnej historii z 2026-10-11 dotyczyły SQLite. Nie są dowodem walidacji tych danych w PostgreSQL. Przy tej zmianie sprawdzamy dane syntetyczne; rzeczywiste dane zostaną ponownie pobrane przez użytkownika.
-
-## Odbiór zmiany PostgreSQL — 2026-10-23
-
-Sprawdzono w środowisku Linux x86_64, Python 3.12.14, rzeczywisty PostgreSQL 16.2, rola testowa bez superuser:
-
-- Pełny runner: **217 zaliczonych, 2 pominięte** (wyłącznie Windows DPAPI), bez błędów; coverage rdzenia/CLI z gałęziami **92,83%**, warstwa storage **100%**.
-- Jednostkowe bez serwera: 121 zaliczonych, 1 pominięty DPAPI, 97 odrzuconych przez wybór warstwy.
-- Ruff i kontrola formatowania: poprawne.
-- Build PyInstaller Linux, wheel i sdist: poprawne; porównano zawartość wszystkich trzech migracji z zasobami każdego artefaktu.
-- Smoke zbudowanej aplikacji: poprawny, własny schemat PostgreSQL usunięty po próbie.
-- Starego pliku SQLite w tym checkoutcie nie było. Rzeczywiste dane użytkownika nie były importowane ani zmieniane.
-
-**Odbiór Windows pozostaje do wykonania:** pełny runner z dwoma testami DPAPI oraz build i smoke EXE. Brak środowiska Windows w tym zleceniu uniemożliwił ich wykonanie; powyższy wynik Linux nie oznacza pełnego odbioru wszystkich platform.
+Odbiór danych rzeczywistych jest oddzielny od testów syntetycznych. Nie zastępuj walidacji importu PostgreSQL wynikiem uzyskanym na innym silniku ani samą próbą logowania.
 
 ## Lokalny MCP — konfiguracja i uruchomienie
 
@@ -121,7 +114,7 @@ Przykład standardowej dystrybucji (przy innym `-Destination` użyj ścieżek sk
   "mcpServers": {
     "garmin_database": {
       "command": "D:/Projects/GarminDatabase/dist/GarminDatabaseMCP/GarminDatabaseMCP.exe",
-      "args": ["--settings-file", "C:/Users/wikto/AppData/Local/GarminDatabase/settings.json"]
+      "args": ["--settings-file", "C:/Users/UZYTKOWNIK/AppData/Local/GarminDatabase/settings.json"]
     }
   }
 }
@@ -168,88 +161,4 @@ Nieznana/wyłączona metryka, zły zakres, uszkodzone ustawienia, brak obsługiw
 
 Skrypt wymaga `GARMIN_TEST_DATABASE_DSN`, tworzy i sprząta osobny schemat PostgreSQL oraz zapisuje syntetyczne pliki i ustawienia w `test-results/mcp-smoke`, uruchamia rzeczywisty proces klientem SDK i sprawdza inicjalizację, trzy narzędzia, limit rozmiaru, średnią dwuletniego okresu oraz odcięcie dostępu bez restartu. Weryfikuje również 10 pytań z `tests/mcp_evaluation.xml`: średnie, rozpiętość, liczniki, brak danych, rok przestępny, lokalny czas i stronicowanie. Raport zawiera wyłącznie status i liczniki. Dodatkowo wykonaj `scripts/smoke_windows.ps1` dla GUI. Sandbox Windows może blokować wewnętrzne `socketpair` pętli asyncio; w tym środowisku testy protokołu wymagają uruchomienia z uprawnieniami pozwalającymi na utworzenie tej pętli. Nie oznacza to otwierania serwera HTTP.
 
-
-## Historyczny odbiór MCP przed połączeniem z PostgreSQL — 2026-10-22
-
-Pełny zestaw: **244 testy**, coverage rdzenia i CLI z gałęziami **93,43%**. Nowe testy obejmują migrację wyboru, niezależne listy kanałów, walidację eksportu GUI/CLI/bezpośrednio, zgodność średnich okresowych z eksportem, brak połączeń zapisujących z MCP, zakres dwóch lat bez cache, DST, anulowanie, limit bajtów, puste dni, zmianę rewizji i odcięcie dostępu przed odpowiedzią. Test protokołu uruchamia osobny proces z innego katalogu roboczego i wywołuje trzy narzędzia klientem SDK. Wszystkie ustawienia testów są izolowane od profilu użytkownika.
-
-Paczki odbiorowe są w `dist/mcp-release/GarminDatabase/` oraz `dist/mcp-release/GarminDatabaseMCP/`. Build obu paczek, smoke GUI oraz źródeł i EXE MCP zakończyły się poprawnie; oba warianty MCP przeszły 10 ewaluacji i kontrolę pustego stderr. Serwer korzysta z istniejących strumieni Python z ustawionym UTF-8; dodatkowe opakowanie tego samego bufora zamykało go przed flush przy kończeniu PyInstaller. Raporty lokalne: `test-results/results.xml`, `test-results/coverage/index.html`, `test-results/mcp-source-verified/mcp-smoke.json`, `test-results/mcp-packaged-verified/mcp-smoke.json` i `test-results/mcp-build-final.log`. Dane, raporty i paczki pozostają poza Git.
-
-Pomiar złożoności Radon przed i po wydzieleniu odpowiedzialności:
-
-| Funkcja | Przed | Po |
-| --- | ---: | ---: |
-| `monthly_summaries` | 19 | 2 |
-| `Exporter.history` | 11 | 7 |
-| `Exporter.generate` | 11 | 8 |
-| `Settings.validate` | 12 | 9 |
-| `cli.main` | 15 | 3 |
-| `Window.refresh` | 14 | 2 |
-
-Wydzielono reduktor okresów, wspólny opis podsumowań, walidację udostępniania oraz obsługę poleceń i elementów UI. Zgodność zachowania potwierdza pełny zestaw testów, w tym miesięczny odczyt nieuporządkowanych dni. Nowe funkcje MCP mają złożoność najwyżej 8. Raport jest w ignorowanym `test-results/mcp-complexity.json`.
-
-## Odbiór po scaleniu PostgreSQL i MCP — 2026-10-23
-
-Połączony zestaw na Linux/Python 3.12/PostgreSQL 16.2: **269 zaliczonych, 2 pominięte** (Windows DPAPI), coverage rdzenia i CLI z gałęziami **92,99%**. Przeszły Ruff i formatowanie, build GUI oraz MCP, wheel/sdist, smoke zbudowanego GUI i rzeczywistego protokołu MCP ze źródeł oraz z paczki. Oba testy MCP zaliczyły 10 ewaluacji i kontrolę pustego stderr.
-
-MCP korzysta z tego samego `database_dsn` co UI/CLI. Odczyt sprawdza `schema_migrations`, używa `REPEATABLE READ READ ONLY` i pozostawia cache bez zmian. Anulowanie przerywa aktywne zapytanie PostgreSQL, a budżet ogranicza je również przez `statement_timeout`. Kursory wiążą się z rzeczywistym połączeniem i OID bazy/schematu zamiast pliku SQLite. Nowe testy obejmują zmianę DSN, anulowanie aktywnego SQL i przekroczenie czasu katalogu. Pełny odbiór Windows nadal wymaga odpowiedniego środowiska.
-
-## Lokalny odbiór Windows — 2026-10-23
-
-Po przygotowaniu pustej lokalnej bazy PostgreSQL 16.15 i osobnej bazy `garmin_tests` wykonano pełny runner na Windows/Python 3.12.14: **271 testów zaliczonych, bez pominięć i błędów**, w 255,87 s. Oba testy rzeczywistego DPAPI zostały wykonane. Coverage rdzenia i CLI z gałęziami wyniósł **94,07%**, przy wymaganym progu 85%. Wszystkie testy korzystały z syntetycznych danych i izolowanych schematów w bazie testowej.
-
-Zbudowano GUI oraz MCP do `dist/postgresql-release`. Smoke GUI z nowego EXE przeszedł; sprawdzono także zrzut pustego ekranu Start. Źródłowy i zbudowany serwer MCP zaliczyły po 10 ewaluacji trzech narzędzi i kontrolę pustego stderr. Raporty lokalne są w `test-results/postgresql-windows-tests.log`, `test-results/results.xml`, `test-results/coverage`, `test-results/postgresql-build.log`, `test-results/postgresql-mcp-source-smoke/mcp-smoke.json` i `test-results/postgresql-mcp-smoke/mcp-smoke.json`.
-
-Sprawdzono również zatrzymanie lokalnego PostgreSQL i ponowne włączenie go przez plik startowy, w tym przez systemowy Windows PowerShell używany przez CMD. Serwer pozostał uruchomiony i gotowy do połączeń. Plik startowy czeka wyłącznie na zakończenie `pg_ctl`; oczekiwanie na całe drzewo procesów blokowałoby start GUI przez czas działania serwera.
-
-Lokalna instalacja i plik startowy są opisane w [konfiguracji PostgreSQL](13-postgresql-setup.md#przygotowana-instalacja-lokalna-windows--2026-10-23). Usunięto stary SQLite i, po osobnym potwierdzeniu użytkownika, stare archiwa oraz indeksy pobierania. Zachowano eksporty, ustawienia i sesję Garmin; jej lokalne odszyfrowanie jest poprawne. Baza aplikacji jest pusta i gotowa na pobranie od 2024-01-01 do wczoraj. Nie uruchomiono pobierania ani importu rzeczywistej historii i nie sprawdzano ważności sesji przez sieć Garmin. Ten odbiór techniczny uzupełnia wcześniejsze wyniki Linux; nie oznacza odbioru rzeczywistej historii w PostgreSQL ani testów Raspberry Pi.
-
-## Modernizacja ustawień i ponawianie logowania — 2026-10-23
-
-Sekcje formularza, wybór folderu w wierszu ścieżki i osobne okno postępu opisuje [specyfikacja UI](11-desktop-ui.md#ustawienia-sesja-i-lokalizacje). Test regresyjny odtworzył problem: kolejne żądanie MFA nie czekało na nowy kod, ponieważ Event poprzedniego potwierdzenia pozostawał ustawiony. Obecnie każda próba logowania ma osobnego workera i klienta; kolejne żądania kodu zerują stan, a anulowana próba nie zapisuje sesji.
-
-Pełny runner Windows przeszedł bez błędów i pominięć; coverage rdzenia/CLI z gałęziami wyniósł **94,08%**. Regresje obejmują błąd danych logowania i połączenia, kolejną próbę bez restartu, anulowanie, powrót po anulowaniu MFA, kolejne kody w tej samej próbie, zwalnianie przechwyconych danych oraz zamknięcie aplikacji podczas logowania. Użyto wyłącznie atrap Garmin i izolowanych schematów PostgreSQL; nie wykonywano prawdziwego logowania. Ruff i formatowanie całego projektu przeszły. Moduł `login_dialog.py` jest warstwą Qt i, podobnie jak pozostałe UI, nie wchodzi do coverage rdzenia.
-
-Build GUI/MCP jest w `dist/settings-refresh`; smoke GUI oraz zbudowanego MCP przeszedł, MCP zaliczył 10 ewaluacji i kontrolę pustego stderr. Sprawdzono wizualnie formularz i okno logowania; podglądy są w `test-results/settings-preview`. Wyniki: `test-results/settings-before.log` (odtworzony błąd), `test-results/settings-focused.log`, `test-results/settings-full-tests.log`, `test-results/settings-build.log` i `test-results/settings-mcp-smoke/mcp-smoke.json`.
-
-Radon: `Window.build_settings` ma złożoność 3 → 1, `Window.closeEvent` 7 → 5; `Window.login` 3 → 5 po dodaniu zabezpieczeń aktywnej próby. Nowe metody `LoginDialog` mają najwyżej 4. Raport: `test-results/settings-refactor.md`. Podział formularza i życia dialogu jest opisany nazwami metod; nie zwiększa zależności rdzenia od Qt.
-
-## Jawny kod MFA i ikona aplikacji — 2026-10-23
-
-Kod MFA jest widoczny podczas wpisywania w obu oknach kodu, natomiast hasło jest nadal maskowane. Na zlecenie użytkownika usunięto zapisaną sesję DPAPI przy zamkniętej aplikacji; ustawienia i dane pozostały na miejscu. Nie wykonywano prawdziwego logowania ani nie potwierdzono, że stara sesja była przyczyną niepowodzenia. Procedura resetu jest w [specyfikacji UI](11-desktop-ui.md#ustawienia-sesja-i-lokalizacje).
-
-Autorska ikona ma źródło w `garmin_database/resources/app-icon.svg`. Polecenie `.venv/Scripts/python.exe scripts/generate_app_icon.py` generuje PNG dla Qt i ICO z dziewięcioma rozmiarami 16–256 px. Wygenerowane pliki są wersjonowane; zwykły build nie wymaga ponownej generacji. `scripts/build.py` przekazuje ICO do obu programów i pakuje wszystkie zasoby ikony.
-
-Zaliczone 24 testy UI, Ruff i kontrola formatowania. Sprawdzono wizualnie ikonę w nagłówku i niezamaskowany syntetyczny kod MFA. Build GUI i MCP jest w `dist/app-icon`; smoke obu paczek poprawny, MCP zaliczył 10 ewaluacji i kontrolę pustego stderr. Oba EXE mają grupę ikon PE z dziewięcioma rozdzielczościami; PNG/ICO/SVG paczki GUI są identyczne ze źródłami. Raporty i podglądy: `test-results/app-icon-ui.log`, `test-results/app-icon-build.log`, `test-results/app-icon-preview` i `test-results/app-icon-mcp-smoke/mcp-smoke.json`. Pełnego runnera rdzenia nie powtarzano po tej zmianie UI i zasobów; jego poprzedni wynik opisano wyżej.
-
-## Aktualizacja klienta Garmin i diagnostyka MFA — 2026-10-24
-
-Użytkownik zgłosił ponowne niepowodzenie po podaniu kodu, przy poprawnym logowaniu w przeglądarce. Poprzedni komunikat nie odróżniał odmowy dostępu API od błędnych danych logowania. Zaktualizowano przypiętą bibliotekę z `garminconnect==0.3.17` do `0.3.20`. [Wydanie upstream](https://github.com/cyberjunky/python-garminconnect/releases/tag/0.3.20) naprawia brak pobrania strony i ciasteczek sesji przed wysłaniem danych w mobilnym logowaniu; obsługuje również blokadę HTTP 427 jako ograniczenie prób. To zastosowanie istotnej poprawki biblioteki, nie dowód, że była jedyną przyczyną błędu na koncie użytkownika.
-
-Nowe testy `tests/test_auth_login.py` korzystają z rzeczywistej zainstalowanej biblioteki Garmin. Zastępowany jest wyłącznie transport HTTP i oczekiwanie; żadne żądania nie trafiają do Garmin. Obie ścieżki mobilne (`curl_cffi` i `requests`) przechodzą przygotowanie sesji, MFA, wymianę tokenów, potwierdzenie profilu i zapis szyfrowanego magazynu. Odmowa po MFA i odmowa API nie zastępują poprzedniej sesji; kolejna próba używa nowego klienta i może zakończyć się sukcesem. Osobno sprawdzono błąd lokalnego zapisu, usuwanie białych znaków kodu, brak zapisu przez `GARMINTOKENS`, zwolnienie hasła i callbacku oraz bezpieczne komunikaty. UI pokazuje etap i kod diagnostyczny zgodnie ze [specyfikacją](11-desktop-ui.md#ustawienia-sesja-i-lokalizacje).
-
-Pełny runner Windows/Python 3.12.14/PostgreSQL 16.15 zaliczył **283 testy bez pominięć**, z coverage rdzenia/CLI z gałęziami **94,15%**. Po rozszerzeniu testów o drugi transport i test przekazania etapu do dialogu zaliczono również wszystkie 9 testów nowego modułu oraz dodatkowy test UI; łącznie sprawdzono 288 różnych przypadków. Kod aplikacji nie zmienił się po pełnym runnerze. Ruff i formatowanie dla zakresu kontroli z tego dokumentu poprawne. Wizualnie sprawdzono czytelność syntetycznego komunikatu; podgląd: `test-results/auth-diagnostic-preview.png`.
-
-Nowe paczki GUI i MCP są w `dist/auth-update`; lokalny launcher wskazuje nowy EXE. Build i smoke GUI oraz MCP przeszły; MCP zaliczył 10 ewaluacji i kontrolę pustego stderr. Sprawdzono obecność modułów klienta Garmin w archiwum EXE, metadane `0.3.20` i natywny moduł `curl_cffi`. Raporty: `test-results/auth-full.log`, `test-results/auth-build.log`, `test-results/auth-mcp-smoke/mcp-smoke.json`. Nie wykonywano rzeczywistego logowania ani pobierania historii i nie kasowano ponownie zapisanej sesji. Odbiór na koncie wymaga kolejnej próby użytkownika z nowej paczki; ewentualny kod diagnostyczny pozwoli zawęzić przyczynę bez ujawniania sekretów.
-
-### Rzeczywista próba diagnostyczna użytkownika — 2026-10-24
-
-Użytkownik ponownie otrzymał `MFA_VERIFY/ACCESS_DENIED` w EXE i potwierdził, że używa nowego kodu wysłanego dla aplikacji. Uruchomiono osobne okno bezpośrednio z Pythona, z tym samym kodem aplikacji i biblioteką. Dodane lokalnie obserwatory zapisywały wyłącznie stałe nazwy etapów i statusy HTTP; nie zmieniały żądań, kodu MFA ani wyboru sposobu logowania. Użytkownik sam wprowadził dane i potwierdził powodzenie. Bezpieczny zapis `test-results/login-live-safe.log` potwierdza ścieżkę mobilną, przyjęcie MFA, wymianę DI tokenu z HTTP 200, poprawną weryfikację API, pobranie profilu i ustawień oraz zapis sesji DPAPI. Nie pobierano archiwów historii.
-
-**Nie wprowadzono poprawki algorytmu między nieudaną a udaną próbą. Nie ustalono przyczyny wcześniejszej odmowy.** Porównanie bytecode aplikacji i istotnych modułów Garmin w źródłach i `dist/auth-update` wykazało zgodność; obecność biblioteki w EXE sama w sobie nie jest testem rzeczywistego logowania. Przygotowano oddzielny `dist/login-diagnostic/GarminDatabaseDiagnostic/GarminDatabaseDiagnostic.exe` z tymi samymi obserwatorami; nie jest to nowa paczka produkcyjna. Tytuł okna to „GarminDatabase — diagnostyka EXE”, a zapis etapów trafia do `test-results/login-exe-safe.log`. Spośród 916 wspólnych plików dystrybucji biblioteki i zasoby są identyczne; różni się `base_library.zip` tworzone podczas budowania. Lokalnego launchera nie przełączono na program diagnostyczny. Próba EXE wymaga osobnego potwierdzenia użytkownika; sukces źródeł nie dowodzi przyczyny błędu EXE ani awarii Garmin.
-
-### Potwierdzona przyczyna i poprawka pakowania TLS — 2026-10-24
-
-Kolejna próba użytkownika w diagnostycznym EXE odtworzyła błąd. Zapis pokazał poprawne MFA (`SUCCESSFUL`, HTTP 200), poprawną wymianę tokenu DI (HTTP 200), a następnie błąd pobrania profilu. Biblioteka Garmin traktuje nierozstrzygnięty test tokenu jako kontynuację, po czym opakowuje wyjątek odczytu profilu w `GarminConnectAuthenticationError`. Dlatego ogólny kod `MFA_VERIFY/ACCESS_DENIED` nie oznaczał faktycznego odrzucenia kodu ani tokenu przez Garmin.
-
-Odczyt profilu z tą samą zapisaną sesją DPAPI działał w Pythonie, a w EXE powtarzalnie kończył się łańcuchem `ConnectionError → ProtocolError → FileNotFoundError`. Bezpieczny zapis samych nazw funkcji wskazał konstruktor `ssl.SSLContext`, przed wykonaniem żądania HTTP. Używany zarządzany runtime Pythona rozszerza `ssl.py` o politykę certyfikatów wymagającą sąsiedniego publicznego pliku `codex-rejected-cas.pem`. PyInstaller zbierał zmieniony moduł, lecz pomijał ten plik. Nie chodziło o hasło, cache, PostgreSQL, błędny kod MFA, brak `curl_cffi` ani brak standardowego pakietu CA `certifi`.
-
-Potwierdzenie przyczynowe: dołączono wyłącznie brakujący plik do tej samej kopii diagnostycznej EXE. Bez zmiany kodu, tokenu i bez nowego MFA powtórzony odczyt profilu oraz ustawień zwrócił HTTP 200, a zapis sesji zakończył się sukcesem. Nie pobierano archiwów historii. Starsze zachowane paczki `dist/GarminDatabase` i `dist/summary-export` nie mają tej modyfikacji `ssl.py`; od `dist/postgresql-release` zachowane paczki mają zmodyfikowany moduł bez wymaganego pliku. To wyjaśnia zgodność zgłoszenia z działaniem pierwszych wersji, a nie zmianę zachowania formularza.
-
-`scripts/build.py` warunkowo dołącza plik z katalogu używanego modułu `ssl` do katalogu runtime obu EXE. Na standardowym Pythonie, który go nie dostarcza, argument nie jest dodawany. Zachowano politykę certyfikatów runtime i pełną weryfikację TLS. Smoke GUI tworzy teraz prawdziwy kontekst TLS przed otwarciem okna; uruchomienie samego Qt i PostgreSQL nie wystarcza do odbioru pakietu. Testy sprawdzają oba warianty runtime i pakowanie obu programów. `LoginFailed` rozpoznaje lokalny brak pliku w łańcuchu wyjątków jako `LOCAL_RUNTIME`, z priorytetem `LOCAL_SESSION` dla lokalnego zapisu, bez ujawniania ścieżki ani treści wyjątku.
-
-Bezpieczne raporty diagnozy: `test-results/login-exe-safe.log`, `test-results/session-python-safe.log` oraz `test-results/session-exe-safe.log`. Zawierają wyłącznie stałe etapy, typy wyjątków, nazwy funkcji i statusy HTTP. Próby z zapisanymi tokenami nie logowały sekretów ani treści odpowiedzi, nie usuwały sesji i nie wymagały kolejnego kodu użytkownika. Otwartego okna diagnostycznego użytkownika nie zamykano ani nie nadpisywano jego paczki.
-
-Odbiór poprawki Windows/Python 3.12.14/PostgreSQL 16.15: **291 testów zaliczonych, bez pominięć**, coverage rdzenia/CLI z gałęziami **94,23%**, Ruff i formatowanie poprawne. Zbudowano GUI i MCP w `dist/tls-fix`; oba zawierają zasób TLS identyczny z zasobem runtime. Smoke GUI i MCP poprawny, MCP 10 ewaluacji i pusty stderr. Negatywna próba na własnej nowej paczce (czasowe przeniesienie wyłącznie zasobu, z przywróceniem w `finally`) zakończyła smoke kodem 1 i bezpiecznym `FileNotFoundError`; po przywróceniu pliku smoke zaliczony. Launcher i lokalna instrukcja wskazują `dist/tls-fix`. Raporty: `test-results/tls-full-tests.log`, `test-results/tls-build.log`, `test-results/tls-negative-smoke.log`, `test-results/tls-mcp-smoke/mcp-smoke.json`. Potwierdzony rzeczywisty odczyt profilu dotyczy kopii diagnostycznej z dołączonym zasobem; ostatniej paczki produkcyjnej nie poddawano kolejnej interaktywnej próbie z nowym hasłem/MFA.
-
-Później użytkownik potwierdził poprawne logowanie w normalnej aplikacji. [Końcowa analiza](14-login-analysis.md) podsumowuje przyczynę, dowód, lukę wcześniejszych testów i usunięte stare ścieżki UI. Paczka po przeglądzie: `dist/login-cleanup`, 34 testy logowania/UI, Ruff, formatowanie oraz build i smoke GUI/MCP poprawne; rdzeń i pakowanie TLS nie zostały zmienione. Launcher wskazuje tę paczkę. Nie powtarzano pełnego runnera rdzenia ani interaktywnego logowania po tym porządkowaniu UI.
+Proces MCP używa istniejących strumieni stdin/stdout z UTF-8. Nie należy tworzyć dodatkowych `TextIOWrapper` na współdzielonych buforach; standardowe wyjście służy wyłącznie protokołowi.

@@ -13,19 +13,19 @@ flowchart LR
 
 Pobieranie, dekodowanie i eksport to odrębne operacje. Zmiana parsera nie wymaga ponownego pobierania. Dekoder czyta FIT z ZIP; nie utrzymujemy osobnego rozpakowanego archiwum, zrzutów JSON ani kopii bazy.
 
-## Proponowany układ
+## Układ zasobów
 
 ```text
 data/
   raw/YYYY-MM-DD.zip
-private/                 # sesja istniejącego skryptu historycznego; nie docelowego UI
+private/                 # lokalne zasoby wdrożenia; poza Git
 exports/GarminDatabase_DATA_CZAS/  # osobny pakiet: history/, details/, manifest.json
 logs/                    # log techniczny, bez wartości zdrowotnych i sekretów
 ```
 
 Ścieżka danych jest konfigurowalna. Katalog zawiera oryginalne archiwa, a dane SQL znajdują się w osobnym serwerze PostgreSQL. Aplikacja zapisuje ścieżki archiwów względem katalogu danych. Serwer może działać na tym samym urządzeniu lub docelowym hoście; typ bazy i kod pozostają takie same. Konfiguracja: [PostgreSQL](13-postgresql-setup.md).
 
-Aplikacja Windows zapisuje ustawienia w `%LOCALAPPDATA%/GarminDatabase/settings.json`, a sesję zaszyfrowaną DPAPI w `auth/session.bin` pod tym samym katalogiem. Nie zapisuje hasła ani kodu MFA. Skrypty przygotowawcze zachowują dotychczasowy sposób logowania. Szczegóły: [UI i ustawienia](11-desktop-ui.md).
+Aplikacja Windows zapisuje ustawienia w `%LOCALAPPDATA%/GarminDatabase/settings.json`, a sesję zaszyfrowaną DPAPI w `auth/session.bin` pod tym samym katalogiem. Nie zapisuje hasła ani kodu MFA. Szczegóły: [UI i ustawienia](11-desktop-ui.md).
 
 ## Interfejs i wspólna logika
 
@@ -37,9 +37,9 @@ Zmiany parametru i filtrów automatycznie uruchamiają odczyt. UI wykonuje jedno
 
 Raspberry Pi będzie w przyszłości uruchamiać te same operacje bez UI, według harmonogramu, i służyć jako hub dostępu do danych. Protokół dostępu, uwierzytelnianie i relacja z aplikacją Windows pozostają zakresem późniejszego etapu; połączenie z PostgreSQL używa protokołu serwera, bez współdzielenia pliku bazy przez sieć.
 
-## Model PostgreSQL v1
+## Model danych PostgreSQL
 
-Po skanowaniu pełnej pobranej historii ustalono [kompletny schemat](10-postgresql-schema.md), zapisany jako [wykonywalny SQL](../schema/001_initial.sql). Zastępuje on wcześniejszy szkic sześciu tabel. Obecny schemat jest przeznaczony dla pustej bazy PostgreSQL. Dawna walidacja pełnej historii dotyczyła SQLite i nie zastępuje odbioru nowego silnika.
+Model opisuje [schemat PostgreSQL](10-postgresql-schema.md), a jego wykonywalne migracje znajdują się w `schema/` oraz zasobach aplikacji. Nowa baza jest inicjalizowana transakcyjnie; aktualizacje schematu są wersjonowane i sprawdzane przez SHA-256.
 
 Model rozdziela daty pobrania, oryginalne archiwa, wystąpienia FIT w ZIP, unikatowe treści FIT, przebiegi dekodowania, definicje wiadomości i pól, wiadomości danych oraz wartości pól. Katalog profilu przechowuje rozpoznane nazwy, jednostki i reguły dekodowania; pola nieznane pozostają w bazie pod identyfikatorami źródłowymi. Wartości skalarne mają typowane kolumny, tablice i struktury — JSON. Nie powielamy wartości dla rozwiniętych komponentów.
 
