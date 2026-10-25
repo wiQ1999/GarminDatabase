@@ -40,7 +40,7 @@ LABELS = {
     "light_sleep_score": "Wynik snu płytkiego",
     "rem_sleep_score": "Wynik snu REM",
     "awakenings_count": "Liczba przebudzeń",
-    "average_stress_during_sleep": "Średni stres podczas snu Garmin",
+    "average_stress_during_sleep": "Średni poziom stresu podczas snu",
     "status": "Status HRV",
     "mode": "Tryb pomiaru saturacji",
     "reading_confidence": "Pewność odczytu saturacji",
@@ -161,6 +161,8 @@ class Queries:
                     "current_day_resting_heart_rate",
                 }:
                     category = "Serce i HRV"
+                elif row["variant_name"] == "average_stress_during_sleep":
+                    category = "Stres"
                 result[key] = dict(
                     key=key,
                     label=LABELS.get(

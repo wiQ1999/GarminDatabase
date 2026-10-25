@@ -39,6 +39,8 @@ Wątki kończą się przez sygnały zakończenia, bez blokującego oczekiwania w
 
 Lista rozpoznanych parametrów z ikonami i grupami: sen, serce i HRV, stres, oddychanie i saturacja, ruch, pozostałe. Pokazywać tylko parametry rozpoznane w danych użytkownika. Osobne reprezentacje, np. pomiar chwilowy i podsumowanie dzienne, zachowują odrębne etykiety.
 
+„Średni poziom stresu podczas snu” (`sleep_assessment.average_stress_during_sleep`) należy do grupy Stres. Kategoria porządkuje prezentację i filtry wyboru; odczyt, obliczenia i dostęp MCP opierają się na stabilnych kluczach parametrów oraz zapisanej polityce udostępniania. Przeniesienie do grupy Stres nie dodaje tej źródłowej statystyki nocnej do pięciu średnich próbek obsługiwanych przez MCP.
+
 Wybrany parametr jest prezentowany na prostym wykresie, bez tabeli rekordów i bez powiększania fragmentu. Najechanie kursorem pokazuje datę lub godzinę, wartość i jednostkę. Przerwy pozostają widoczne: brak interpolacji i łączenia linii przez rozpoznane luki. Podpis czasu określa strefę; niejednoznaczne czasy źródłowe nie otrzymują zgadywanej strefy.
 
 Oś czasu ma podpisy pośrednie, do ośmiu na szerokim wykresie. Ich liczbę dobiera się do rzeczywistej szerokości napisów, aby nie nachodziły na siebie. Krótkie odcinki pokazują również sekundy, zakresy przekraczające północ — datę i godzinę, a dłuższa historia — daty. Przy zmianie czasu letniego podpisy godzin zawierają przesunięcie względem UTC. Znaczniki osi służą orientacji i nie są dodatkowymi pomiarami.
