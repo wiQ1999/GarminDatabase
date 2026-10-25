@@ -61,6 +61,10 @@ Linia trendu jest obliczana wyłącznie na wykresie i nie jest podsumowaniem Gar
 
 Nierozpoznane pola zachować w PostgreSQL. UI pokazuje ich obecność i liczbę z jednoznaczną etykietą, że chodzi o warianty pól, a nie liczbę parametrów zdrowotnych; bez zgadywanych nazw i wykresów. Pełne rekordy można przeglądać narzędziem PostgreSQL, np. psql lub pgAdmin, poza zakresem interfejsu.
 
+### Objaśnienia parametrów
+
+Pod wykresem widoczny jest przewijany opis wybranego parametru: znaczenie, czujniki lub algorytm opisany przez Garmin, ograniczenia, sposób prezentacji w aplikacji i klikalne źródła. Zmienia się od razu wraz z wyborem parametru, także podczas odczytywania wykresu; stary wynik zapytania nie zastępuje nowego opisu. Objaśnienia są lokalne i nie wykonują zapytań SQL ani sieci przy wyborze. Odnośniki otwierają domyślną przeglądarkę przez worker. Wspólne z MCP definicje i granice interpretacji opisuje [katalog parametrów](14-parameter-descriptions.md).
+
 ## Eksport
 
 Wybór parametrów, zakresu historii, dziennego lub miesięcznego okresu obliczonych podsumowań, liczby ostatnich dni szczegółowych (domyślnie 90) i folderu nadrzędnego. Osobne `history/{parametr}.json` i `details/{parametr}.json`. Okres obliczonych podsumowań nie zmienia oryginalnych podsumowań Garmin. Nie ma zbiorczego `recent.json` ani opcji pełnych próbek w historii. Format i kompletność określa [specyfikacja eksportu](05-export.md).

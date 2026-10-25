@@ -52,17 +52,17 @@ TOOLS = {
     "garmin_catalog": (
         CatalogInput,
         "catalog",
-        "Katalog włączonych metryk: jednostki, dostępność, limity. Wywołaj jako pierwsze.",
+        "Katalog włączonych metryk: jednostki, dostępność, limity, opis pomiaru i źródła Garmin. Wywołaj jako pierwsze.",
     ),
     "get_daily": (
         DailyInput,
         "daily",
-        "Dzienne średnie dostępnych próbek w Europe/Warsaw, min/max i jakość. Do 92 dni na stronę; kontynuuj przez cursor.",
+        "Dzienne średnie dostępnych próbek w Europe/Warsaw, min/max, jakość oraz opis pomiaru ze źródłami Garmin. Do 92 dni na stronę; kontynuuj przez cursor.",
     ),
     "get_period_stats": (
         PeriodInput,
         "period",
-        "Średnia całego okresu ważona liczbą poprawnych próbek, min/max i liczby dni. Bez próbek, median i interpretacji medycznej.",
+        "Średnia całego okresu ważona liczbą poprawnych próbek, min/max i liczby dni; opis pomiaru ze źródłami Garmin. Statystyka aplikacji może różnić się od podsumowania Garmin Connect.",
     ),
 }
 

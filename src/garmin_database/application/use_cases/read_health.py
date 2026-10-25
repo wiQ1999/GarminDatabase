@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import Event
 from zoneinfo import ZoneInfo
 
+from garmin_database.application.parameter_descriptions import parameter_description
 from garmin_database.application.ports import ReadFailure
 from garmin_database.application.read_models import (
     DAILY_COLUMNS,
@@ -131,6 +132,7 @@ def series(parameter, rows, columns, period):
     return dict(
         parameter=key,
         unit=parameter["unit"],
+        description=parameter_description(parameter),
         summary_origin="application",
         aggregation=aggregation(parameter, period),
         precision=PRECISION[key],
@@ -278,6 +280,7 @@ class MCPData:
             parameter=parameter["key"],
             label=parameter["label"],
             unit=parameter["unit"],
+            description=parameter_description(parameter),
             method="sample_mean",
             precision=PRECISION[parameter["key"]],
             **{"from": limits[0], "to": limits[1]},

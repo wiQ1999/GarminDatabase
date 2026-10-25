@@ -145,9 +145,9 @@ W źródłach odpowiednikiem jest `.venv/Scripts/python.exe scripts/entrypoints/
 
 | Narzędzie | Argumenty | Wynik |
 | --- | --- | --- |
-| `garmin_catalog` | opcjonalny `cursor`; katalog v1 mieści pięć metryk w jednej odpowiedzi | Włączone metryki, etykiety, jednostki, dostępny zakres rozpoznanych czasów, precyzja i limity |
-| `get_daily` | `date_from`, `date_to`, wymagane `metrics`, opcjonalny `cursor` | Dzienne średnie, min/max, liczniki jakości i pierwszy/ostatni czas; do 92 dni na stronę |
-| `get_period_stats` | `date_from`, `date_to`, wymagane `metrics` | Jeden wiersz całego okresu na metrykę, średnia ważona próbkami, min/max, liczby próbek i dni |
+| `garmin_catalog` | opcjonalny `cursor`; katalog v1 mieści pięć metryk w jednej odpowiedzi | Włączone metryki, etykiety, jednostki, dostępny zakres rozpoznanych czasów, precyzja, limity i objaśnienie pomiaru ze źródłami Garmin |
+| `get_daily` | `date_from`, `date_to`, wymagane `metrics`, opcjonalny `cursor` | Dzienne średnie, min/max, liczniki jakości i pierwszy/ostatni czas; do 92 dni na stronę; objaśnienie każdej metryki |
+| `get_period_stats` | `date_from`, `date_to`, wymagane `metrics` | Jeden wiersz całego okresu na metrykę, średnia ważona próbkami, min/max, liczby próbek i dni; objaśnienie każdej metryki |
 
 Wymagany jest wybór 1–5 różnych kluczy z katalogu: `monitoring.heart_rate`, `hrv_value.value`, `respiration_rate.respiration_rate`, `spo2_data.reading_spo2`, `stress_level.stress_level_value`, jeśli są obecne i włączone. Są to średnie próbek dni, bez zgadywania znaczenia nocnego HRV czy tętna spoczynkowego. Zakres katalogu nie gwarantuje ciągłości ani pełnego pokrycia doby.
 
@@ -157,7 +157,9 @@ Przykładowe argumenty metod odczytu:
 {"date_from":"2026-09-01","date_to":"2026-09-30","metrics":["monitoring.heart_rate","hrv_value.value"]}
 ```
 
-Zakres obejmuje obie daty w Warszawie i kończy się najpóźniej wczoraj. Wynik jest w `structuredContent.series`; seria podaje `parameter`, `unit`, `aggregation`, `precision`, `columns` i tablicę wierszy `data`. Krótka część tekstowa nie powiela JSON. Czas jest lokalny z pełną datą i offsetem, np. `2026-10-22T13:30:00+02:00`. Dni zmiany czasu mają rzeczywiste granice 23/25 godzin; PostgreSQL i eksport v2 zachowują momenty UTC.
+Zakres obejmuje obie daty w Warszawie i kończy się najpóźniej wczoraj. Wynik jest w `structuredContent.series`; seria podaje `parameter`, `unit`, `description`, `aggregation`, `precision`, `columns` i tablicę wierszy `data`. Krótka część tekstowa nie powiela JSON. Czas jest lokalny z pełną datą i offsetem, np. `2026-10-22T13:30:00+02:00`. Dni zmiany czasu mają rzeczywiste granice 23/25 godzin; PostgreSQL i eksport v2 zachowują momenty UTC.
+
+`description` występuje zarówno w `metrics[]` katalogu, jak i `series[]` obu metod odczytu. Ma `version`, `language`, `reviewed_on`, `meaning`, `measurement`, `limitations`, `presentation`, `evidence` i `sources[]` (`title`, `url`). To lokalnie przechowywana polska parafraza publicznych materiałów Garmin, a nie tekst pobierany z internetu podczas zapytania. `manufacturer_explanation` oznacza opis funkcji przez producenta; `fit_profile_only` ograniczony opis pola; `not_documented` brak zweryfikowanej interpretacji. Wersja opisu jest niezależna od rewizji danych i algorytmu agregacji. Dodanie tego pola jest rozszerzeniem odpowiedzi v1 i nie zmienia wartości ani kolumn. [Katalog objaśnień i zasady porównania z Garmin Connect](14-parameter-descriptions.md).
 
 Kolumny dzienne to `day`, `mean`, `minimum`, `maximum`, `valid_count`, `invalid_count`, `excluded_count`, `untimed_count`, `first_time`, `last_time`, `day_basis`. W okresie zamiast `day` są `period_from` i `period_to`, a dodatkowo `valid_days` i `requested_days`. Średnia okresowa używa niezaokrąglonych średnich dziennych z wagą liczby poprawnych próbek, tak jak eksport miesięczny. Nie jest średnią ważoną czasem ani nieważoną średnią dni. Zakres dłuższy niż 92 dni jest przetwarzany wewnętrznymi odcinkami na jednym obrazie PostgreSQL; klient dostaje wynik całego okresu. Brak poprawnych próbek daje `null`.
 

@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
+    QTextBrowser,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -48,6 +49,7 @@ from garmin_database.adapters.inbound.desktop.icons import (
 )
 from garmin_database.adapters.inbound.desktop.login_dialog import LoginDialog
 from garmin_database.adapters.inbound.desktop.overview import OverviewPoller
+from garmin_database.adapters.inbound.desktop.parameter_help import parameter_help
 from garmin_database.adapters.inbound.mcp.client_config import client_config
 from garmin_database.application.dto import ExportResult, SyncSummary
 from garmin_database.application.ports import DesktopServices
@@ -297,11 +299,23 @@ class Window(QMainWindow):
         self.chart_title = QLabel("Wybierz parametr")
         right.addWidget(self.chart_title)
         self.chart = Chart()
+        self.chart.setMinimumHeight(240)
         self.chart_view = ChartView(self.chart)
         right.addWidget(self.chart_view, 1)
         self.chart_message = QLabel()
         self.chart_message.setWordWrap(True)
         right.addWidget(self.chart_message)
+        self.parameter_help = QTextBrowser()
+        self.parameter_help.setAccessibleName("Wyjaśnienie parametru Garmin")
+        self.parameter_help.setMinimumHeight(100)
+        self.parameter_help.setMaximumHeight(150)
+        self.parameter_help.setOpenLinks(False)
+        self.parameter_help.setOpenExternalLinks(False)
+        self.parameter_help.anchorClicked.connect(
+            lambda url: self.open_link(url.toString())
+        )
+        self.parameter_help.setHtml(parameter_help(None))
+        right.addWidget(self.parameter_help)
         row.addLayout(right, 1)
         layout.addLayout(row, 1)
         self.parameter_list.currentItemChanged.connect(self.parameter_changed)
@@ -813,6 +827,7 @@ class Window(QMainWindow):
 
     def parameter_changed(self):
         parameter = self.selected_parameter()
+        self.parameter_help.setHtml(parameter_help(parameter))
         summaries = parameter and has_chart_summary(parameter)
         for index in range(self.range.count()):
             enabled = bool(summaries) or index == 0

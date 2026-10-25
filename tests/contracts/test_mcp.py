@@ -19,6 +19,7 @@ from garmin_database.adapters.outbound.postgres.database import Database
 from garmin_database.adapters.outbound.postgres.imports import Importer
 from garmin_database.adapters.outbound.postgres.queries import Queries
 from garmin_database.adapters.outbound.postgres.summaries import Summaries
+from garmin_database.application.parameter_descriptions import parameter_description
 from garmin_database.application.read_models import DAILY_COLUMNS
 from garmin_database.application.use_cases.read_health import (
     MAX_BYTES,
@@ -27,6 +28,7 @@ from garmin_database.application.use_cases.read_health import (
 )
 from garmin_database.bootstrap.dependencies import create_exporter as Exporter
 from garmin_database.bootstrap.mcp import create_service
+from garmin_database.domain.aggregation import MEAN_PARAMETERS
 from tests.support.fixtures import archive, fit_bytes
 
 pytestmark = pytest.mark.unit
@@ -56,6 +58,58 @@ def source(tmp_path):
 def unpack(payload, index=0):
     table = payload["series"][index]
     return [dict(zip(table["columns"], row)) for row in table["data"]]
+
+
+@pytest.mark.integration
+def test_all_five_metrics_include_shared_descriptions_within_protocol_budget(source):
+    db, settings, path, service = source
+    samples = [
+        (371, [(253, 4, 134), (0, 2, 132)], [(1100000000, 6400)]),
+        (297, [(253, 4, 134), (0, 2, 131)], [(1100000000, 1400)]),
+        (269, [(253, 4, 134), (0, 1, 2)], [(1100000000, 97)]),
+        (227, [(1, 4, 134), (0, 2, 131)], [(1100000000, 23)]),
+    ]
+    for day, (number, fields, values) in enumerate(samples, 9):
+        Importer(db).archive(
+            archive(db.root, f"2024-11-{day:02}", fit_bytes(number, fields, values))
+        )
+    settings.mcp_parameters = sorted(MEAN_PARAMETERS)
+    settings.save(path)
+    descriptions = {
+        p["key"]: parameter_description(p) for p in Queries(db).parameters()
+    }
+
+    async def check():
+        limiter = anyio.CapacityLimiter(1)
+        args = dict(
+            date_from="2024-11-08",
+            date_to="2024-11-08",
+            metrics=sorted(MEAN_PARAMETERS),
+        )
+        for name in ("garmin_catalog", "get_daily", "get_period_stats"):
+            result = await call(
+                service, name, {} if name == "garmin_catalog" else args, limiter
+            )
+            assert not result.isError
+            assert (
+                len(result.model_dump_json(by_alias=True, exclude_none=True).encode())
+                <= MAX_BYTES
+            )
+            items = result.structuredContent[
+                "metrics" if name == "garmin_catalog" else "series"
+            ]
+            assert {p["parameter"] for p in items} == MEAN_PARAMETERS
+            for item in items:
+                assert item["description"] == descriptions[item["parameter"]]
+                if name != "garmin_catalog":
+                    assert (
+                        item["data"]
+                        and unpack(dict(series=[item]))[0]["valid_count"] > 0
+                    )
+        with db.connect(readonly=True) as conn:
+            assert conn.execute("SELECT count(*) FROM summary_cache").fetchone()[0] == 0
+
+    anyio.run(check)
 
 
 def test_migrate_legacy_and_preserve_explicit_empty():
@@ -199,7 +253,7 @@ def test_byte_budget_shrinks_day_pages(source):
         )
     )
     path = source[2]
-    service = create_service(path, max_bytes=2500)
+    service = create_service(path, max_bytes=4500)
     result = service.daily("2024-11-01", "2024-12-31", [KEY])
     assert service.fits(result)
     assert result["truncated"]

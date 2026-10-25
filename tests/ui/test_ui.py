@@ -133,6 +133,49 @@ def select_parameter(w, key):
     raise AssertionError(f"Missing parameter: {key}")
 
 
+def test_parameter_explanation_tracks_selection_without_waiting_for_chart(
+    qtbot, tmp_path, monkeypatch
+):
+    w = window(qtbot, tmp_path, summaries=True)
+    w.navigation.setCurrentRow(1)
+    select_parameter(w, "monitoring.heart_rate")
+    assert "PPG" in w.parameter_help.toPlainText()
+    assert "garmin.com" in w.parameter_help.toHtml()
+    ready(qtbot, w)
+    started, release = threading.Event(), threading.Event()
+    original = w.services.chart
+
+    def slow(*args, **kwargs):
+        started.set()
+        assert release.wait(5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(w.services, "chart", slow)
+    try:
+        select_parameter(w, "monitoring.distance")
+        qtbot.waitUntil(started.is_set)
+        assert "dystans" in w.parameter_help.toPlainText().lower()
+        assert "PPG" not in w.parameter_help.toPlainText()
+        assert w.chart_view.loading
+        select_parameter(w, "monitoring.heart_rate")
+        assert "PPG" in w.parameter_help.toPlainText()
+    finally:
+        release.set()
+    ready(qtbot, w)
+    assert "PPG" in w.parameter_help.toPlainText()
+    w.range.setCurrentIndex(0)
+    w.chart_to.setDate(QDate(2024, 11, 8))
+    ready(qtbot, w)
+    w.resize(900, 650)
+    w.grab()
+    assert w.chart.height() <= w.chart_view.height()
+    assert w.chart.time_labels
+    assert all(
+        box.bottom() <= w.chart_view.height() for _, _, _, box in w.chart.time_labels
+    )
+    assert w.parameter_help.height() >= 100
+
+
 def test_navigation_and_chart(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
     assert f"Rozpoznane serie / właściwości: {len(w.parameters)}" in w.status.text()
