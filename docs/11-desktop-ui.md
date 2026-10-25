@@ -29,6 +29,8 @@ Postęp obejmuje pasek, aktualnie obsługiwany dzień i etap, licznik ukończony
 
 Pobieranie, import i ponowne przetwarzanie pokazują animację także na przycisku rozpoczętej operacji. „Zatrzymaj” animuje oczekiwanie na zakończenie bieżącej czynności. Prezentacja postępu i szczegółów jest odświeżana najwyżej 10 razy na sekundę, z końcowym opróżnieniem bufora przed wynikiem lub błędem. Panel zachowuje najwyżej 500 ostatnich wierszy.
 
+Po zakończeniu dnia dziennik pokazuje „Wynik dnia” z jego rezultatem. Po zakończeniu lub wcześniejszym przerwaniu synchronizacji etykieta etapu pokazuje nagłówek „Podsumowanie całej operacji”, a dziennik pełny zakres i oddzielne liczniki. Historyczne dni HTTP 404 pozostają opisane jako nierozstrzygnięte i nie oznaczają błędu importu ostatniego dnia. Zakończenie z samymi 404 ma inny nagłówek niż zakończenie z błędami pobierania/importu. Szczegółowy [kontrakt komunikatów](04-synchronization.md#błędy-i-wznowienie) jest wspólny dla GUI i CLI.
+
 Podczas pracy można przeglądać już zaimportowane dane. Zamknięcie okna przy aktywnej operacji pyta o zatrzymanie i wyjście. Aplikacja nie pozostaje w tle po zamknięciu; pobieranie pierwszej wersji uruchamia użytkownik.
 
 Wątki kończą się przez sygnały zakończenia, bez blokującego oczekiwania w wątku okna. Podczas zatrzymywania odczytów okno nadal obsługuje zdarzenia i pokazuje stan zamykania. Odczyt stanu ma budżet 10 sekund, a wykresu 60 sekund; aktywne zapytanie PostgreSQL można anulować przy zamykaniu. Zmiana połączenia unieważnia odpowiedzi z poprzedniej konfiguracji.

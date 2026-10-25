@@ -10,6 +10,7 @@ from garmin_database.adapters.outbound.filesystem.settings_json import Settings
 from garmin_database.adapters.outbound.postgres.database import Database
 from garmin_database.adapters.outbound.postgres.imports import Importer
 from garmin_database.adapters.outbound.postgres.queries import Queries, bounds
+from garmin_database.application.dto import SyncSummary
 from garmin_database.bootstrap.desktop import Window
 from tests.support.fixtures import archive, fit_bytes
 
@@ -315,10 +316,40 @@ def test_failed_days_show_details_and_summary_after_worker_finishes(qtbot, tmp_p
     qtbot.waitUntil(lambda: not w.stop_button.isEnabled(), timeout=5000)
     assert w.details.isVisible()
     assert "HTTP 404" in w.details.toPlainText()
-    assert "nierozstrzygnięte" in w.stage.text()
+    assert "Podsumowanie całej operacji" in w.stage.text()
     assert w.stage.text() in w.details.toPlainText()
     assert "Poprzednia operacja" not in w.details.toPlainText()
     assert not hasattr(w, "details_button")
+
+
+def test_sync_summary_distinguishes_historical_404s_from_successful_last_day(
+    qtbot, tmp_path
+):
+    w = window(qtbot, tmp_path)
+    result = SyncSummary(
+        "2024-01-01",
+        "2026-10-24",
+        1028,
+        processed_days=1028,
+        successful_days=859,
+        unresolved_days=169,
+        first_unresolved="2024-01-01",
+        last_unresolved="2024-06-18",
+        last_day="2026-10-24",
+        last_day_result="import zakończony bez błędów",
+    )
+    w.on_progress("2026-10-24", "Rozpoczynanie importu FIT", 12, 12)
+    w.on_success(result)
+    text = w.details.toPlainText()
+    assert "Podsumowanie całej operacji" in w.stage.text()
+    assert "z błędami" not in w.stage.text() and "HTTP 404" in w.stage.text()
+    assert "Zakres całej operacji: 2024-01-01 — 2026-10-24" in text
+    assert "Dni nierozstrzygnięte (HTTP 404): 169" in text
+    assert "Błędy importu FIT (pliki): 0" in text
+    assert "Ostatni obsłużony dzień: 2026-10-24 — import zakończony bez błędów" in text
+    assert text.index("Rozpoczynanie importu FIT") < text.index(
+        "Podsumowanie całej operacji"
+    )
 
 
 def test_worker_cancel(qtbot):

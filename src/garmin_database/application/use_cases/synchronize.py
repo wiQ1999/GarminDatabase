@@ -4,6 +4,7 @@ from email.utils import parsedate_to_datetime
 from io import BytesIO
 from zipfile import ZipFile
 
+from garmin_database.application.dto import SyncSummary
 from garmin_database.application.errors import LoginFailed, SessionRequired
 from garmin_database.application.ports import (
     ArchiveImporter,
@@ -38,17 +39,27 @@ class Sync:
     def run(
         self, start, end, stop, progress=lambda *a: None, local_only=False, force=False
     ):
+        return self.run_summary(
+            start, end, stop, progress, local_only, force
+        ).issue_count
+
+    def run_summary(
+        self, start, end, stop, progress=lambda *a: None, local_only=False, force=False
+    ):
         requested = list(dates(start, end))
+        summary = SyncSummary(start.isoformat(), end.isoformat(), len(requested))
         with self.repository.writer_lock():
             self.repository.initialize()
             self.restore_manifest()
-            return self.process_days(requested, stop, progress, local_only, force)
+            return self.process_days(
+                requested, stop, progress, local_only, force, summary
+            )
 
-    def process_days(self, requested, stop, progress, local_only, force):
+    def process_days(self, requested, stop, progress, local_only, force, summary):
         with DownloadAhead(self.source, self.archives, stop, validate_zip) as ahead:
             try:
                 return self.process_ordered(
-                    requested, stop, progress, local_only, force, ahead
+                    requested, stop, progress, local_only, force, ahead, summary
                 )
             finally:
                 ahead.finish()
@@ -62,39 +73,100 @@ class Sync:
                             day, error_status(error), type(error).__name__
                         )
 
-    def process_ordered(self, requested, stop, progress, local_only, force, ahead):
-        errors = consecutive = 0
+    def process_ordered(
+        self, requested, stop, progress, local_only, force, ahead, summary
+    ):
+        consecutive = 0
         for index, day in enumerate(requested, 1):
             check_stop(stop)
             text = day.isoformat()
+            summary.processed_days = index
+            summary.last_day = text
 
             def report(message):
                 progress(text, message, index, len(requested))
 
-            report("dzień")
+            report("Rozpoczynanie obsługi dnia")
             old = self.repository.day(text)
             if self.archives.exists(text) and not ahead.has(text):
                 failed, halt = self.import_local(text, stop, progress, force, report)
-                errors += failed
+                self.record_import(summary, failed, halt, report)
                 if halt:
-                    return errors
+                    summary.halted = index < len(requested)
+                    return summary
                 continue
             if local_only:
+                summary.skipped_days += 1
+                self.finish_day(summary, report, "pominięto; brak lokalnego ZIP")
                 continue
             if self.already_checked(old):
-                errors += self.report_unresolved(old, report)
+                self.record_checked_day(summary, old, text, report)
                 continue
             next_day = requested[index].isoformat() if index < len(requested) else None
             failed, status, halt = self.download_day(
                 text, stop, progress, report, ahead, next_day
             )
-            errors += failed
+            self.record_download(summary, text, failed, status, halt, report)
             if halt:
-                return errors
+                summary.halted = index < len(requested)
+                return summary
             consecutive = self.consecutive_failures(consecutive, text, status)
             if consecutive >= 5:
+                summary.halted = index < len(requested)
                 break
-        return errors
+        return summary
+
+    @staticmethod
+    def finish_day(summary, report, outcome):
+        summary.last_day_result = outcome
+        report("Wynik dnia: " + outcome)
+
+    def record_import(self, summary, failed, archive_error, report):
+        if archive_error:
+            summary.archive_errors += failed
+            self.finish_day(
+                summary, report, "błąd archiwum; import dnia nie został ukończony"
+            )
+        elif failed:
+            summary.import_errors += failed
+            self.finish_day(summary, report, f"błędy importu FIT: {failed}")
+        else:
+            summary.successful_days += 1
+            self.finish_day(summary, report, "import zakończony bez błędów")
+
+    def record_unresolved(self, summary, day, report):
+        summary.unresolved_days += 1
+        summary.first_unresolved = summary.first_unresolved or day
+        summary.last_unresolved = day
+        self.finish_day(
+            summary,
+            report,
+            "nierozstrzygnięty HTTP 404; brak danych nie został potwierdzony",
+        )
+
+    def record_checked_day(self, summary, old, day, report):
+        if old["download_status"] == "not_found_unverified":
+            self.report_unresolved(old, report)
+            self.record_unresolved(summary, day, report)
+        else:
+            summary.confirmed_no_data_days += 1
+            self.finish_day(summary, report, "potwierdzony brak danych")
+
+    def record_download(self, summary, day, failed, status, halt, report):
+        if status == 404:
+            self.record_unresolved(summary, day, report)
+        elif status is not None or halt or not self.archives.exists(day):
+            summary.download_errors += failed
+            self.finish_day(summary, report, self.failed_download_outcome(status, halt))
+        else:
+            self.record_import(summary, failed, False, report)
+
+    @staticmethod
+    def failed_download_outcome(status, halt):
+        if halt and status is None:
+            return "błąd pobierania: brak sesji Garmin; zaloguj się w Ustawieniach; import dnia nie został wykonany"
+        code = f" (HTTP {status})" if status is not None else ""
+        return "błąd pobierania" + code + "; import dnia nie został wykonany"
 
     @staticmethod
     def already_checked(old):

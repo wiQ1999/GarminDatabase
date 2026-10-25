@@ -51,7 +51,7 @@ def test_refresh_during_download_never_blocks_or_duplicates_reads(
     overview = w.services.overview
     calls = []
 
-    def sync(*args):
+    def sync(*args, **kwargs):
         hold(downloading, download_done)
         return 0
 
@@ -352,7 +352,7 @@ def test_stop_button_animates_until_background_operation_returns(
     w = window(qtbot, tmp_path)
     started, release = threading.Event(), threading.Event()
 
-    def sync(*args):
+    def sync(*args, **kwargs):
         hold(started, release)
 
     monkeypatch.setattr(w.services, "sync", sync)

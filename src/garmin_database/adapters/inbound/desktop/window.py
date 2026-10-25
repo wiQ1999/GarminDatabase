@@ -49,8 +49,9 @@ from garmin_database.adapters.inbound.desktop.icons import (
 from garmin_database.adapters.inbound.desktop.login_dialog import LoginDialog
 from garmin_database.adapters.inbound.desktop.overview import OverviewPoller
 from garmin_database.adapters.inbound.mcp.client_config import client_config
-from garmin_database.application.dto import ExportResult
+from garmin_database.application.dto import ExportResult, SyncSummary
 from garmin_database.application.ports import DesktopServices
+from garmin_database.application.sync_messages import sync_heading, sync_summary_text
 from garmin_database.domain.aggregation import (
     MEAN_PARAMETERS,
     has_chart_summary,
@@ -998,10 +999,14 @@ class Window(QMainWindow):
 
     def on_success(self, result):
         self.flush_progress()
+        if isinstance(result, SyncSummary):
+            self.stage.setText(sync_heading(result))
+            self.details.append(sync_summary_text(result))
+            return
         self.stage.setText(
             "Ukończono"
             if not isinstance(result, int) or result == 0
-            else f"Błędy lub nierozstrzygnięte dni/pliki: {result}. Sprawdź szczegóły operacji."
+            else f"Podsumowanie całej operacji: zgłoszono problemy: {result}. Szczegóły w dzienniku operacji."
         )
         self.details.append(self.stage.text())
         if isinstance(result, ExportResult):
@@ -1046,6 +1051,7 @@ class Window(QMainWindow):
                 local_only,
                 force,
                 delay,
+                detailed=True,
             ),
             trigger,
         )

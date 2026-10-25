@@ -109,11 +109,22 @@ class Services:
             return self.queries.chart(parameter, start, end, snapshot.conn, stop)
 
     def sync(
-        self, start, end, stop, progress, local_only=False, force=False, delay=3.0
+        self,
+        start,
+        end,
+        stop,
+        progress,
+        local_only=False,
+        force=False,
+        delay=3.0,
+        *,
+        detailed=False,
     ):
-        return create_sync(
+        sync = create_sync(
             self.db, None if local_only else self.source_factory(), delay
-        ).run(
+        )
+        run = sync.run_summary if detailed else sync.run
+        return run(
             start,
             end,
             stop,

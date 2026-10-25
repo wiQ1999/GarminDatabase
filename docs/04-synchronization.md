@@ -8,7 +8,7 @@
 4. Jeżeli poprawny ZIP istnieje lokalnie, zarejestruj go i przetwórz bez pobierania.
 5. Pobierz brakujący dzień, zweryfikuj ZIP i zapisz oryginał. Błąd nie oznacza zakończenia dnia.
 6. Przetwórz ZIP do PostgreSQL. Po zapisaniu bieżącego ZIP można pobierać kolejny dzień w tle; rejestracja i import pozostają chronologiczne. Błąd parsera nie unieważnia udanego pobrania; ponawiaj przetwarzanie lokalnego pliku.
-7. Wyświetl liczbę dni pobranych, pominiętych, bez danych i z błędem. CLI zwraca niezerowy kod zakończenia przy błędzie; aplikacja Windows pokazuje status i bezpieczne szczegóły błędu.
+7. Wyświetl wynik każdego dnia i podsumowanie całego zakresu: poprawne importy, pominięte dni, potwierdzony brak danych, nierozstrzygnięte HTTP 404 i odrębne błędy pobierania/importu. CLI zwraca niezerowy kod także dla nierozstrzygniętych dni; aplikacja Windows pokazuje nagłówek całej operacji i bezpieczne szczegóły w dzienniku.
 
 Nie aktualizujemy automatycznie zakończonych dni. Użytkownik świadomie akceptuje, że późniejsze zmiany Garmin nie zostaną w tej wersji pobrane.
 
@@ -30,6 +30,10 @@ Nie logować odpowiedzi zawierających zdrowotne dane, hasła, kody MFA, ciastec
 HTTP 404 jest opisywane jako brak zwróconego archiwum dla konkretnej daty, bez rozstrzygania, czy konto nie ma wtedy danych. Synchronizacja sprawdza kolejne dni. Przy wznowieniu zapisany `not_found_unverified` nie wysyła ponownego żądania, ale pozostaje w liczbie nierozstrzygniętych dni i otrzymuje osobny komunikat w szczegółach. Nie wolno prezentować takiego wznowienia jako pełnego sukcesu.
 
 Błąd importu FIT emituje komunikat z datą, numerem pliku w archiwum i klasą błędu; oryginalny ZIP pozostaje zachowany, a nieukończona transakcja FIT jest wycofana. Dziennik operacji jest stale widoczny na widoku głównym; po zakończeniu UI dopisuje podsumowanie, także dla błędów i nierozstrzygniętych dni. Nowa operacja pobierania, importu lub eksportu czyści panel poprzedniej operacji.
+
+Komunikat „Rozpoczynanie importu FIT (n/N)” oznacza początek przetwarzania pliku. Po obsłużeniu archiwum aplikacja emituje osobny **„Wynik dnia”**: import bez błędów, liczba błędów FIT, błąd archiwum/pobierania, nierozstrzygnięty HTTP 404 albo pominięcie w trybie lokalnym. Sukces dotyczy danego dnia, także gdy inne dni w operacji pozostają nierozstrzygnięte.
+
+**„Podsumowanie całej operacji”** podaje żądany zakres, liczbę obsłużonych dni i osobne kategorie z jednostkami: dni z poprawnym importem, potwierdzony brak danych, pominięte dni bez lokalnego ZIP, błędy pobierania w dniach, błędy importu FIT w plikach, błędy archiwów w dniach oraz dni nierozstrzygnięte HTTP 404. Dla 404 podaje granice dat i przypomina, że brak danych nie został potwierdzony. Wynik ostatniego obsłużonego dnia jest osobną informacją. Nierozstrzygniętych 404 nie dodaje się do licznika błędów importu; przerwanie przed końcem zakresu jest jawne. CLI zachowuje niezerowy kod także przy samych nierozstrzygniętych dniach oraz końcowy JSON stanu po podsumowaniu tekstowym.
 
 „Pobierz dane” wykonuje pobieranie i import do PostgreSQL. Osobna operacja ponownego przetwarzania korzysta wyłącznie z lokalnych ZIP. Pasek postępu pokazuje aktualny dzień, etap i licznik ukończonych dni. „Zatrzymaj” bezpiecznie kończy pracę z zachowaniem transakcji i postępu. Zamknięcie okna podczas pracy wymaga potwierdzenia zatrzymania i wyjścia. Zwykłe zamknięcie kończy aplikację; pierwsza wersja nie pracuje w zasobniku ani według harmonogramu. Szczegóły w [specyfikacji UI](11-desktop-ui.md).
 

@@ -75,6 +75,8 @@ Pobieranie, dekodowanie i eksport to odrębne operacje. Zmiana parsera nie wymag
 
 `application/use_cases/download_ahead.py` uruchamia jednego pracownika sieciowego, który może pobrać i atomowo zapisać następny ZIP podczas importu bieżącego. Nie wykonuje SQL. `Sync` pozostaje właścicielem blokady, inicjalizacji, prób i rejestracji w kolejności dni. Zamykanie operacji dołącza pracownika i zachowuje stan potrzebny do wznowienia. Nie ma niezależnych writerów dniowych ani zmiany algorytmu podsumowań.
 
+`Sync.run_summary` zwraca `SyncSummary` z zakresem, osobnymi licznikami i wynikiem ostatniego dnia; `Sync.run` zachowuje liczbowy wynik problemów dla dotychczasowych wywołań. `Services.sync(detailed=True)` udostępnia wynik strukturalny GUI i CLI. `application/sync_messages.py` formatuje wspólne komunikaty całej operacji bez zależności od Qt. Wyniki podsumowania powstają z przebiegu operacji, bez dodatkowych skanów pomiarów w PostgreSQL.
+
 Adapter PostgreSQL rozdziela obsługę archiwum (`imports.py`), kontekst ramek FIT (`fit_decode.py`), reguły katalogu (`fit_catalog.py`) i ograniczone partie SQL (`message_batch.py`). Zbiorczy INSERT wiadomości zwraca ID wraz z indeksem źródłowym, a COPY zapisuje pola do tych ID. Wszystkie partie jednego FIT należą do jednej transakcji, bez commitów przy flush. Szczegóły limitów i wznowienia: [synchronizacja](04-synchronization.md#wydajność-i-potok-synchronizacji).
 
 ## Układ zasobów

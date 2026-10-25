@@ -106,6 +106,15 @@ class DesktopServices(Protocol):
     def parameters(self) -> list[dict]: ...
     def chart(self, parameter, start, end, stop=None): ...
     def sync(
-        self, start, end, stop, progress, local_only=False, force=False, delay=3
+        self,
+        start,
+        end,
+        stop,
+        progress,
+        local_only=False,
+        force=False,
+        delay=3,
+        *,
+        detailed=False,
     ): ...
     def export(self, settings, settings_path): ...

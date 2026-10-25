@@ -229,7 +229,7 @@ class Importer:
         force_file = force is True or isinstance(force, set) and fid in force
         if not force_file and done and done[0] == "complete":
             return 0
-        progress(day, "import", index, total)
+        progress(day, "Rozpoczynanie importu FIT", index, total)
         try:
             self.decode(conn, payload, fid, digest, profile, run, stop)
         except Cancelled:

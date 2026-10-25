@@ -6,6 +6,7 @@ import threading
 from datetime import date
 
 from garmin_database.application.read_models import select_parameters
+from garmin_database.application.sync_messages import sync_summary_text
 from garmin_database.domain.cancellation import Cancelled
 from garmin_database.domain.time import yesterday
 
@@ -67,16 +68,18 @@ def export_files(args, settings, db, stop):
 
 def run_command(args, services, settings, stop):
     if args.command in {"sync", "import-local", "reprocess"}:
-        errors = services.sync(
+        result = services.sync(
             args.start,
             args.end,
             stop,
             progress,
             local_only=args.command != "sync",
             force=args.command == "reprocess",
+            detailed=True,
         )
+        print(sync_summary_text(result), flush=True)
         print(json.dumps(services.status(), ensure_ascii=False), flush=True)
-        return 2 if errors else 0
+        return 2 if result.issue_count else 0
     if args.command == "status":
         print(json.dumps(services.status(), ensure_ascii=False, indent=2))
         return 0

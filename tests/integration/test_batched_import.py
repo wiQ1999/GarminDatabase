@@ -174,7 +174,7 @@ def test_all_origins_are_visible_before_first_fit_and_day_remains_partial(tmp_pa
     pending = []
 
     def progress(day, stage, *args):
-        if stage == "import":
+        if stage == "Rozpoczynanie importu FIT":
             with db.connect(readonly=True) as c:
                 assert (
                     c.execute("SELECT count(*) FROM archive_entries").fetchone()[0] == 2

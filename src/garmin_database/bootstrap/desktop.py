@@ -30,15 +30,17 @@ def smoke_import(window, args):
     # The external runner supplies synthetic originals and an isolated schema.
     # Exercise frozen bulk import and idempotent resume before the screenshot.
     for _ in range(2):
-        errors = window.services.sync(
+        result = window.services.sync(
             date.fromisoformat(args.smoke_import_from),
             date.fromisoformat(args.smoke_import_to),
             Event(),
             lambda *a: None,
             local_only=True,
+            detailed=True,
         )
-        if errors:
+        if result.issue_count:
             raise RuntimeError("Błąd syntetycznego importu smoke")
+        window.on_success(result)
     window.refresh()
 
 
