@@ -45,6 +45,8 @@ Przed uruchomieniem źródeł i testów zainstalować pakiet editable (`uv pip i
 
 Przed zmianą współbieżności importu uwzględnić, że blokada writera jest zagnieżdżalna tylko w tym samym wątku, a triggery rewizji blokują wspólny wiersz `dataset_state` do końca transakcji FIT. Obecne remisy czasów używają ID nadawanych przy imporcie, więc `last_value` może zależeć od kolejności pierwszej rejestracji FIT. Dowolna kolejność wymaga stabilnego porządku źródłowego oraz unieważnienia cache po zmianie reguły. Kierunek optymalizacji i warunki odbioru: [synchronizacja](docs/04-synchronization.md#wydajność-i-warunki-przyszłej-współbieżności); równoległy potok nie jest jeszcze zaimplementowany.
 
+Paczka dzienna nie gwarantuje rozłącznych czasów pomiarów i nie jest jedną transakcją: atomowy jest FIT. Inicjalizację/odzyskiwanie przebiegów wykonywać raz przed pracownikami. Ewentualny równoległy zapis wymaga własności FIT po SHA-256 i ponownej kontroli stanu pod blokadą; ograniczenia UNIQUE nie zastępują koordynacji. Obecne przechwytywanie ostrzeżeń parsera przez `warnings.catch_warnings` nie izoluje wątków w Pythonie 3.12. Te warunki obowiązują także dla modelu jednego taska na dzień; kolejność rejestracji można zachować przez koordynatora niezależnie od kolejności pobierania.
+
 ## UI, podsumowania i eksport
 
 - Start/Dane/Eksport/Ustawienia, ciemny motyw. „Pobierz dane” pobiera tylko do wczoraj Europe/Warsaw i importuje. Brak sesji to `SessionRequired` z instrukcją logowania, bez sieciowych ponowień. Import lokalny nie wymaga logowania i nie dowodzi pobrania nowych danych.
