@@ -5,11 +5,12 @@ import time
 
 import pytest
 from PySide6.QtCore import QDate, Qt, QTimer
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton
 
 from garmin_database.adapters.inbound.desktop import window as desktop
 from garmin_database.adapters.outbound.filesystem.settings_json import SettingsStore
 from garmin_database.adapters.outbound.postgres.queries import Queries
+from garmin_database.application.ports import ReadFailure
 from tests.ui.test_ui import ready, select_parameter, window
 
 pytestmark = pytest.mark.ui
@@ -65,13 +66,13 @@ def test_refresh_during_download_never_blocks_or_duplicates_reads(
         w.download_button.click()
         qtbot.waitUntil(downloading.is_set)
         before = time.monotonic()
-        w.refresh_button.click()
+        w.overview.poll()
         assert time.monotonic() - before < 0.3
         qtbot.waitUntil(reading.is_set)
         for _ in range(20):
-            w.refresh_button.click()
             w.overview.poll()
-        heartbeat(qtbot, w, w.refresh_button)
+            w.overview.poll()
+        heartbeat(qtbot, w, w.status_indicator)
         assert calls == [calls[0]] and calls[0] != threading.get_ident()
         assert w.download_button.loading and w.work_is_running()
     finally:
@@ -79,7 +80,7 @@ def test_refresh_during_download_never_blocks_or_duplicates_reads(
         download_done.set()
     ready(qtbot, w)
     qtbot.waitUntil(lambda: not w.stop_button.isEnabled())
-    assert not w.refresh_button.loading and not w.download_button.loading
+    assert not w.status_indicator.loading and not w.download_button.loading
 
 
 @pytest.mark.parametrize(
@@ -132,6 +133,8 @@ def test_slow_main_actions_have_live_spinners(qtbot, tmp_path, monkeypatch, acti
         heartbeat(qtbot, w, trigger)
         assert background_threads == [background_threads[0]]
         assert background_threads[0] != threading.get_ident()
+        if action != "export":
+            assert trigger.text() + " — rozpoczęto" in w.details.toPlainText()
     finally:
         release.set()
     ready(qtbot, w)
@@ -140,6 +143,8 @@ def test_slow_main_actions_have_live_spinners(qtbot, tmp_path, monkeypatch, acti
         assert "mcpServers" in QApplication.clipboard().text()
     if action == "export":
         assert w.last_export_dir.is_dir()
+    else:
+        assert trigger.text() + " — ukończono" in w.details.toPlainText()
 
 
 def test_periodic_refresh_preserves_edits_and_never_reloads_unchanged_catalog(
@@ -171,11 +176,11 @@ def test_periodic_refresh_preserves_edits_and_never_reloads_unchanged_catalog(
     assert not any(calls)
     w.refresh()
     ready(qtbot, w)
-    assert calls[-1] is True
+    assert calls[-1] is False
     assert w.export_list.item(0).checkState() == Qt.CheckState.Unchecked
     assert w.sharing_table.item(0, 2).checkState() == Qt.CheckState.Unchecked
     assert w.mcp_enabled.isChecked() and w.sharing_group.currentData() == old_group
-    assert "Nie udało" not in w.status.text()
+    assert not w.status_error.text()
 
 
 def test_all_history_uses_cached_first_day(qtbot, tmp_path, monkeypatch):
@@ -245,12 +250,15 @@ def test_overview_error_is_safe_and_next_cycle_recovers(qtbot, tmp_path, monkeyp
     monkeypatch.setattr(w.services, "overview", failed)
     w.refresh()
     ready(qtbot, w)
-    assert "RuntimeError" in w.status.text() and "private data" not in w.status.text()
-    assert not w.refresh_button.loading
+    assert (
+        "RuntimeError" in w.status_error.text()
+        and "private data" not in w.status_error.text()
+    )
+    assert not w.status_indicator.loading
     monkeypatch.setattr(w.services, "overview", original)
     w.overview.poll()
     ready(qtbot, w)
-    assert "Nie udało" not in w.status.text()
+    assert not w.status_error.text()
 
 
 def test_reconfigured_services_discard_old_inflight_overview(
@@ -331,7 +339,7 @@ def test_legacy_settings_migration_blocks_competing_saves(qtbot, tmp_path, monke
         w.refresh()
         qtbot.waitUntil(started.is_set)
         assert not w.save_button.isEnabled() and not w.export_button.isEnabled()
-        heartbeat(qtbot, w, w.refresh_button)
+        heartbeat(qtbot, w, w.status_indicator)
     finally:
         release.set()
     ready(qtbot, w)
@@ -358,3 +366,129 @@ def test_stop_button_animates_until_background_operation_returns(
         release.set()
     qtbot.waitUntil(lambda: not w.stop_button.loading)
     assert not w.stop_button.isEnabled() and not w.download_button.loading
+
+
+def test_start_has_passive_activity_indicator_and_no_refresh_button(qtbot, tmp_path):
+    w = window(qtbot, tmp_path)
+    assert not any(b.text() == "Odśwież stan" for b in w.findChildren(QPushButton))
+    assert not hasattr(w, "refresh_button")
+    assert not isinstance(w.status_indicator, QPushButton)
+    assert w.details.isVisible() and w.details.isReadOnly()
+    assert not any(b.text() == "Pokaż szczegóły" for b in w.findChildren(QPushButton))
+
+
+def test_operation_log_is_visible_during_work_and_keeps_only_recent_lines(
+    qtbot, tmp_path
+):
+    w = window(qtbot, tmp_path)
+    started, release = threading.Event(), threading.Event()
+
+    def operation(worker):
+        worker.progress.emit("2024-06-19", "Pobieranie", 1, 2)
+        hold(started, release)
+        return 0
+
+    try:
+        w.start_work(operation, w.download_button)
+        qtbot.waitUntil(started.is_set)
+        qtbot.waitUntil(lambda: "Pobieranie" in w.details.toPlainText())
+        assert w.details.isVisible()
+        heartbeat(qtbot, w, w.download_button)
+    finally:
+        release.set()
+    qtbot.waitUntil(lambda: not w.stop_button.isEnabled())
+    assert w.details.isVisible() and "Ukończono" in w.details.toPlainText()
+    w.details.append("\n".join(f"Wiersz {i}" for i in range(600)))
+    assert w.details.document().blockCount() == 500
+    assert (
+        "Wiersz 599" in w.details.toPlainText()
+        and "Wiersz 0\n" not in w.details.toPlainText()
+    )
+
+
+@pytest.mark.parametrize("initial", [False, True])
+def test_repeated_state_errors_replace_one_notice(
+    qtbot, tmp_path, monkeypatch, initial
+):
+    w = window(qtbot, tmp_path)
+    if initial:
+        w.status_info = {}
+        w.status.setText("Odczytywanie stanu archiwum…")
+    previous = w.status.text()
+
+    def failed(*args):
+        raise ReadFailure("private details", reason="connection")
+
+    monkeypatch.setattr(w.services, "overview", failed)
+    notices = []
+    for _ in range(4):
+        w.overview.poll()
+        ready(qtbot, w)
+        notices.append(w.status_error.text())
+    assert len(set(notices)) == 1
+    assert notices[0].count("Nie udało się odświeżyć stanu") == 1
+    assert "private details" not in notices[0] and "ReadFailure" not in notices[0]
+    assert w.status.text() == (
+        "Stan archiwum jest chwilowo niedostępny." if initial else previous
+    )
+
+
+def test_slow_catalog_publishes_counters_before_catalog_finishes(
+    qtbot, tmp_path, monkeypatch
+):
+    w = window(qtbot, tmp_path)
+    original = w.services.catalog
+    started, release = threading.Event(), threading.Event()
+
+    def delayed(*args):
+        hold(started, release)
+        return original(*args)
+
+    monkeypatch.setattr(w.services, "catalog", delayed)
+    w.status_info = {}
+    w.status.setText("Odczytywanie stanu archiwum…")
+    try:
+        w.refresh()
+        qtbot.waitUntil(started.is_set)
+        qtbot.waitUntil(lambda: bool(w.status_info))
+        assert "Archiwa w bazie: 1" in w.status.text()
+        heartbeat(qtbot, w, w.status_indicator)
+    finally:
+        release.set()
+    ready(qtbot, w)
+
+
+def test_catalog_timeout_keeps_status_and_obeys_retry_interval(
+    qtbot, tmp_path, monkeypatch
+):
+    w = window(qtbot, tmp_path)
+    calls = []
+
+    def failed(*args):
+        calls.append(True)
+        raise ReadFailure("private details", reason="timeout")
+
+    original = w.services.catalog
+    monkeypatch.setattr(w.services, "catalog", failed)
+    w.refresh()
+    ready(qtbot, w)
+    assert "Archiwa w bazie: 1" in w.status.text()
+    assert (
+        "listy parametrów" in w.status_error.text()
+        and "czas odczytu" in w.status_error.text()
+    )
+    assert (
+        "połączyć" not in w.status_error.text()
+        and "private" not in w.status_error.text()
+    )
+    for _ in range(3):
+        w.overview.poll()
+        ready(qtbot, w)
+    assert calls == [True]
+    assert "Archiwa w bazie: 1" in w.status.text()
+    assert w.status_error.text().count("listy parametrów") == 1
+    monkeypatch.setattr(w.services, "catalog", original)
+    w.overview.catalog_checked = float("-inf")
+    w.overview.poll()
+    ready(qtbot, w)
+    assert not w.status_error.text()

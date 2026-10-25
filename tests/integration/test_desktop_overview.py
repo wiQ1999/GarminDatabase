@@ -66,9 +66,13 @@ def test_overview_skips_unchanged_or_not_due_catalog(tmp_path, monkeypatch):
     not_due = source.overview(threading.Event(), None, False)
     assert same["parameters"] is None and not_due["parameters"] is None
     assert same["status"]["fields"] == 8 and not_due["status"]["fields"] == 8
+    catalog = source.catalog(threading.Event(), initial["revision"])
+    assert catalog == {"parameters": None, "catalog_revision": initial["revision"]}
 
 
-@pytest.mark.parametrize("operation", ["overview_deadline", "chart_cancel"])
+@pytest.mark.parametrize(
+    "operation", ["overview_deadline", "catalog_deadline", "chart_cancel"]
+)
 def test_read_budget_cancels_active_postgresql_query(tmp_path, monkeypatch, operation):
     source = services(tmp_path)
     stop = threading.Event()
@@ -79,16 +83,23 @@ def test_read_budget_cancels_active_postgresql_query(tmp_path, monkeypatch, oper
     def slow_chart(parameter, start, end, conn, stop):
         conn.execute("SELECT pg_sleep(20)")
 
-    if operation == "overview_deadline":
+    if operation in {"overview_deadline", "catalog_deadline"}:
         monkeypatch.setattr(
             dependencies,
             "DeadlineStop",
             lambda event, seconds: DeadlineStop(event, 0.1),
         )
-        monkeypatch.setattr(source.db, "status", slow_status)
+        if operation == "overview_deadline":
+            monkeypatch.setattr(source.db, "status", slow_status)
+        else:
+            monkeypatch.setattr(source.queries, "parameters", slow_status)
 
         def action():
-            return source.overview(stop)
+            return (
+                source.overview(stop)
+                if operation == "overview_deadline"
+                else source.catalog(stop)
+            )
 
         timer = None
     else:
@@ -101,8 +112,9 @@ def test_read_budget_cancels_active_postgresql_query(tmp_path, monkeypatch, oper
         timer.start()
     try:
         started = time.monotonic()
-        with pytest.raises(ReadFailure, match="Nie można odczytać bazy"):
+        with pytest.raises(ReadFailure, match="Nie można odczytać bazy") as failure:
             action()
+        assert failure.value.reason == "timeout"
         assert time.monotonic() - started < 2
     finally:
         if timer:

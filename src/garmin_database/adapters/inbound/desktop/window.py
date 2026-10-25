@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from garmin_database.adapters.inbound.desktop.busy import BusyButton
+from garmin_database.adapters.inbound.desktop.busy import BusyButton, BusyIndicator
 from garmin_database.adapters.inbound.desktop.chart import (
     Chart,
     ChartView,
@@ -127,6 +127,9 @@ class Window(QMainWindow):
         self.query_serial = 0
         self.chart_dirty = True
         self.status_info = {}
+        self.state_error = ""
+        self.catalog_error = ""
+        self.catalog_loaded = False
         self.session_cached = None
         self.progress_pending = None
         self.progress_details = deque(maxlen=500)
@@ -177,7 +180,8 @@ class Window(QMainWindow):
         )
         self.overview.ready.connect(self.show_overview)
         self.overview.failed.connect(self.overview_error)
-        self.overview.busy_changed.connect(self.refresh_button.set_loading)
+        self.overview.catalog_failed.connect(self.overview_catalog_error)
+        self.overview.busy_changed.connect(self.status_indicator.set_loading)
         self.overview.busy_changed.connect(self.update_action_states)
         self.overview.idle.connect(self.close_if_idle)
         QTimer.singleShot(0, self.refresh)
@@ -213,6 +217,19 @@ class Window(QMainWindow):
             "background:#191e27;padding:22px;border-radius:8px;font-size:16px;"
         )
         layout.addWidget(self.status)
+        state_header = QHBoxLayout()
+        state_header.addWidget(
+            QLabel("Stan aktualizuje się automatycznie co 15 sekund")
+        )
+        state_header.addStretch()
+        self.status_indicator = BusyIndicator(self)
+        state_header.addWidget(self.status_indicator)
+        layout.addLayout(state_header)
+        self.status_error = QLabel()
+        self.status_error.setWordWrap(True)
+        self.status_error.setStyleSheet("color:#ffbc70;")
+        self.status_error.hide()
+        layout.addWidget(self.status_error)
         actions = QHBoxLayout()
         self.download_button = button("Pobierz dane", self.sync, True)
         actions.addWidget(self.download_button)
@@ -234,16 +251,16 @@ class Window(QMainWindow):
         self.stop_button = button("Zatrzymaj", self.stop_work)
         self.stop_button.setEnabled(False)
         layout.addWidget(self.stop_button)
-        self.details_button = button("Pokaż szczegóły", self.toggle_details)
-        layout.addWidget(self.details_button)
+        layout.addWidget(QLabel("Dziennik operacji"))
         self.details = QTextEdit()
         self.details.setReadOnly(True)
+        self.details.setAccessibleName("Dziennik operacji")
+        self.details.setPlaceholderText(
+            "Tutaj pojawi się postęp pobierania, importu i eksportu."
+        )
+        self.details.setMinimumHeight(100)
         self.details.document().setMaximumBlockCount(500)
-        self.details.hide()
-        layout.addWidget(self.details)
-        self.refresh_button = button("Odśwież stan", self.refresh)
-        layout.addWidget(self.refresh_button)
-        layout.addStretch()
+        layout.addWidget(self.details, 1)
 
     def build_data(self):
         layout = self.page(
@@ -629,12 +646,6 @@ class Window(QMainWindow):
         services = self.services
         self.start_aux(self.login_button, lambda w: services.open_url(url))
 
-    def toggle_details(self):
-        self.details.setVisible(not self.details.isVisible())
-        self.details_button.setText(
-            "Ukryj szczegóły" if self.details.isVisible() else "Pokaż szczegóły"
-        )
-
     def pick_folder(self, field, trigger=None):
         if self.folder_dialog is not None:
             self.folder_dialog.raise_()
@@ -668,6 +679,11 @@ class Window(QMainWindow):
 
     def show_overview(self, result):
         self.status_info = result["status"]
+        self.state_error = ""
+        if "catalog_revision" in result:
+            self.catalog_error = ""
+            self.catalog_loaded = True
+        self.show_overview_errors()
         if "settings" in result:
             self.settings = result["settings"]
         parameters = result["parameters"]
@@ -690,13 +706,30 @@ class Window(QMainWindow):
 
     def overview_error(self, message):
         if not self.closing:
-            if self.status_info:
-                self.update_status(self.status_info)
-            self.status.setText(
-                self.status.text()
-                + "\nNie udało się odświeżyć stanu. Kolejna próba nastąpi automatycznie.\n"
+            self.state_error = (
+                "Nie udało się odświeżyć stanu. Kolejna próba nastąpi automatycznie.\n"
                 + message
             )
+            if not self.status_info:
+                self.status.setText("Stan archiwum jest chwilowo niedostępny.")
+            self.show_overview_errors()
+
+    def overview_catalog_error(self, message):
+        if not self.closing:
+            self.catalog_error = (
+                "Nie udało się odczytać listy parametrów. Kolejna próba nastąpi automatycznie.\n"
+                + message
+            )
+            self.show_overview_errors()
+            if self.status_info:
+                self.update_status(self.status_info)
+
+    def show_overview_errors(self):
+        message = "\n".join(
+            error for error in (self.state_error, self.catalog_error) if error
+        )
+        self.status_error.setText(message)
+        self.status_error.setVisible(bool(message))
 
     def update_status(self, info):
         unresolved = sum(
@@ -707,9 +740,13 @@ class Window(QMainWindow):
         self.status.setText(
             f"Ostatni pobrany dzień: {info['last_downloaded'] or 'brak'}\nZakres zarejestrowany w bazie: {info['first_day'] or 'brak'} — {info['last_day'] or 'brak'}\nArchiwa w bazie: {info['archives']}   •   Zaimportowane FIT: {info['files']}\nWiadomości: {info['messages']:,}   •   Fizyczne pola: {info['fields']:,}\nDni czekające na rejestrację: {info['pending_days']}   •   Oczekujące FIT: {info['pending_files']}\nDni brakujące / nierozstrzygnięte: {unresolved}   •   Nieznane warianty pól: {info['unknown_variants']}\nZIP w bazie: {info['archive_bytes'] / 1024**2:.1f} MB   •   PostgreSQL: {info['database_bytes'] / 1024**2:.1f} MB"
         )
+        count = (
+            str(len(self.parameters))
+            if self.catalog_loaded
+            else "oczekiwanie na listę parametrów"
+        )
         self.status.setText(
-            self.status.text()
-            + f"\nRozpoznane serie / właściwości: {len(self.parameters)}"
+            self.status.text() + "\nRozpoznane serie / właściwości: " + count
         )
 
     def populate_parameters(self, preserve=True):
@@ -958,8 +995,6 @@ class Window(QMainWindow):
         self.flush_progress()
         self.stage.setText(message)
         self.details.append(message)
-        self.details.show()
-        self.details_button.setText("Ukryj szczegóły")
 
     def on_success(self, result):
         self.flush_progress()
@@ -969,9 +1004,6 @@ class Window(QMainWindow):
             else f"Błędy lub nierozstrzygnięte dni/pliki: {result}. Sprawdź szczegóły operacji."
         )
         self.details.append(self.stage.text())
-        if isinstance(result, int) and result > 0:
-            self.details.show()
-            self.details_button.setText("Ukryj szczegóły")
         if isinstance(result, ExportResult):
             self.last_export_dir = result.directory
             self.export_result.setText(
@@ -1040,6 +1072,7 @@ class Window(QMainWindow):
         dialog = LoginDialog(Worker(operation), self)
         self.login_dialog = dialog
         dialog.status_changed.connect(self.session_status.setText)
+        dialog.status_changed.connect(self.details.append)
         dialog.finished.connect(self.login_closed)
         self.login_button.set_loading(True)
         dialog.open()
@@ -1133,6 +1166,9 @@ class Window(QMainWindow):
                 self.parameters = []
                 self.status_info = {}
                 self.status.setText("Odczytywanie stanu nowej bazy…")
+                self.state_error = self.catalog_error = ""
+                self.catalog_loaded = False
+                self.show_overview_errors()
                 self.refresh_sharing(preserve=False)
                 self.populate_parameters(preserve=False)
                 self.show_chart_error("Odczytywanie katalogu nowej bazy…")
@@ -1162,6 +1198,7 @@ class Window(QMainWindow):
         self.aux_success = success
         self.aux_failure = failure or self.settings_status.setText
         self.aux_button = trigger
+        self.details.append(trigger.text() + " — rozpoczęto")
         trigger.set_loading(True)
         trigger.setEnabled(False)
         worker = Worker(operation, self)
@@ -1173,10 +1210,12 @@ class Window(QMainWindow):
         self.update_action_states()
 
     def aux_succeeded(self, result):
+        self.details.append(self.aux_button.text() + " — ukończono")
         if not self.closing and self.aux_success:
             self.aux_success(result)
 
     def aux_failed(self, message):
+        self.details.append(self.aux_button.text() + " — " + message)
         if not self.closing:
             self.aux_failure(message)
 

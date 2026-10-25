@@ -80,6 +80,17 @@ class Services:
     def session_available(self):
         return self.session_factory().path.is_file()
 
+    def catalog(self, stop, known_revision=None):
+        with DataAccess(self.db).snapshot(
+            DeadlineStop(stop, 10), include_catalog=False
+        ) as snapshot:
+            return dict(
+                parameters=self.queries.parameters(snapshot.conn)
+                if snapshot.revision != known_revision
+                else None,
+                catalog_revision=snapshot.revision,
+            )
+
     def open_folder(self, path):
         open_directory(path)
 

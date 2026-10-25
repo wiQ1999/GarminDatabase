@@ -78,8 +78,13 @@ class DataAccess:
         try:
             with self._snapshot(stop, include_catalog=include_catalog) as value:
                 yield value
-        except psycopg.Error:
-            raise ReadFailure("Nie można odczytać bazy") from None
+        except psycopg.Error as error:
+            reason = "database"
+            if error.sqlstate == "57014":
+                reason = "timeout"
+            elif isinstance(error, psycopg.OperationalError):
+                reason = "connection"
+            raise ReadFailure("Nie można odczytać bazy", reason=reason) from None
 
     @contextmanager
     def _snapshot(self, stop=None, *, include_catalog=True):

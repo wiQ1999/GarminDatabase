@@ -137,11 +137,18 @@ class Queries:
             if conn is not None
             else self.db.connect(readonly=True) as c
         ):
+            # Separate EXISTS let both source paths use fields_parameter_message.
+            # Combining equality and a correlated IN can materialize the full history.
             rows = c.execute("""SELECT * FROM field_catalog c WHERE semantics_status<>'unknown'
                 AND representation IN ('sample','source_summary','event') AND time_role IN ('none','duration')
-                AND EXISTS(SELECT 1 FROM fit_fields f JOIN fit_messages m ON m.id=f.message_id
-                  JOIN file_decodes d ON d.id=m.file_decode_id WHERE (f.resolved_catalog_id=c.id OR f.resolved_catalog_id IN
-                    (SELECT r.source_catalog_id FROM interpretation_rules r WHERE r.target_catalog_id=c.id)) AND d.is_active=1)
+                AND (EXISTS(SELECT 1 FROM fit_fields f JOIN fit_messages m ON m.id=f.message_id
+                  JOIN file_decodes d ON d.id=m.file_decode_id
+                  WHERE f.resolved_catalog_id=c.id AND d.is_active=1)
+                OR EXISTS(SELECT 1 FROM interpretation_rules r
+                  JOIN fit_fields f ON f.resolved_catalog_id=r.source_catalog_id
+                  JOIN fit_messages m ON m.id=f.message_id
+                  JOIN file_decodes d ON d.id=m.file_decode_id
+                  WHERE r.target_catalog_id=c.id AND d.is_active=1))
                 ORDER BY message_name,variant_name""").fetchall()
         result = {}
         for row in rows:

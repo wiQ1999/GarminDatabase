@@ -3,11 +3,13 @@ import threading
 from PySide6.QtCore import QThread, Signal
 
 from garmin_database.application.errors import LoginFailed, SessionRequired
+from garmin_database.application.ports import ReadFailure
 from garmin_database.domain.cancellation import Cancelled, check_stop
 
 
 class Worker(QThread):
     success = Signal(object)
+    preview = Signal(object)
     failure = Signal(str)
     progress = Signal(str, str, int, int)
     mfa_requested = Signal()
@@ -41,6 +43,13 @@ class Worker(QThread):
             self.success.emit(result)
         except Cancelled:
             self.failure.emit("Zatrzymano. Ukończone dane zostały zachowane.")
+        except ReadFailure as error:
+            self.failure.emit(
+                {
+                    "timeout": "Przekroczono czas odczytu danych. Połączenie może być aktywne; zapytanie trwało zbyt długo.",
+                    "connection": "Nie można połączyć się z PostgreSQL. Sprawdź dostępność serwera i konfigurację połączenia.",
+                }.get(error.reason, "Nie można odczytać danych z PostgreSQL.")
+            )
         except Exception as error:
             self.failure.emit(
                 str(error)

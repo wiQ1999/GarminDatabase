@@ -12,6 +12,7 @@ from garmin_database.domain.cancellation import check_stop
 class OverviewPoller(QObject):
     ready = Signal(object)
     failed = Signal(str)
+    catalog_failed = Signal(str)
     busy_changed = Signal(bool)
     idle = Signal()
     interval_ms = 15_000
@@ -66,7 +67,12 @@ class OverviewPoller(QObject):
         revision = self.catalog_revision
 
         def read(worker):
-            result = services.overview(worker.stop, revision, include_catalog)
+            result = services.overview(worker.stop, revision, False)
+            check_stop(worker.stop)
+            if not include_catalog:
+                return result
+            worker.preview.emit(dict(result))
+            result = {**result, **services.catalog(worker.stop, revision)}
             if result["parameters"] is not None and settings.migrate(
                 result["parameters"]
             ):
@@ -77,13 +83,24 @@ class OverviewPoller(QObject):
 
         self.job_generation = self.generation
         self.job_catalog = include_catalog
+        self.job_status_ready = False
         worker = Worker(read, self)
         self.worker = worker
         worker.success.connect(self.accept)
+        worker.preview.connect(self.accept_status)
         worker.failure.connect(self.reject)
         worker.finished.connect(self.release)
         self.busy_changed.emit(True)
         worker.start()
+
+    @Slot(object)
+    def accept_status(self, result):
+        if self.stopped or self.job_generation != self.generation:
+            return
+        self.job_status_ready = True
+        self.catalog_checked = time.monotonic()
+        self.initialized = True
+        self.ready.emit(result)
 
     @Slot(object)
     def accept(self, result):
@@ -91,7 +108,7 @@ class OverviewPoller(QObject):
             return
         self.initialized = True
         if self.job_catalog:
-            self.catalog_revision = result["revision"]
+            self.catalog_revision = result["catalog_revision"]
             self.catalog_checked = time.monotonic()
         if "settings" in result:
             self.settings = result["settings"]
@@ -101,7 +118,10 @@ class OverviewPoller(QObject):
     def reject(self, message):
         if not self.stopped and self.job_generation == self.generation:
             self.initialized = True
-            self.failed.emit(message)
+            if self.job_status_ready:
+                self.catalog_failed.emit(message)
+            else:
+                self.failed.emit(message)
 
     @Slot()
     def release(self):

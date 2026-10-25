@@ -318,10 +318,7 @@ def test_failed_days_show_details_and_summary_after_worker_finishes(qtbot, tmp_p
     assert "nierozstrzygnięte" in w.stage.text()
     assert w.stage.text() in w.details.toPlainText()
     assert "Poprzednia operacja" not in w.details.toPlainText()
-    assert w.details_button.text() == "Ukryj szczegóły"
-    w.toggle_details()
-    assert not w.details.isVisible()
-    assert w.details_button.text() == "Pokaż szczegóły"
+    assert not hasattr(w, "details_button")
 
 
 def test_worker_cancel(qtbot):

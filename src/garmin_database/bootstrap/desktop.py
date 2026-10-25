@@ -67,7 +67,12 @@ def smoke_snapshot(window, picture, app):
             and window.query_worker is None
             and not window.query_pending
         )
-        if idle and window.status_info:
+        if (
+            idle
+            and window.status_info
+            and window.catalog_loaded
+            and not window.status_error.text()
+        ):
             atomic_json(
                 Path(picture).with_suffix(".ui.json"),
                 {"overview_ready": True, "background_idle": True},
