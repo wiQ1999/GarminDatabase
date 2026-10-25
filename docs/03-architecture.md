@@ -73,6 +73,10 @@ flowchart LR
 
 Pobieranie, dekodowanie i eksport to odrębne operacje. Zmiana parsera nie wymaga ponownego pobierania. Dekoder czyta FIT z ZIP; nie utrzymujemy osobnego rozpakowanego archiwum, zrzutów JSON ani kopii bazy.
 
+`application/use_cases/download_ahead.py` uruchamia jednego pracownika sieciowego, który może pobrać i atomowo zapisać następny ZIP podczas importu bieżącego. Nie wykonuje SQL. `Sync` pozostaje właścicielem blokady, inicjalizacji, prób i rejestracji w kolejności dni. Zamykanie operacji dołącza pracownika i zachowuje stan potrzebny do wznowienia. Nie ma niezależnych writerów dniowych ani zmiany algorytmu podsumowań.
+
+Adapter PostgreSQL rozdziela obsługę archiwum (`imports.py`), kontekst ramek FIT (`fit_decode.py`), reguły katalogu (`fit_catalog.py`) i ograniczone partie SQL (`message_batch.py`). Zbiorczy INSERT wiadomości zwraca ID wraz z indeksem źródłowym, a COPY zapisuje pola do tych ID. Wszystkie partie jednego FIT należą do jednej transakcji, bez commitów przy flush. Szczegóły limitów i wznowienia: [synchronizacja](04-synchronization.md#wydajność-i-potok-synchronizacji).
+
 ## Układ zasobów
 
 ```text
@@ -134,6 +138,6 @@ Specyfikacja transportu: [MCP stdio](https://modelcontextprotocol.io/specificati
 
 ## Trwałość zapisu
 
-Pobranie jest zapisywane do pliku tymczasowego w katalogu docelowym, weryfikowane i atomowo przenoszone do nazwy docelowej. Istniejące archiwum nie jest nadpisywane. Tymczasowy plik jest usuwany po błędzie. Rejestracja archiwum i dekodowanie każdego FIT mają osobne transakcje PostgreSQL. Stany pobrania i dekodowania są niezależne; wznowienie pomija ukończone FIT.
+Pobranie jest zapisywane do pliku tymczasowego w katalogu docelowym, weryfikowane i atomowo przenoszone do nazwy docelowej. Istniejące archiwum nie jest nadpisywane. Tymczasowy plik jest usuwany po błędzie. Rejestracja archiwum wraz ze wszystkimi pochodzeniami FIT i dekodowanie każdego FIT mają osobne transakcje PostgreSQL. Pozostałe pliki są widoczne jako oczekujące przed publikacją pierwszego wyniku. Stany pobrania i dekodowania są niezależne; wznowienie pomija ukończone FIT i nie dekompresuje ponownie identycznego, kompletnego ZIP.
 
 Zapis jest chroniony blokadą sesyjną PostgreSQL advisory dla bazy/schematu oraz blokadą OS katalogu ZIP. Importer, inicjalizacja, synchronizacja i publikacja cache respektują tę samą blokadę. Awaria po zapisie ZIP, ale przed rejestracją w bazie, musi zostać rozpoznana przy następnym uruchomieniu: sprawdzić lokalny ZIP zamiast ponownie go pobierać.

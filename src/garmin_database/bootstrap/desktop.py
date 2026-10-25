@@ -3,7 +3,9 @@
 import argparse
 import ssl
 import sys
+from datetime import date
 from pathlib import Path
+from threading import Event
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
@@ -21,12 +23,36 @@ def Window(settings=None, settings_path=None):
     return DesktopWindow(settings, settings_path, services=Services(settings))
 
 
+def smoke_import(window, args):
+    if not args.smoke_import_from:
+        return
+    # The external runner supplies synthetic originals and an isolated schema.
+    # Exercise frozen bulk import and idempotent resume before the screenshot.
+    for _ in range(2):
+        errors = window.services.sync(
+            date.fromisoformat(args.smoke_import_from),
+            date.fromisoformat(args.smoke_import_to),
+            Event(),
+            lambda *a: None,
+            local_only=True,
+        )
+        if errors:
+            raise RuntimeError("Błąd syntetycznego importu smoke")
+    window.refresh()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir")
     parser.add_argument("--settings-file")
     parser.add_argument("--smoke-screenshot")
+    parser.add_argument("--smoke-import-from")
+    parser.add_argument("--smoke-import-to")
     args = parser.parse_args(argv)
+    if bool(args.smoke_import_from) != bool(args.smoke_import_to):
+        parser.error("Podaj obie granice syntetycznego importu smoke")
+    if args.smoke_import_from and not args.smoke_screenshot:
+        parser.error("Import smoke wymaga --smoke-screenshot")
     app = QApplication(sys.argv[:1])
     app.setApplicationName("GarminDatabase")
     app.setWindowIcon(application_icon())
@@ -39,6 +65,7 @@ def main(argv=None):
         if args.data_dir:
             settings.data_dir = args.data_dir
         window = Window(settings, args.settings_file)
+        smoke_import(window, args)
         window.show()
         if args.smoke_screenshot:
 

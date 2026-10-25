@@ -61,6 +61,9 @@ class GarminTransport:
             }
         elif path.endswith("/user-settings"):
             body = {"userData": {"measurementSystem": "metric"}}
+        elif path.startswith("/download-service/files/wellness/"):
+            status = 503
+            body = {"error": "synthetic-private-response"}
         else:
             raise AssertionError(f"Unexpected test HTTP endpoint: {method} {path}")
         response = requests.Response()
@@ -139,6 +142,15 @@ def test_sdk_mfa_uses_warmed_session_and_saves_only_after_api_accepts(sdk_login)
         and "synthetic-password" not in flow.store.load()
     )
     assert not flow.token_dir.exists()
+
+
+def test_sdk_download_does_not_retry_inside_the_application_retry_loop(sdk_login):
+    login(sdk_login.source)
+    before = len(sdk_login.transport.calls)
+    with pytest.raises(Exception):
+        sdk_login.source.download_health_snapshot("2024-06-19")
+    assert sdk_login.source.api.retry_attempts == 0
+    assert len(sdk_login.transport.calls) == before + 1
 
 
 @pytest.mark.parametrize("failure", ["mfa", "profile"])

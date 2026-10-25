@@ -10,6 +10,7 @@ from garmin_database.application.ports import (
     ArchiveStore,
     ImportRepository,
 )
+from garmin_database.application.use_cases.download_ahead import DownloadAhead
 from garmin_database.domain.cancellation import Cancelled, check_stop
 from garmin_database.domain.time import dates
 
@@ -44,6 +45,24 @@ class Sync:
             return self.process_days(requested, stop, progress, local_only, force)
 
     def process_days(self, requested, stop, progress, local_only, force):
+        with DownloadAhead(self.source, self.archives, stop, validate_zip) as ahead:
+            try:
+                return self.process_ordered(
+                    requested, stop, progress, local_only, force, ahead
+                )
+            finally:
+                ahead.finish()
+                abandoned = ahead.abandoned()
+                if abandoned is not None:
+                    day, error = abandoned
+                    if error is None:
+                        self.repository.cancel_attempt(day)
+                    else:
+                        self.repository.failed(
+                            day, error_status(error), type(error).__name__
+                        )
+
+    def process_ordered(self, requested, stop, progress, local_only, force, ahead):
         errors = consecutive = 0
         for index, day in enumerate(requested, 1):
             check_stop(stop)
@@ -54,7 +73,7 @@ class Sync:
 
             report("dzień")
             old = self.repository.day(text)
-            if self.archives.exists(text):
+            if self.archives.exists(text) and not ahead.has(text):
                 failed, halt = self.import_local(text, stop, progress, force, report)
                 errors += failed
                 if halt:
@@ -65,7 +84,10 @@ class Sync:
             if self.already_checked(old):
                 errors += self.report_unresolved(old, report)
                 continue
-            failed, status, halt = self.download_day(text, stop, progress, report)
+            next_day = requested[index].isoformat() if index < len(requested) else None
+            failed, status, halt = self.download_day(
+                text, stop, progress, report, ahead, next_day
+            )
             errors += failed
             if halt:
                 return errors
@@ -106,35 +128,57 @@ class Sync:
         )
         return 1
 
-    def download_day(self, day, stop, progress, report):
-        next_wait = self.delay
+    def prepare_download(self, day, ahead):
+        if day is None or self.archives.exists(day):
+            return
+        if self.already_checked(self.repository.day(day)):
+            return
+        self.repository.attempt(day)
+        ahead.start(day, self.delay)
+
+    def download_day(self, day, stop, progress, report, ahead, next_day):
+        if not ahead.has(day):
+            self.prepare_download(day, ahead)
+        error = self.receive_download(day, stop, report, ahead)
+        if error is not None:
+            status = error_status(error)
+            halt = isinstance(error, SessionRequired) or status in {401, 403, 429}
+            return 1, status, halt
+        # Only validated, saved ZIPs reach this point. Register the next attempt
+        # on the SQL owner's thread before allowing HTTP to overlap this import.
+        self.prepare_download(next_day, ahead)
+        errors = self.importer.archive(
+            self.archives.path(day), stop, progress, origin="webapi"
+        )
+        return errors, None, False
+
+    def receive_download(self, day, stop, report, ahead):
         status = None
         for attempt in range(3):
-            if stop.wait(next_wait):
+            error = ahead.result(day)
+            if error is None:
+                return None
+            status = error_status(error)
+            self.repository.failed(day, status, type(error).__name__)
+            report(download_error_message(error, status))
+            if self.stop_retry(error, status, attempt):
+                return error
+            delay = retry_after(error, max(self.delay, 2 ** (attempt + 1)))
+            if stop.wait(delay):
                 raise Cancelled()
             self.repository.attempt(day)
-            try:
-                payload = self.source.download_health_snapshot(day)
-                validate_zip(payload)
-            except Cancelled:
-                raise
-            except Exception as error:
-                status = error_status(error)
-                self.repository.failed(day, status, type(error).__name__)
-                report(download_error_message(error, status))
-                if isinstance(error, SessionRequired) or status in {401, 403, 429}:
-                    return 1, status, True
-                if status is not None and status < 500:
-                    break
-                next_wait = retry_after(error, max(self.delay, 2 ** (attempt + 1)))
-            else:
-                # Local failures must not retry the network request.
-                self.archives.save(day, payload)
-                errors = self.importer.archive(
-                    self.archives.path(day), stop, progress, origin="webapi"
-                )
-                return errors, None, False
-        return 1, status, False
+            ahead.start(day, 0)
+        return error
+
+    @staticmethod
+    def stop_retry(error, status, attempt):
+        return (
+            isinstance(error, SessionRequired)
+            or status in {401, 403, 429}
+            or status is not None
+            and status < 500
+            or attempt == 2
+        )
 
 
 def error_status(error):

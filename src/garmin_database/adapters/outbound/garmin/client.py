@@ -34,7 +34,7 @@ class GarminSource:
                 email=email,
                 password=password,
                 prompt_mfa=self.mfa_prompt(mfa, stop, progress),
-                retry_attempts=1,
+                retry_attempts=0,
             )
             # Inline JSON explicitly overrides upstream GARMINTOKENS environment
             # paths, so the library cannot persist an unencrypted token store.

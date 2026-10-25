@@ -70,7 +70,7 @@ Linux:
 
 `build.py` pakuje bibliotekę psycopg_binary razem z libpq i migracjami SQL. Windows wrapper zachowuje parametry `-Python` i `-Destination`. Nie zatrzymuj aplikacji użytkownika, aby nadpisać otwartą dystrybucję; wskaż inny folder. Na Windows skrypt usuwa błędnie zebrane DLL ICU 78 kolidujące z Qt 6.12.
 
-`smoke.py` uruchamia zbudowaną aplikację w oddzielnym schemacie bazy testowej, zapisuje syntetyczny zrzut i usuwa schemat także po błędzie. Nie używa ustawień ani bazy użytkownika. Przyjmuje opcjonalną ścieżkę do programu. Windows EXE wymaga buildu i uruchomienia na Windows; wynik paczki Linux tego nie zastępuje.
+`smoke.py` uruchamia zbudowaną aplikację w oddzielnym schemacie bazy testowej. Przygotowuje dwa syntetyczne ZIP po 600 wiadomości, zleca EXE import lokalny i wznowienie, sprawdza 1200 wiadomości/4800 pól oraz brak dodatkowych decode_runs, zapisuje zrzut okna i usuwa schemat także po błędzie. Sprawdza więc rzeczywisty importer partii/COPY w paczce. Nie używa ustawień ani bazy użytkownika. Przyjmuje opcjonalną ścieżkę do programu. Windows EXE wymaga buildu i uruchomienia na Windows; wynik paczki Linux tego nie zastępuje.
 
 Pakiet Pythona można zbudować poleceniem `uv build --python .venv/Scripts/python.exe --out-dir dist/python`; zarówno wheel, jak i sdist muszą zawierać migracje `garmin_database/resources/*.sql` wewnątrz pakietu.
 
@@ -81,6 +81,20 @@ Build dołącza SQL, zasoby UI, ikonę, biblioteki psycopg/libpq i dane stref cz
 Smoke GUI tworzy rzeczywisty kontekst TLS przed otwarciem okna, a następnie sprawdza uruchomienie na syntetycznej bazie. Sam import bibliotek lub pojawienie się okna nie wystarcza. Testy SDK z atrapą transportu nie zastępują tej kontroli. Rzeczywiste logowanie do konta i pobieranie historii są osobnymi czynnościami odbiorowymi, wykonywanymi przez użytkownika.
 
 Raporty testów, coverage, wyniki smoke i notatki odbioru pozostają w ignorowanych `test-results/` lub `local-notes/`. W dokumentacji utrzymuje się procedurę i wymagania, nie historię kolejnych wyników.
+
+## Pomiar wydajności importu
+
+`scripts/benchmark_import.py` porównuje aktualny importer z zaufaną rewizją Git w osobnych, usuwanych schematach bazy wskazanej przez `GARMIN_TEST_DATABASE_DSN`. Wymaga zainstalowanego pakietu, zależności deweloperskich i dostępnej historii Git. Rewizja musi zawierać zgodny importer PostgreSQL i używać tej samej semantyki FIT; nie porównywać w ten sposób różnych silników lub algorytmów interpretacji.
+
+```powershell
+.venv/Scripts/python.exe scripts/benchmark_import.py --baseline-ref 210dfa6 --messages 3000 12000 --repeats 3 --min-speedup 2
+```
+
+Pomiary obejmują pełny import dwóch syntetycznych ZIP: blokadę, rejestrację, dekodowanie, zapis i commity. Tworzenie schematu, generowanie źródeł i późniejsze porównanie danych pozostają poza czasem. Każdy wariant wykonuje się co najmniej trzy razy, naprzemiennie, w świeżym schemacie. Porównuje się mediany dla obu rozmiarów; kod wyjścia jest niezerowy, jeśli którykolwiek wynik nie osiąga zadanego progu lub zmieniły się dane.
+
+Fingerprint porównuje wszystkie zachowane wartości, typy, ważność, definicje, indeksy, czasy i metadane profilu, po kluczach źródłowych zamiast technicznych ID. Sama liczność rekordów nie wystarcza. Wynik trafia do ignorowanego `test-results/import-benchmark.json`. Pomiar wykonywać bez równoległych testów, buildu i innych obciążeń; używa wyłącznie syntetycznych danych. Nie uruchamiać go na bazie aplikacji ani prywatnych fixture.
+
+Próg 2× w tym odbiorze dotyczy pełnego importu lokalnego w porównywalnym środowisku. Nie oznacza dwukrotnie szybszej odpowiedzi serwera Garmin ani gwarancji dla każdego pojedynczego małego FIT. Nakładanie HTTP na import ma odrębne testy synchronizacji z barierami zdarzeń: jeden request naraz, najwyżej jeden dzień wyprzedzenia, zachowana kolejność SQL, zatrzymanie po 401/403/429, Retry-After, anulowanie i wznowienie. Testy partii obejmują późne CRC, anulowanie po flush, reprocess, odwróconą kolejność RETURNING, tablice/null/UTF-8/uint64 i poprawną kompletność dnia.
 
 ## Operacje bez UI
 

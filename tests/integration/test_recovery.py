@@ -299,7 +299,9 @@ def test_retry_after_delays_the_next_request(tmp_path):
     clock = Clock()
     db = Database(tmp_path)
     assert Sync(db, Source(), 0).run(date(2024, 1, 1), date(2024, 1, 1), clock) == 0
-    assert clock.delays == [0, 15]
+    # Initial pacing now belongs to the download worker. The coordinator still
+    # honors the full Retry-After before submitting another attempt.
+    assert clock.delays == [15]
     assert db.status()["files"] == 1
 
 

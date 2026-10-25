@@ -72,3 +72,11 @@ class ImportDays:
                     day,
                 ),
             )
+
+    def cancel_attempt(self, day):
+        """Refund an attempt cancelled before the source was called."""
+        with self.db.connect() as conn:
+            conn.execute(
+                "UPDATE import_days SET attempts=greatest(attempts-1,0) WHERE day=%s",
+                (day,),
+            )
