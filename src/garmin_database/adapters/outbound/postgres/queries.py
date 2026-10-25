@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from garmin_database.adapters.outbound.postgres.summaries import Summaries
 from garmin_database.domain.aggregation import has_chart_summary, summary_method
+from garmin_database.domain.cancellation import check_stop
 from garmin_database.domain.values import FIT_EPOCH
 
 LABELS = {
@@ -302,12 +303,16 @@ class Queries:
             if own:
                 c.close()
 
-    def chart(self, parameter, start, end):
+    def chart(self, parameter, start, end, conn=None, stop=None):
         if start != end and not has_chart_summary(parameter):
             return [], "Brak podsumowań źródłowych Garmin. Wybierz pojedynczy dzień."
         if start != end and summary_method(parameter) == "sample_mean":
-            with self.db.connect(readonly=True) as conn:
-                rows = Summaries(self.db).daily(parameter, start, end, conn)
+            with (
+                nullcontext(conn)
+                if conn is not None
+                else self.db.connect(readonly=True)
+            ) as conn:
+                rows = Summaries(self.db).daily(parameter, start, end, conn, stop)
             points = [
                 (
                     bounds(
@@ -325,7 +330,8 @@ class Queries:
                 else "Brak danych dla wybranego okresu",
             )
         result = []
-        for row in self.rows(parameter, start, end):
+        for row in self.rows(parameter, start, end, conn):
+            check_stop(stop)
             if row["time"]:
                 stamp = int(datetime.fromisoformat(row["time"]).timestamp() * 1000)
                 label = (

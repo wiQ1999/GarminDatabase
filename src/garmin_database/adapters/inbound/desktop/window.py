@@ -1,10 +1,12 @@
 import json
 import os
+from collections import deque
+from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QSignalBlocker, Qt, QTimer, QUrl
-from PySide6.QtGui import QBrush, QColor, QDesktopServices, QFontDatabase
+from PySide6.QtCore import QDate, QSignalBlocker, Qt, QTimer
+from PySide6.QtGui import QBrush, QColor, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -22,7 +24,6 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QProgressBar,
-    QPushButton,
     QScrollArea,
     QSpinBox,
     QStackedWidget,
@@ -34,13 +35,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from garmin_database.adapters.inbound.desktop.chart import Chart, ChartView
+from garmin_database.adapters.inbound.desktop.busy import BusyButton
+from garmin_database.adapters.inbound.desktop.chart import (
+    Chart,
+    ChartView,
+    prepare_series,
+)
 from garmin_database.adapters.inbound.desktop.icons import (
     application_icon,
     icon,
     symbol,
 )
 from garmin_database.adapters.inbound.desktop.login_dialog import LoginDialog
+from garmin_database.adapters.inbound.desktop.overview import OverviewPoller
 from garmin_database.adapters.inbound.mcp.client_config import client_config
 from garmin_database.application.dto import ExportResult
 from garmin_database.application.ports import DesktopServices
@@ -59,6 +66,7 @@ QMainWindow { background:#10141c; }
 QPushButton { background:#252d3a; border:1px solid #354154; border-radius:6px; padding:10px 16px; }
 QPushButton:hover { background:#34445a; }
 QPushButton:disabled { color:#778393; }
+QPushButton[loading=true] { padding-right:34px; }
 QPushButton[primary=true] { background:#1678c9; border-color:#268ddf; }
 QLineEdit,QDateEdit,QSpinBox,QComboBox { background:#1c2330; border:1px solid #354154; border-radius:5px; padding:7px; }
 QDateEdit:disabled { color:#778393; }
@@ -76,7 +84,7 @@ QGroupBox::title { subcontrol-origin:margin; left:14px; padding:0 6px; color:#e9
 
 
 def button(text, slot, primary=False):
-    result = QPushButton(text)
+    result = BusyButton(text)
     result.setProperty("primary", primary)
     result.clicked.connect(slot)
     return result
@@ -109,10 +117,22 @@ class Window(QMainWindow):
         self.worker = None
         self.login_dialog = None
         self.query_worker = None
+        self.aux_worker = None
+        self.aux_button = None
+        self.operation_button = None
+        self.folder_dialog = None
         self.closing = False
         self.parameters = []
         self.query_pending = False
         self.query_serial = 0
+        self.chart_dirty = True
+        self.status_info = {}
+        self.session_cached = None
+        self.progress_pending = None
+        self.progress_details = deque(maxlen=500)
+        self.progress_timer = QTimer(self)
+        self.progress_timer.setInterval(100)
+        self.progress_timer.timeout.connect(self.flush_progress)
         self.last_export_dir = None
         self.setWindowTitle("GarminDatabase")
         self.setWindowIcon(application_icon())
@@ -142,13 +162,30 @@ class Window(QMainWindow):
         row.addLayout(nav)
         self.pages = QStackedWidget()
         row.addWidget(self.pages, 1)
-        self.navigation.currentRowChanged.connect(self.pages.setCurrentIndex)
+        self.navigation.currentRowChanged.connect(self.page_changed)
         self.build_start()
         self.build_data()
         self.build_export()
         self.build_settings()
         self.navigation.setCurrentRow(0)
-        self.refresh()
+        self.overview = OverviewPoller(
+            services,
+            settings,
+            settings_path,
+            lambda: self.isVisible() and not self.isMinimized(),
+            self,
+        )
+        self.overview.ready.connect(self.show_overview)
+        self.overview.failed.connect(self.overview_error)
+        self.overview.busy_changed.connect(self.refresh_button.set_loading)
+        self.overview.busy_changed.connect(self.update_action_states)
+        self.overview.idle.connect(self.close_if_idle)
+        QTimer.singleShot(0, self.refresh)
+
+    def page_changed(self, index):
+        self.pages.setCurrentIndex(index)
+        if index == 1 and self.chart_dirty:
+            self.load_chart()
 
     def page(self, title, description):
         widget = QWidget()
@@ -170,6 +207,7 @@ class Window(QMainWindow):
             "Pobieraj zakończone dni, sprawdzaj dostępność danych i stan importu.",
         )
         self.status = QLabel()
+        self.status.setText("Odczytywanie stanu archiwum…")
         self.status.setWordWrap(True)
         self.status.setStyleSheet(
             "background:#191e27;padding:22px;border-radius:8px;font-size:16px;"
@@ -203,7 +241,8 @@ class Window(QMainWindow):
         self.details.document().setMaximumBlockCount(500)
         self.details.hide()
         layout.addWidget(self.details)
-        layout.addWidget(button("Odśwież stan", self.refresh))
+        self.refresh_button = button("Odśwież stan", self.refresh)
+        layout.addWidget(self.refresh_button)
         layout.addStretch()
 
     def build_data(self):
@@ -295,19 +334,17 @@ class Window(QMainWindow):
         form.addRow("Folder na eksporty", self.output)
         layout.addLayout(form)
         buttons = QHBoxLayout()
-        buttons.addWidget(
-            button("Wybierz folder", lambda: self.pick_folder(self.output))
+        self.browse_export_button = button(
+            "Wybierz folder",
+            lambda: self.pick_folder(self.output, self.browse_export_button),
         )
+        buttons.addWidget(self.browse_export_button)
         self.export_button = button("Generuj pliki JSON", self.export, True)
         buttons.addWidget(self.export_button)
-        buttons.addWidget(
-            button(
-                "Otwórz folder eksportu",
-                lambda: QDesktopServices.openUrl(
-                    QUrl.fromLocalFile(str(self.last_export_dir or self.output.text()))
-                ),
-            )
+        self.open_export_button = button(
+            "Otwórz folder eksportu", self.open_export_folder
         )
+        buttons.addWidget(self.open_export_button)
         layout.addLayout(buttons)
         self.export_result = QLabel()
         self.export_result.setWordWrap(True)
@@ -356,7 +393,8 @@ class Window(QMainWindow):
         folder_row = QHBoxLayout()
         folder_row.addWidget(self.data_path, 1)
         self.browse_data_button = button(
-            "Wybierz…", lambda: self.pick_folder(self.data_path)
+            "Wybierz…",
+            lambda: self.pick_folder(self.data_path, self.browse_data_button),
         )
         self.browse_data_button.setAccessibleName("Wybierz folder danych")
         self.browse_data_button.setToolTip("Wybierz folder danych")
@@ -387,7 +425,8 @@ class Window(QMainWindow):
             '<a href="https://connect.garmin.com/" style="color:#4fa4f3;">'
             "Garmin Connect (connect.garmin.com)</a>."
         )
-        garmin_account.setOpenExternalLinks(True)
+        garmin_account.setOpenExternalLinks(False)
+        garmin_account.linkActivated.connect(self.open_link)
         garmin_account.setWordWrap(True)
         layout.addWidget(garmin_account)
         form = QFormLayout()
@@ -402,14 +441,7 @@ class Window(QMainWindow):
         actions.addWidget(self.login_button)
         actions.addStretch()
         layout.addLayout(actions)
-        self.session_status = QLabel(
-            (
-                "Zapisana sesja Garmin jest dostępna. Jej ważność zostanie sprawdzona przy pobraniu. "
-                if self.services.session_available()
-                else "Brak zapisanej sesji Garmin. Zaloguj się, aby pobierać nowe dni. Lokalne archiwa można importować bez logowania. "
-            )
-            + "Sesja jest szyfrowana przez Windows DPAPI. Hasło i kod MFA nie są zapisywane."
-        )
+        self.session_status = QLabel("Sprawdzanie dostępności zapisanej sesji Garmin…")
         self.session_status.setWordWrap(True)
         layout.addWidget(self.session_status)
 
@@ -459,22 +491,30 @@ class Window(QMainWindow):
             button("Kopiuj MCP → Eksport", lambda: self.copy_sharing(3, 2))
         )
         layout.addLayout(actions)
-        layout.addWidget(
-            button("Skopiuj konfigurację klienta MCP", self.copy_mcp_config)
+        self.copy_config_button = button(
+            "Skopiuj konfigurację klienta MCP", self.copy_mcp_config
         )
+        layout.addWidget(self.copy_config_button)
         layout.addWidget(
             QLabel(
                 "Zapisz ustawienia, aby zastosować wybór. Proces MCP uruchamia klient."
             )
         )
 
-    def refresh_sharing(self):
+    def refresh_sharing(self, preserve=True):
+        previous_group = self.sharing_group.currentData()
+        previous = self.sharing_selection() if preserve else {}
         groups = sorted({p["group"] for p in self.parameters})
         with QSignalBlocker(self.sharing_group):
             self.sharing_group.clear()
             self.sharing_group.addItem("Wszystkie grupy", "")
             for group in groups:
                 self.sharing_group.addItem(group, group)
+            self.sharing_group.setCurrentIndex(
+                max(0, self.sharing_group.findData(previous_group))
+            )
+        self.sharing_table.setUpdatesEnabled(False)
+        self.sharing_table.setRowCount(0)
         self.sharing_table.setRowCount(len(self.parameters))
         methods = {
             "sample_mean": "Średnia próbek",
@@ -492,12 +532,26 @@ class Window(QMainWindow):
                 row, 4, QTableWidgetItem(methods[summary_method(param)])
             )
             for column, channel in [(2, "export"), (3, "mcp")]:
-                self.sharing_table.setItem(
-                    row, column, self.sharing_checkbox(param, channel)
-                )
+                item = self.sharing_checkbox(param, channel)
+                if (
+                    param["key"] in previous
+                    and item.flags() & Qt.ItemFlag.ItemIsEnabled
+                ):
+                    item.setCheckState(previous[param["key"]][column - 2])
+                self.sharing_table.setItem(row, column, item)
             for column in (0, 1, 4):
                 self.sharing_table.item(row, column).setFlags(Qt.ItemFlag.ItemIsEnabled)
         self.filter_sharing()
+        self.sharing_table.setUpdatesEnabled(True)
+
+    def sharing_selection(self):
+        return {
+            self.sharing_table.item(row, 0).data(Qt.ItemDataRole.UserRole)["key"]: (
+                self.sharing_table.item(row, 2).checkState(),
+                self.sharing_table.item(row, 3).checkState(),
+            )
+            for row in range(self.sharing_table.rowCount())
+        }
 
     def sharing_checkbox(self, param, channel):
         item = QTableWidgetItem()
@@ -553,15 +607,27 @@ class Window(QMainWindow):
         ]
 
     def copy_mcp_config(self):
-        QApplication.clipboard().setText(
-            json.dumps(
-                client_config(
-                    self.services.settings_store.location(self.settings_path)
-                ),
-                ensure_ascii=False,
-                indent=2,
-            )
+        store, path = self.services.settings_store, self.settings_path
+        self.start_aux(
+            self.copy_config_button,
+            lambda w: json.dumps(
+                client_config(store.location(path)), ensure_ascii=False, indent=2
+            ),
+            lambda text: QApplication.clipboard().setText(text),
         )
+
+    def open_export_folder(self):
+        services = self.services
+        path = str(self.last_export_dir or self.output.text())
+        self.start_aux(
+            self.open_export_button,
+            lambda w: services.open_folder(path),
+            failure=self.export_result.setText,
+        )
+
+    def open_link(self, url):
+        services = self.services
+        self.start_aux(self.login_button, lambda w: services.open_url(url))
 
     def toggle_details(self):
         self.details.setVisible(not self.details.isVisible())
@@ -569,10 +635,27 @@ class Window(QMainWindow):
             "Ukryj szczegóły" if self.details.isVisible() else "Pokaż szczegóły"
         )
 
-    def pick_folder(self, field):
-        folder = QFileDialog.getExistingDirectory(self, "Wybierz folder", field.text())
-        if folder:
-            field.setText(folder)
+    def pick_folder(self, field, trigger=None):
+        if self.folder_dialog is not None:
+            self.folder_dialog.raise_()
+            return
+        dialog = QFileDialog(self, "Wybierz folder", field.text())
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog)
+        dialog.setFileMode(QFileDialog.FileMode.Directory)
+        dialog.setOption(QFileDialog.Option.ShowDirsOnly)
+        self.folder_dialog = dialog
+        if trigger:
+            trigger.set_loading(True)
+        dialog.fileSelected.connect(field.setText)
+
+        def release():
+            self.folder_dialog = None
+            if trigger:
+                trigger.set_loading(False)
+            dialog.deleteLater()
+
+        dialog.finished.connect(release)
+        dialog.open()
 
     def select_exports(self, selected):
         for i in range(self.export_list.count()):
@@ -581,13 +664,39 @@ class Window(QMainWindow):
             )
 
     def refresh(self):
-        info = self.services.status()
-        self.parameters = self.services.parameters()
-        if self.settings.migrate(self.parameters):
-            self.services.settings_store.save(self.settings, self.settings_path)
-        self.refresh_sharing()
-        self.update_status(info)
-        self.populate_parameters()
+        self.overview.request()
+
+    def show_overview(self, result):
+        self.status_info = result["status"]
+        if "settings" in result:
+            self.settings = result["settings"]
+        parameters = result["parameters"]
+        if parameters is not None and parameters != self.parameters:
+            self.parameters = parameters
+            self.refresh_sharing()
+            self.populate_parameters()
+        self.update_status(self.status_info)
+        available = result["session_available"]
+        if available != self.session_cached and self.login_dialog is None:
+            self.session_cached = available
+            self.session_status.setText(
+                (
+                    "Zapisana sesja Garmin jest dostępna. Jej ważność zostanie sprawdzona przy pobraniu. "
+                    if available
+                    else "Brak zapisanej sesji Garmin. Zaloguj się, aby pobierać nowe dni. Lokalne archiwa można importować bez logowania. "
+                )
+                + "Sesja jest szyfrowana przez Windows DPAPI. Hasło i kod MFA nie są zapisywane."
+            )
+
+    def overview_error(self, message):
+        if not self.closing:
+            if self.status_info:
+                self.update_status(self.status_info)
+            self.status.setText(
+                self.status.text()
+                + "\nNie udało się odświeżyć stanu. Kolejna próba nastąpi automatycznie.\n"
+                + message
+            )
 
     def update_status(self, info):
         unresolved = sum(
@@ -603,12 +712,18 @@ class Window(QMainWindow):
             + f"\nRozpoznane serie / właściwości: {len(self.parameters)}"
         )
 
-    def populate_parameters(self):
-        selected = set(self.settings.parameters)
+    def populate_parameters(self, preserve=True):
+        selected = (
+            self.export_selection()
+            if preserve and self.export_list.count()
+            else set(self.settings.parameters)
+        )
         previous = self.selected_parameter()
         previous_key = previous["key"] if previous else None
         selected_row = None
         self.parameter_list.blockSignals(True)
+        self.parameter_list.setUpdatesEnabled(False)
+        self.export_list.setUpdatesEnabled(False)
         self.parameter_list.clear()
         self.export_list.clear()
         previous_group = None
@@ -628,7 +743,16 @@ class Window(QMainWindow):
         if selected_row is not None:
             self.parameter_list.setCurrentRow(selected_row)
         self.parameter_list.blockSignals(False)
+        self.parameter_list.setUpdatesEnabled(True)
+        self.export_list.setUpdatesEnabled(True)
         self.parameter_changed()
+
+    def export_selection(self):
+        return {
+            self.export_list.item(i).data(Qt.ItemDataRole.UserRole)["key"]
+            for i in range(self.export_list.count())
+            if self.export_list.item(i).checkState() == Qt.CheckState.Checked
+        }
 
     def add_export_parameter(self, param, selected):
         if param["key"] not in self.settings.export_parameters:
@@ -678,13 +802,16 @@ class Window(QMainWindow):
                 days = {"Dzień": 1, "7 dni": 7, "30 dni": 30, "90 dni": 90}[option]
                 self.chart_from.setDate(self.chart_to.date().addDays(-(days - 1)))
             elif option == "Cała historia":
-                first = self.services.status()["first_day"]
+                first = self.status_info.get("first_day")
                 if first:
                     d = date.fromisoformat(first)
                     self.chart_from.setDate(QDate(d.year, d.month, d.day))
         self.load_chart()
 
     def load_chart(self):
+        if self.closing:
+            return
+        self.chart_dirty = False
         param = self.selected_parameter()
         self.query_serial += 1
         serial = self.query_serial
@@ -707,7 +834,12 @@ class Window(QMainWindow):
             self.query_pending = True
             return
         db = self.services
-        worker = Worker(lambda w: db.chart(param, start, end), self)
+
+        def query(worker):
+            points, message = db.chart(param, start, end, worker.stop)
+            return points, message, prepare_series(points, param["enum"])
+
+        worker = Worker(query, self)
         self.query_worker = worker
         worker.success.connect(
             lambda result: (
@@ -723,16 +855,23 @@ class Window(QMainWindow):
         def release_query():
             if self.query_worker is worker:
                 self.query_worker = None
+            worker.operation = None
             worker.deleteLater()
-            if self.query_pending:
+            if self.query_pending and not self.closing:
                 self.query_pending = False
                 self.load_chart()
+            self.close_if_idle()
 
         worker.finished.connect(release_query)
         worker.start()
 
     def show_chart(self, result, param):
-        self.chart.set_series(result[0], param["unit"], param["enum"])
+        self.chart.set_series(
+            result[0],
+            param["unit"],
+            param["enum"],
+            prepared=result[2] if len(result) > 2 else None,
+        )
         self.chart_view.set_loading(False)
         self.trend.setEnabled(bool(self.chart.trend_points))
         if not self.chart.trend_points:
@@ -746,50 +885,84 @@ class Window(QMainWindow):
         self.trend.setChecked(False)
         self.chart_message.setText(message)
 
-    def start_work(self, operation):
-        if self.work_is_running():
-            return
-        worker = Worker(operation, self)
-        self.worker = worker
-        worker.progress.connect(self.on_progress)
-        worker.failure.connect(self.on_failure)
-        worker.success.connect(self.on_success)
-        worker.finished.connect(self.work_finished)
-        for b in [
+    def update_action_states(self, *args):
+        busy = self.work_is_running() or self.aux_worker is not None or self.closing
+        for b in (
             self.download_button,
             self.import_button,
             self.reprocess_button,
             self.export_button,
             self.login_button,
             self.save_button,
-        ]:
-            b.setEnabled(False)
-        self.stop_button.setEnabled(True)
+        ):
+            b.setEnabled(not busy)
+        if hasattr(self, "overview") and (
+            not self.overview.initialized
+            or (self.overview.busy and self.settings.settings_version == 1)
+        ):
+            self.save_button.setEnabled(False)
+            self.export_button.setEnabled(False)
+        self.stop_button.setEnabled(self.work_is_running() and not self.closing)
+
+    def start_work(self, operation, trigger=None):
+        if self.work_is_running() or self.aux_worker is not None or self.closing:
+            return False
+        if self.worker is not None:
+            self.worker.deleteLater()
+        worker = Worker(operation, self)
+        self.worker = worker
+        worker.progress.connect(self.on_progress)
+        worker.failure.connect(self.on_failure)
+        worker.success.connect(self.on_success)
+        worker.finished.connect(self.work_finished)
+        self.operation_button = trigger
+        if trigger:
+            trigger.set_loading(True)
         self.stage.setText("Rozpoczynanie…")
         self.details.clear()
+        self.progress_pending = None
+        self.progress_details.clear()
+        self.progress.setRange(0, 0)
+        self.stop_button.set_loading(False)
+        self.progress_timer.start()
         worker.start()
+        self.update_action_states()
+        return True
 
     def work_is_running(self):
         return self.worker is not None and self.worker.isRunning()
 
     def on_progress(self, day, stage, index, total):
+        self.progress_pending = (day, stage, index, total)
+        self.progress_details.append(f"{day} — {stage} ({index}/{total})")
+
+    def flush_progress(self):
+        if self.progress_pending is None:
+            return
+        day, stage, index, total = self.progress_pending
+        self.progress_pending = None
         self.progress.setRange(0, max(1, total))
         self.progress.setValue(index)
-        self.stage.setText(f"{day} — {stage} ({index}/{total})")
-        self.details.append(self.stage.text())
+        if not self.worker or not self.worker.stop.is_set():
+            self.stage.setText(f"{day} — {stage} ({index}/{total})")
+        self.details.append("\n".join(self.progress_details))
+        self.progress_details.clear()
 
     def stop_work(self):
         if self.worker:
             self.worker.stop.set()
+            self.stop_button.set_loading(True)
             self.stage.setText("Zatrzymywanie w bezpiecznym punkcie…")
 
     def on_failure(self, message):
+        self.flush_progress()
         self.stage.setText(message)
         self.details.append(message)
         self.details.show()
         self.details_button.setText("Ukryj szczegóły")
 
     def on_success(self, result):
+        self.flush_progress()
         self.stage.setText(
             "Ukończono"
             if not isinstance(result, int) or result == 0
@@ -807,26 +980,31 @@ class Window(QMainWindow):
             )
 
     def work_finished(self):
-        for b in [
-            self.download_button,
-            self.import_button,
-            self.reprocess_button,
-            self.export_button,
-            self.login_button,
-            self.save_button,
-        ]:
-            b.setEnabled(True)
+        self.progress_timer.stop()
+        if self.operation_button:
+            self.operation_button.set_loading(False)
+        self.operation_button = None
+        self.progress.setRange(0, max(1, self.progress.maximum()))
         self.stop_button.setEnabled(False)
-        self.refresh()
+        self.stop_button.set_loading(False)
+        self.update_action_states()
+        self.chart_dirty = True
         if self.worker:
             self.worker.operation = (
                 None  # release closures that may contain credentials
             )
-        if self.closing:
-            QTimer.singleShot(0, self.close)
+        self.close_if_idle()
 
     def sync(self, local_only=False, force=False):
         db = self.services
+        delay = self.settings.delay
+        trigger = (
+            self.reprocess_button
+            if force
+            else self.import_button
+            if local_only
+            else self.download_button
+        )
         self.start_work(
             lambda w: db.sync(
                 date(2024, 1, 1),
@@ -835,8 +1013,9 @@ class Window(QMainWindow):
                 w.progress.emit,
                 local_only,
                 force,
-                self.settings.delay,
-            )
+                delay,
+            ),
+            trigger,
         )
 
     def login(self):
@@ -844,7 +1023,7 @@ class Window(QMainWindow):
             self.login_dialog.raise_()
             self.login_dialog.activateWindow()
             return
-        if self.work_is_running():
+        if self.work_is_running() or self.aux_worker is not None or self.closing:
             return
         email = self.email.text().strip()
         password = self.password.text()
@@ -862,12 +1041,14 @@ class Window(QMainWindow):
         self.login_dialog = dialog
         dialog.status_changed.connect(self.session_status.setText)
         dialog.finished.connect(self.login_closed)
+        self.login_button.set_loading(True)
         dialog.open()
         dialog.start()
 
     def login_closed(self, result):
         dialog = self.login_dialog
         self.login_dialog = None
+        self.login_button.set_loading(False)
         dialog.deleteLater()
         if self.closing:
             QTimer.singleShot(0, self.close)
@@ -889,61 +1070,125 @@ class Window(QMainWindow):
         recent = self.recent.value()
         period = self.summary_period.currentData()
         db = self.services
-        self.settings.parameters = [p["key"] for p in params]
-        self.settings.history_from = start.isoformat()
-        self.settings.history_to = end.isoformat()
-        self.settings.export_dir = output
-        self.settings.recent_days = recent
-        self.settings.summary_period = period
-        try:
-            self.services.settings_store.save(self.settings, self.settings_path)
-        except Exception as e:
-            self.export_result.setText(
-                "Nie można zapisać ustawień: " + type(e).__name__
-            )
-            return
-        self.export_result.setText("Generowanie podsumowań i szczegółów…")
-        self.start_work(
-            lambda w: db.export(self.settings, self.settings_path).generate(
-                output, params, start, end, recent, w.stop, period, w.progress.emit
-            )
+        settings = replace(
+            self.settings,
+            parameters=[p["key"] for p in params],
+            history_from=start.isoformat(),
+            history_to=end.isoformat(),
+            export_dir=output,
+            recent_days=recent,
+            summary_period=period,
         )
-        self.worker.failure.connect(self.export_result.setText)
+        path = self.settings_path
+
+        def operation(worker):
+            db.settings_store.save(settings, path)
+            return db.export(settings, path).generate(
+                output,
+                params,
+                start,
+                end,
+                recent,
+                worker.stop,
+                period,
+                worker.progress.emit,
+            )
+
+        self.export_result.setText("Generowanie podsumowań i szczegółów…")
+        if self.start_work(operation, self.export_button):
+            self.settings = self.overview.settings = settings
+            self.worker.failure.connect(self.export_result.setText)
 
     def save_settings(self):
-        old = (
-            self.settings.data_dir,
-            self.settings.database_dsn,
-            self.settings.export_dir,
+        candidate = replace(
+            self.settings,
+            data_dir=self.data_path.text(),
+            database_dsn=self.database_dsn.text(),
+            export_dir=self.output.text(),
+            export_parameters=self.sharing_keys(2),
+            mcp_parameters=self.sharing_keys(3),
+            mcp_enabled=self.mcp_enabled.isChecked(),
         )
-        try:
-            from dataclasses import replace
+        previous, path = self.services, self.settings_path
 
-            candidate = replace(
-                self.settings,
-                data_dir=self.data_path.text(),
-                database_dsn=self.database_dsn.text(),
-                export_dir=self.output.text(),
-                export_parameters=self.sharing_keys(2),
-                mcp_parameters=self.sharing_keys(3),
-                mcp_enabled=self.mcp_enabled.isChecked(),
-            )
+        def operation(worker):
             candidate.validate()
-            services = self.services.reconfigure(candidate)
-            services.settings_store.save(candidate, self.settings_path)
-            self.settings = candidate
-            self.services = services
-            self.refresh()
-            self.settings_status.setText("Ustawienia zapisane")
-        except Exception as e:
-            (
+            services = previous.reconfigure(candidate)
+            services.settings_store.save(candidate, path)
+            return candidate, services
+
+        def apply(result):
+            candidate, services = result
+            changed_database = (candidate.data_dir, candidate.database_dsn) != (
                 self.settings.data_dir,
                 self.settings.database_dsn,
-                self.settings.export_dir,
-            ) = old
-            self.settings_status.setText(
-                "Nie można zapisać ustawień: " + type(e).__name__
             )
+            self.settings = candidate
+            self.services = services
+            self.query_serial += 1
+            self.query_pending = False
+            if self.query_worker is not None:
+                self.query_worker.stop.set()
+            if changed_database:
+                self.parameters = []
+                self.status_info = {}
+                self.status.setText("Odczytywanie stanu nowej bazy…")
+                self.refresh_sharing(preserve=False)
+                self.populate_parameters(preserve=False)
+                self.show_chart_error("Odczytywanie katalogu nowej bazy…")
+            else:
+                self.populate_parameters(preserve=False)
+            self.overview.configure(services, candidate)
+            self.settings_status.setText("Ustawienia zapisane")
+
+        self.settings_status.setText("Sprawdzanie połączenia i zapisywanie ustawień…")
+        self.start_aux(
+            self.save_button,
+            operation,
+            apply,
+            self.settings_status.setText,
+            exclusive=True,
+        )
+
+    def start_aux(
+        self, trigger, operation, success=None, failure=None, *, exclusive=False
+    ):
+        if (
+            self.aux_worker is not None
+            or self.closing
+            or (exclusive and self.work_is_running())
+        ):
+            return
+        self.aux_success = success
+        self.aux_failure = failure or self.settings_status.setText
+        self.aux_button = trigger
+        trigger.set_loading(True)
+        trigger.setEnabled(False)
+        worker = Worker(operation, self)
+        self.aux_worker = worker
+        worker.success.connect(self.aux_succeeded)
+        worker.failure.connect(self.aux_failed)
+        worker.finished.connect(self.aux_finished)
+        worker.start()
+        self.update_action_states()
+
+    def aux_succeeded(self, result):
+        if not self.closing and self.aux_success:
+            self.aux_success(result)
+
+    def aux_failed(self, message):
+        if not self.closing:
+            self.aux_failure(message)
+
+    def aux_finished(self):
+        worker, self.aux_worker = self.aux_worker, None
+        worker.operation = None
+        worker.deleteLater()
+        self.aux_button.set_loading(False)
+        self.aux_button.setEnabled(True)
+        self.aux_button = self.aux_success = self.aux_failure = None
+        self.update_action_states()
+        self.close_if_idle()
 
     def closeEvent(self, event):
         if self.cancel_active_login():
@@ -953,9 +1198,30 @@ class Window(QMainWindow):
             self.confirm_stop_work()
             event.ignore()
             return
-        if self.query_worker and self.query_worker.isRunning():
-            self.query_worker.wait()
+        self.closing = True
+        self.overview.shutdown()
+        self.progress_timer.stop()
+        self.query_pending = False
+        self.query_serial += 1
+        for worker in (self.query_worker, self.aux_worker):
+            if worker is not None:
+                worker.stop.set()
+        if (
+            self.query_worker is not None
+            or self.aux_worker is not None
+            or self.overview.busy
+        ):
+            self.status.setText("Zamykanie: zatrzymywanie odczytów w tle…")
+            self.update_action_states()
+            event.ignore()
+            return
+        if self.folder_dialog:
+            self.folder_dialog.reject()
         event.accept()
+
+    def close_if_idle(self):
+        if self.closing:
+            QTimer.singleShot(0, self.close)
 
     def cancel_active_login(self):
         dialog = self.login_dialog

@@ -2,7 +2,7 @@
 
 import os
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from hashlib import sha256
 from pathlib import Path
 
@@ -118,8 +118,10 @@ class Database:
                 (utc_now(),),
             )
 
-    def status(self):
-        with self.connect(readonly=True) as conn:
+    def status(self, conn=None):
+        with (
+            nullcontext(conn) if conn is not None else self.connect(readonly=True)
+        ) as conn:
             days = dict(
                 conn.execute(
                     "SELECT download_status,count(*) FROM import_days GROUP BY download_status"

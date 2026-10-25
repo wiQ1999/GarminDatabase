@@ -19,11 +19,19 @@ Zrzuty pozostają referencją wyglądu, nie źródłem wartości pomiarowych ani
 
 Pokazać ostatni pobrany dzień, stan importu do PostgreSQL, zakres historii, brakujące lub nierozstrzygnięte dni, dostępność parametrów i rozmiar danych. Nie utożsamiać niezweryfikowanych 404 z potwierdzonym brakiem danych.
 
+Stan odczytuje się w tle przy otwarciu okna i co 15 sekund. Automatyczna kontrola katalogu parametrów odbywa się najwyżej raz na minutę; katalog pobiera się ponownie tylko po zmianie rewizji danych. Ukryte lub zminimalizowane okno pomija odczyty cykliczne. „Odśwież stan” zleca ręczny odczyt stanu i kontrolę katalogu oraz pokazuje obracający się wskaźnik; kolejne kliknięcia podczas tego odczytu nie dodają zadań do kolejki. Zakończenie importu ani pojedyncza zmiana w bazie nie wyzwalają dodatkowego odczytu. Nowy stan pojawi się przy kolejnym cyklu lub odświeżeniu ręcznym.
+
+Odświeżenie zachowuje niezapisane wybory eksportu, MCP i filtr grupy. Niezmieniony katalog nie przebudowuje list ani nie uruchamia zapytania wykresu. Zakres „Cała historia” korzysta z zapamiętanego początku historii. Po błędzie pozostają ostatnie poprawne informacje i bezpieczny komunikat; kolejny cykl ponawia próbę.
+
 Główny przycisk **„Pobierz dane”** pobiera brakujące archiwa do wczoraj według `Europe/Warsaw`, następnie przetwarza je do PostgreSQL. Poprawne lokalne archiwa wykorzystuje bez ponownego pobierania. Osobno dostępna jest operacja ponownego przetworzenia archiwów lokalnych bez żądań pobrania.
 
 Postęp obejmuje pasek, aktualnie obsługiwany dzień i etap, licznik ukończonych dni oraz **„Zatrzymaj”**. Szczegóły błędów są dostępne w rozwijanym panelu bez sekretów i surowych danych zdrowotnych. Zatrzymanie zachowuje ukończone operacje; nieukończona transakcja nie jest prezentowana jako zakończony import. Wznowienie pomija ukończoną pracę.
 
+Pobieranie, import i ponowne przetwarzanie pokazują animację także na przycisku rozpoczętej operacji. „Zatrzymaj” animuje oczekiwanie na zakończenie bieżącej czynności. Prezentacja postępu i szczegółów jest odświeżana najwyżej 10 razy na sekundę, z końcowym opróżnieniem bufora przed wynikiem lub błędem. Panel zachowuje najwyżej 500 ostatnich wierszy.
+
 Podczas pracy można przeglądać już zaimportowane dane. Zamknięcie okna przy aktywnej operacji pyta o zatrzymanie i wyjście. Aplikacja nie pozostaje w tle po zamknięciu; pobieranie pierwszej wersji uruchamia użytkownik.
+
+Wątki kończą się przez sygnały zakończenia, bez blokującego oczekiwania w wątku okna. Podczas zatrzymywania odczytów okno nadal obsługuje zdarzenia i pokazuje stan zamykania. Odczyt stanu ma budżet 10 sekund, a wykresu 60 sekund; aktywne zapytanie PostgreSQL można anulować przy zamykaniu. Zmiana połączenia unieważnia odpowiedzi z poprzedniej konfiguracji.
 
 ## Dane
 
@@ -58,6 +66,8 @@ Zapamiętywać ostatnie ustawienia. Każdy eksport tworzy unikatowy folder `Garm
 ## Ustawienia, sesja i lokalizacje
 
 Ustawienia mają trzy oddzielne sekcje: „Dane lokalne i PostgreSQL”, „Logowanie do Garmin Connect” i „Udostępnianie danych”. Przycisk „Wybierz…” jest na prawym końcu wiersza folderu danych. Przewijana zawartość nie zasłania dolnego przycisku „Zapisz ustawienia” ani komunikatu o zapisie. Zapis konfiguracji nie nadpisuje informacji o stanie logowania.
+
+Sprawdzenie połączenia i zapis ustawień, zapis preferencji i przygotowanie eksportu, przygotowanie konfiguracji MCP oraz otwieranie folderu lub przeglądarki działają poza wątkiem okna. Przycisk rozpoczętej czynności pokazuje animację do wyniku lub błędu. Wybór folderu korzysta z nieblokująco otwieranego dialogu Qt, dzięki czemu timery i animacje nadal działają. Krótkie działania, takie jak nawigacja, zaznaczanie parametrów i rozwijanie szczegółów, reagują od razu. Animacje przycisków i wykresu nie wykonują cykli, gdy ich element jest ukryty.
 
 Formularz Garmin obejmuje e-mail i maskowane hasło. Nad polami logowania znajduje się informacja, że dotyczą konta Garmin Connect, oraz klikalny adres `https://connect.garmin.com/`, otwierany w domyślnej przeglądarce. Po podaniu danych przycisk „Zaloguj do Garmin” otwiera osobne okno z animowanym wskaźnikiem i informacją o postępie. Logowanie ma własny worker, niezależny od importu i eksportu. Błąd pozostaje widoczny w tym oknie i przy formularzu; po powrocie i ponownym wpisaniu hasła można od razu rozpocząć kolejną próbę, bez restartu aplikacji. Każda próba tworzy nowego klienta Garmin. Hasło jest usuwane z pola po rozpoczęciu próby, a zamknięcie wątku zwalnia przechwytującą je funkcję.
 
@@ -113,6 +123,7 @@ Sposób udostępniania danych, uwierzytelnianie klientów, lokalizacja głównej
 
 - Aplikacja uruchamia się na Windows 11 bez instalacji Pythona i pokazuje cztery sekcje w ustalonym motywie.
 - Pobranie i import nie blokują okna; przeglądanie zatwierdzonych danych działa podczas pracy.
+- Odczyt stanu, zapis ustawień, eksport, przygotowanie konfiguracji i otwieranie folderów nie blokują obsługi zdarzeń; oczekiwanie pokazuje animację. Odświeżanie automatyczne ma ograniczoną częstotliwość i zachowuje niezapisane wybory.
 - Zatrzymanie, zamknięcie i wznowienie nie gubią ukończonych dni ani nie zostawiają częściowego importu jako zakończonego.
 - Punkty wykresu używają źródłowych wartości lub oznaczonych średnich dziennych. Kategorie i liczniki bez podsumowań Garmin mają tylko zakres dzienny. Obliczona linia trendu jest odrębną, oznaczoną warstwą bez zapisu wyników.
 - Parametr, zakres i daty odświeżają wykres automatycznie; spinner działa nad rozmytym obrazem i znika także po błędzie. Starsze zapytanie nie nadpisuje nowszego wyboru.

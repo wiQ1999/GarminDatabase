@@ -8,6 +8,12 @@ from garmin_database.adapters.inbound.desktop.time_axis import time_axis_labels
 from garmin_database.adapters.inbound.desktop.trend import linear_trend
 
 
+def prepare_series(points, labels=None):
+    """Sorting and regression can run alongside the database read, off the UI."""
+    ordered = sorted(points, key=lambda point: point[0])
+    return ordered, linear_trend(ordered) if not labels else []
+
+
 class LoadingOverlay(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -21,6 +27,14 @@ class LoadingOverlay(QWidget):
     def advance(self):
         self.angle = (self.angle + 16) % 360
         self.update()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.timer.start()
+
+    def hideEvent(self, event):
+        self.timer.stop()
+        super().hideEvent(event)
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -71,8 +85,7 @@ class ChartView(QWidget):
         if loading:
             QToolTip.hideText()
             self.overlay.raise_()
-            self.overlay.timer.start()
-        else:
+        if not loading or not self.overlay.isVisible():
             self.overlay.timer.stop()
 
 
@@ -92,11 +105,12 @@ class Chart(QWidget):
         self.setMouseTracking(True)
         self.setAccessibleName("Wykres danych Garmin")
 
-    def set_series(self, points, unit="", labels=None):
-        self.points = sorted(points, key=lambda p: p[0])
+    def set_series(self, points, unit="", labels=None, *, prepared=None):
+        self.points, self.trend_points = (
+            prepared if prepared is not None else prepare_series(points, labels)
+        )
         self.unit = unit or ""
         self.labels = labels or {}
-        self.trend_points = linear_trend(self.points) if not self.labels else []
         self.update()
 
     def set_trend_visible(self, visible):
@@ -186,9 +200,10 @@ class Chart(QWidget):
         if not self.positions:
             return
         x = event.position().x()
-        ordered = [v[0] for v in self.positions]
-        index = bisect_left(ordered, x)
-        candidates = self.positions[max(0, index - 1) : min(len(ordered), index + 1)]
+        index = bisect_left(self.positions, x, key=lambda position: position[0])
+        candidates = self.positions[
+            max(0, index - 1) : min(len(self.positions), index + 1)
+        ]
         if not candidates:
             return
         nearest = min(candidates, key=lambda v: abs(v[0] - x))

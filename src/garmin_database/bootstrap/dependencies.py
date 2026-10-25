@@ -1,6 +1,10 @@
 """Composition root for desktop/CLI. Architecture: docs/03-architecture.md."""
 
 from garmin_database.adapters.outbound.filesystem.archives import Archives
+from garmin_database.adapters.outbound.filesystem.files import (
+    open_directory,
+    open_location,
+)
 from garmin_database.adapters.outbound.filesystem.json_export import JSONExport
 from garmin_database.adapters.outbound.filesystem.settings_json import (
     SettingsStore,
@@ -15,6 +19,7 @@ from garmin_database.adapters.outbound.security.dpapi_session import SessionStor
 from garmin_database.application.use_cases.export_data import Exporter as ExportData
 from garmin_database.application.use_cases.login import Login
 from garmin_database.application.use_cases.synchronize import Sync as Synchronize
+from garmin_database.domain.cancellation import DeadlineStop
 
 
 def create_sync(db, source=None, delay=3.0):
@@ -56,8 +61,30 @@ class Services:
     def status(self):
         return self.db.status()
 
+    def overview(self, stop, catalog_revision=None, include_catalog=True):
+        with DataAccess(self.db).snapshot(
+            DeadlineStop(stop, 10), include_catalog=False
+        ) as snapshot:
+            info = self.db.status(snapshot.conn)
+            parameters = None
+            if include_catalog and snapshot.revision != catalog_revision:
+                parameters = self.queries.parameters(snapshot.conn)
+            revision = snapshot.revision
+        return dict(
+            status=info,
+            parameters=parameters,
+            revision=revision,
+            session_available=self.session_available(),
+        )
+
     def session_available(self):
         return self.session_factory().path.is_file()
+
+    def open_folder(self, path):
+        open_directory(path)
+
+    def open_url(self, url):
+        open_location(url)
 
     def login(self, email, password, mfa, stop, progress):
         return Login(self.source_factory).run(email, password, mfa, stop, progress)
@@ -65,8 +92,10 @@ class Services:
     def parameters(self):
         return self.queries.parameters()
 
-    def chart(self, parameter, start, end):
-        return self.queries.chart(parameter, start, end)
+    def chart(self, parameter, start, end, stop=None):
+        stop = DeadlineStop(stop, 60)
+        with DataAccess(self.db).snapshot(stop, include_catalog=False) as snapshot:
+            return self.queries.chart(parameter, start, end, snapshot.conn, stop)
 
     def sync(
         self, start, end, stop, progress, local_only=False, force=False, delay=3.0

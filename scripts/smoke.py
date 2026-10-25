@@ -1,5 +1,6 @@
 """Exercise the frozen GUI with a private synthetic PostgreSQL schema."""
 
+import json
 import os
 import subprocess
 import sys
@@ -76,7 +77,15 @@ def main():
                 env=environment,
                 timeout=30,
             )
-            if result.returncode or not picture.is_file():
+            readiness = picture.with_suffix(".ui.json")
+            if (
+                result.returncode
+                or not picture.is_file()
+                or not readiness.is_file()
+                or picture.with_suffix(".error.json").exists()
+                or json.loads(readiness.read_text(encoding="utf-8"))
+                != {"overview_ready": True, "background_idle": True}
+            ):
                 print("Packaged application failed smoke test", file=sys.stderr)
                 return 1
             with psycopg.connect(environment["GARMIN_DATABASE_DSN"]) as check:

@@ -1,8 +1,30 @@
 import json
 import os
+import subprocess
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
+
+
+def open_location(location):
+    """Hand a user-selected directory or HTTPS link to the desktop shell."""
+    if os.name == "nt":
+        os.startfile(str(location))
+    else:
+        subprocess.Popen(
+            ["open" if sys.platform == "darwin" else "xdg-open", str(location)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
+def open_directory(path):
+    path = Path(path).resolve()
+    if not path.is_dir():
+        raise FileNotFoundError("Folder nie istnieje")
+    open_location(path)
 
 
 def atomic_write(path, payload):

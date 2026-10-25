@@ -3,6 +3,7 @@
 import argparse
 import ssl
 import sys
+import time
 from datetime import date
 from pathlib import Path
 from threading import Event
@@ -41,6 +42,46 @@ def smoke_import(window, args):
     window.refresh()
 
 
+def smoke_snapshot(window, picture, app):
+    deadline = time.monotonic() + 20
+
+    def fail():
+        atomic_json(
+            Path(picture).with_suffix(".error.json"), {"type": "UIReadinessFailure"}
+        )
+        app.setQuitOnLastWindowClosed(False)
+        window.closing = True
+        window.close()
+
+        def leave_when_closed():
+            if window.isVisible():
+                QTimer.singleShot(100, leave_when_closed)
+            else:
+                app.exit(1)
+
+        leave_when_closed()
+
+    def snapshot():
+        idle = (
+            not window.overview.busy
+            and window.query_worker is None
+            and not window.query_pending
+        )
+        if idle and window.status_info:
+            atomic_json(
+                Path(picture).with_suffix(".ui.json"),
+                {"overview_ready": True, "background_idle": True},
+            )
+            window.grab().save(picture)
+            window.close()
+        elif (idle and window.overview.initialized) or time.monotonic() >= deadline:
+            fail()
+        else:
+            QTimer.singleShot(100, snapshot)
+
+    QTimer.singleShot(100, snapshot)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir")
@@ -68,12 +109,7 @@ def main(argv=None):
         smoke_import(window, args)
         window.show()
         if args.smoke_screenshot:
-
-            def snapshot():
-                window.grab().save(args.smoke_screenshot)
-                window.close()
-
-            QTimer.singleShot(1000, snapshot)
+            smoke_snapshot(window, args.smoke_screenshot, app)
         return app.exec()
     except Exception as error:
         if args.smoke_screenshot:

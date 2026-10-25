@@ -1,5 +1,6 @@
 """Small authored SVG symbols following the supplied Garmin visual references."""
 
+from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtGui import QIcon, QPainter, QPixmap
@@ -83,6 +84,7 @@ def symbol(parameter):
     return "other"
 
 
+@lru_cache(maxsize=32)
 def icon(name):
     color, content = SYMBOLS.get(name, SYMBOLS["other"])
     svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 28 28" fill="{color}" color="{color}">{content}</svg>'

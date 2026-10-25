@@ -74,15 +74,15 @@ class DataAccess:
         self.db = db
 
     @contextmanager
-    def snapshot(self, stop=None):
+    def snapshot(self, stop=None, *, include_catalog=True):
         try:
-            with self._snapshot(stop) as value:
+            with self._snapshot(stop, include_catalog=include_catalog) as value:
                 yield value
         except psycopg.Error:
             raise ReadFailure("Nie można odczytać bazy") from None
 
     @contextmanager
-    def _snapshot(self, stop=None):
+    def _snapshot(self, stop=None, *, include_catalog=True):
         with self.db.connect(readonly=True) as conn:
             finished = Event()
 
@@ -118,7 +118,10 @@ class DataAccess:
                     "SELECT revision FROM dataset_state WHERE id=1"
                 ).fetchone()[0]
                 yield DataSnapshot(
-                    self.db, conn, Queries(self.db).parameters(conn), revision
+                    self.db,
+                    conn,
+                    Queries(self.db).parameters(conn) if include_catalog else [],
+                    revision,
                 )
             finally:
                 finished.set()

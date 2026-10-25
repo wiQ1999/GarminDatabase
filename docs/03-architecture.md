@@ -97,7 +97,11 @@ Okno Windows jest warstwą obsługi wspólnych operacji pobierania, importu, pon
 
 Przeglądanie zatwierdzonych danych działa podczas importu przez oddzielne połączenia PostgreSQL z MVCC; odczyty używają `REPEATABLE READ READ ONLY`. Qt uruchamia import i zapytania wykresu poza wątkiem UI. Transakcja jednego FIT nie udostępnia częściowego wyniku. Eksport czyta wartości i metadane kompletności z jednego obrazu bazy, także gdy inny proces importuje kolejne pliki.
 
+GUI ma osobny worker okresowego stanu i katalogu oraz pojedynczy worker czynności pomocniczych, takich jak zapis ustawień i otwarcie folderu. `OverviewPoller` wyznacza odstępy odczytów i odrzuca wyniki poprzedniej konfiguracji. `Services.overview` odczytuje rewizję, liczniki stanu i ewentualny katalog z jednego snapshotu; odczyt bez katalogu nie uruchamia zapytania parametrów. Budżet i sygnał zatrzymania anulują aktywny SQL. Wszystkie operacje SQL, sesji i plików wywoływane przyciskami działają w workerach; GUI aktualizuje widżety po sygnałach. Dialog wyboru folderu otwiera się przez `open()`, bez blokowania timerów. Częstotliwości i zachowanie wskaźników opisuje [kontrakt UI](11-desktop-ui.md).
+
 Zmiany parametru i filtrów automatycznie uruchamiają odczyt. UI wykonuje jedno zapytanie wykresu naraz, a przy kolejnych zmianach zachowuje ostatni wybór i odrzuca nieaktualne wyniki lub błędy. Oddzielna warstwa animacji pokazuje ładowanie nad rozmytym wykresem. Opcjonalna regresja liniowa używa wyłącznie punktów aktualnego wykresu; jest obliczeniem prezentacji i nie zmienia PostgreSQL ani plików JSON.
+
+Sortowanie punktów i obliczenie regresji odbywają się w workerze odczytu. Wyszukanie punktu pod kursorem używa wyszukiwania binarnego bez kopiowania współrzędnych wszystkich punktów przy każdym ruchu myszy. Ikony parametrów są współdzielone przez ograniczony cache w warstwie Qt.
 
 Raspberry Pi będzie w przyszłości uruchamiać te same operacje bez UI, według harmonogramu, i służyć jako hub dostępu do danych. Protokół dostępu, uwierzytelnianie i relacja z aplikacją Windows pozostają zakresem późniejszego etapu; połączenie z PostgreSQL używa protokołu serwera, bez współdzielenia pliku bazy przez sieć.
 

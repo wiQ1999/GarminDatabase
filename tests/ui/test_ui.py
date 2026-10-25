@@ -69,7 +69,14 @@ def window(qtbot, tmp_path, summaries=False):
 
 def ready(qtbot, w):
     qtbot.waitUntil(
-        lambda: w.query_worker is None and not w.query_pending, timeout=5000
+        lambda: (
+            w.overview.initialized
+            and not w.overview.busy
+            and w.aux_worker is None
+            and w.query_worker is None
+            and not w.query_pending
+        ),
+        timeout=5000,
     )
 
 
@@ -87,6 +94,7 @@ def test_sharing_policy_is_independent_and_survives_restart(qtbot, tmp_path):
     w.mcp_enabled.setChecked(True)
     assert not w.sharing_table.item(other, 3).flags() & Qt.ItemFlag.ItemIsEnabled
     w.save_settings()
+    ready(qtbot, w)
     saved = Settings.load(tmp_path / "settings.json")
     assert saved.export_parameters == []
     assert saved.mcp_parameters == ["monitoring.heart_rate"] and saved.mcp_enabled
@@ -96,8 +104,10 @@ def test_sharing_policy_is_independent_and_survives_restart(qtbot, tmp_path):
     assert w.sharing_keys(2) == [] and w.sharing_keys(3) == ["monitoring.heart_rate"]
     w.copy_sharing(3, 2)
     w.save_settings()
+    ready(qtbot, w)
     assert w.export_list.count() == 1
     w.copy_mcp_config()
+    ready(qtbot, w)
     from PySide6.QtWidgets import QApplication
 
     assert "mcpServers" in QApplication.clipboard().text()
@@ -201,7 +211,7 @@ def test_loading_animates_and_stale_results_do_not_replace_latest_selection(
     release = threading.Event()
     calls = []
 
-    def query(self, parameter, start, end):
+    def query(self, parameter, start, end, conn=None, stop=None):
         calls.append((start, end))
         if len(calls) == 1:
             started.set()
@@ -585,6 +595,7 @@ def test_postgresql_password_is_not_persisted_from_ui(qtbot, tmp_path):
     previous = (tmp_path / "settings.json").read_bytes()
     w.database_dsn.setText("host=localhost dbname=garmin password=private-secret")
     w.save_settings()
+    ready(qtbot, w)
     assert w.services is original_db
     assert "ValueError" in w.settings_status.text()
     assert "private-secret" not in w.settings_status.text()
