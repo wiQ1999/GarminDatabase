@@ -8,6 +8,14 @@ To nieoficjalny endpoint. Dostępność archiwum zależy od Garmin, konta i daty
 
 Wersje bibliotek są określone w `requirements-probe.txt`, `requirements-analysis.txt` i `pyproject.toml`; procedurę instalacji opisuje [uruchamianie](12-running-and-testing.md).
 
+## Dzienne archiwum a pliki FIT
+
+Żądanie dla wybranej daty zwraca jedno archiwum ZIP, które może zawierać wiele plików FIT różnych kategorii. Liczba i zawartość plików zależą od danych dostępnych na koncie Garmin. Data żądania jest metadanym archiwum: zawarte w nim pomiary nie muszą ograniczać się do tego dnia. Kolejność wpisów ZIP nie jest chronologiczną kolejnością pomiarów. Garmin opisuje dzienny eksport wellness jako ZIP z oryginalnymi plikami FIT w [instrukcji eksportu danych](https://support.garmin.com/de-DE/?faq=W1TvTPW8JZ6LfJSfK512Q8).
+
+Synchronizacja urządzenia może udostępnić w Garmin Connect dane, których brakowało przy wcześniejszym eksporcie. Zaobserwowano, że późniejszy eksport tego samego dnia zawierał dodatkowy FIT, a wcześniej dostępne pliki pozostały identyczne. Jest to obserwacja, a nie gwarancja Garmin: nie ustalono, że pliki FIT nigdy się nie zmieniają, że każda synchronizacja tworzy jeden plik ani po jakim czasie dzień staje się kompletny. Przedział czasów w FIT nie określa częstotliwości jego publikacji.
+
+Ponowne pobranie może zmienić hash całego ZIP-u nawet przy identycznej zawartości FIT. Zmian danych nie należy wnioskować z hasha kontenera: porównanie wymaga hashy rozpakowanych plików i ich pochodzenia. Deduplikacja identycznych FIT po SHA-256 nie dowodzi braku nakładających się pomiarów w różnych plikach. Obecna aplikacja zachowuje pierwszy ZIP i nie aktualizuje automatycznie zakończonych dni; importer odrzuca inny hash ZIP dla zarejestrowanego dnia. Obsługa ponownego pobierania i zmienionych archiwów wymaga osobnej zmiany aplikacji.
+
 ## Oryginał i dekodowanie
 
 ZIP jest zachowywany bez ponownego pakowania. FIT odczytuje się bez trwałego rozpakowywania całego archiwum. Strukturalny dekoder `fitdecode` dostarcza fizyczne definicje i wartości raw, a przypięty publiczny profil Garmin FIT SDK — nazwy, jednostki i reguły interpretacji.
