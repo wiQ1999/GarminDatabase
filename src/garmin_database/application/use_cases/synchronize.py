@@ -32,6 +32,8 @@ class Sync:
         self.importer = importer
         self.source = source
         self.delay = delay
+        self.network = False
+        self.refresh_all = False
 
     def restore_manifest(self):
         self.repository.restore_days(self.archives.restore_manifest())
@@ -51,6 +53,9 @@ class Sync:
         with self.repository.writer_lock():
             self.repository.initialize()
             self.restore_manifest()
+            if self.network:
+                requested = self.repository.download_days(start, end, self.refresh_all)
+                summary.requested_days = len(requested)
             return self.process_days(
                 requested, stop, progress, local_only, force, summary
             )
@@ -64,6 +69,8 @@ class Sync:
             finally:
                 ahead.finish()
                 abandoned = ahead.abandoned()
+                if self.network:
+                    self.archives.clear()
                 if abandoned is not None:
                     day, error = abandoned
                     if error is None:
@@ -110,11 +117,17 @@ class Sync:
             if halt:
                 summary.halted = index < len(requested)
                 return summary
-            consecutive = self.consecutive_failures(consecutive, text, status)
+            consecutive = self.finish_download_day(consecutive, text, status)
             if consecutive >= 5:
                 summary.halted = index < len(requested)
                 break
         return summary
+
+    def finish_download_day(self, previous, day, status):
+        count = self.consecutive_failures(previous, day, status)
+        if self.network:
+            self.archives.release(day)
+        return count
 
     @staticmethod
     def finish_day(summary, report, outcome):
@@ -168,10 +181,10 @@ class Sync:
         code = f" (HTTP {status})" if status is not None else ""
         return "błąd pobierania" + code + "; import dnia nie został wykonany"
 
-    @staticmethod
-    def already_checked(old):
+    def already_checked(self, old):
         return bool(
-            old
+            not self.refresh_all
+            and old
             and old["download_status"] in {"not_found_unverified", "no_data_confirmed"}
         )
 

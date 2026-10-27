@@ -23,7 +23,7 @@ Stan odczytuje się w tle przy otwarciu okna i co 15 sekund. Automatyczna kontro
 
 Odświeżenie zachowuje niezapisane wybory eksportu, MCP i filtr grupy. Niezmieniony katalog nie przebudowuje list ani nie uruchamia zapytania wykresu. Zakres „Cała historia” korzysta z zapamiętanego początku historii. Liczniki stanu pojawiają się przed odczytem katalogu; opóźnienie lub błąd listy parametrów nie zasłania poprawnego stanu bazy. Po błędzie pozostają ostatnie poprawne informacje. Osobny obszar komunikatów zastępuje poprzedni błąd danego odczytu i usuwa go po odzyskaniu poprawnego wyniku, bez dopisywania duplikatów przy kolejnych cyklach. Przekroczenie czasu zapytania ma inny komunikat niż brak połączenia. Próby katalogu także po błędzie zachowują odstęp co najmniej minuty; stan nadal odświeża się co 15 sekund.
 
-Główny przycisk **„Pobierz dane”** pobiera brakujące archiwa do wczoraj według `Europe/Warsaw`, następnie przetwarza je do PostgreSQL. Poprawne lokalne archiwa wykorzystuje bez ponownego pobierania. Osobno dostępna jest operacja ponownego przetworzenia archiwów lokalnych bez żądań pobrania.
+Główne przyciski to **„Pobierz nowe dane”** (od ostatniego pobranego dnia włącznie, także wcześniejsze błędy i niekompletne importy) oraz **„Pobierz wszystko”** (pełny zakres). Oba kończą się dzisiaj Europe/Warsaw i dopisują nowe FIT bez zapisywania ZIP na dysku. Wykresy obejmują bieżący dzień z widoczną informacją o możliwej niepełności danych.
 
 Postęp obejmuje pasek, aktualnie obsługiwany dzień i etap, licznik ukończonych dni oraz **„Zatrzymaj”**. **Dziennik operacji jest stale widoczny na widoku głównym**, od uruchomienia aplikacji, bez przycisku pokazywania lub ukrywania szczegółów. Pokazuje postęp pobierania, importu i eksportu, wyniki oraz błędy, a także bezpieczne komunikaty logowania i czynności pomocniczych, np. zapisu ustawień. Nie zawiera sekretów ani surowych danych zdrowotnych. Nowe pobieranie, import lub eksport rozpoczynają nowy dziennik bieżącej operacji. Zatrzymanie zachowuje ukończone operacje; nieukończona transakcja nie jest prezentowana jako zakończony import. Wznowienie pomija ukończoną pracę.
 
@@ -47,7 +47,7 @@ Oś czasu ma podpisy pośrednie, do ośmiu na szerokim wykresie. Ich liczbę dob
 
 Wybór parametru, zmiana zakresu lub dat automatycznie odświeżają wykres. Przycisk „Pokaż wykres” został usunięty. Podczas odczytu na pierwszym planie wykresu widać animowane koło i napis „Ładowanie wykresu…”, a poprzedni obraz jest rozmyty i nie pokazuje tooltipów. Filtry pozostają dostępne. Przy szybkich zmianach UI pokazuje wynik ostatniego wyboru, pomijając starsze wyniki i błędy. Po aktualnym wyniku albo błędzie animacja znika; błąd usuwa poprzedni obraz, żeby nie udawał danych aktualnego parametru.
 
-Zakresy: **Dzień**, **7 dni**, **30 dni**, **90 dni**, **Cała historia**, własny zakres. Początkowy zakres to 30 dni dla podsumowań; domyślny koniec to ostatni zakończony dzień. „Dzień” pokazuje oryginalne szczegóły. Dłuższe zakresy są dostępne dla `source_summary` oraz HRV, tętna chwilowego, oddechu, saturacji i stresu, dla których aplikacja liczy średnie dzienne. Podpis wykresu i tooltip jednoznacznie oznaczają obliczone średnie. Kategorie i pozostałe liczniki bez podsumowań Garmin zachowują wyszarzone opcje poza dniem i automatyczne przełączenie na „Dzień”. Datę początku można edytować tylko w „Własnym zakresie”.
+Zakresy: **Dzień**, **7 dni**, **30 dni**, **90 dni**, **Cała historia**, własny zakres. Początkowy zakres to 30 dni dla podsumowań; domyślny koniec to bieżący dzień. „Dzień” pokazuje oryginalne szczegóły. Dłuższe zakresy są dostępne dla `source_summary` oraz HRV, tętna chwilowego, oddechu, saturacji i stresu, dla których aplikacja liczy średnie dzienne. Podpis wykresu i tooltip jednoznacznie oznaczają obliczone średnie. Kategorie i pozostałe liczniki bez podsumowań Garmin zachowują wyszarzone opcje poza dniem i automatyczne przełączenie na „Dzień”. Datę początku można edytować tylko w „Własnym zakresie”.
 
 | Okres | Prezentowane dane |
 | --- | --- |
@@ -99,7 +99,7 @@ Docelowe lokalizacje dla Windows:
   auth/session.bin
 
 D:/Projects/GarminDatabase/
-  data/raw/YYYY-MM-DD.zip
+  data/raw/YYYY-MM-DD.zip  # tylko wcześniejsze archiwa lub lokalne źródła CLI
   exports/
 ```
 

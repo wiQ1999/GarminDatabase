@@ -86,7 +86,7 @@ def date_range(begin, finish):
         next(dates(start, end))
     except (ValueError, TypeError):
         raise AccessError(
-            "Podaj daty YYYY-MM-DD od początku do końca, najpóźniej wczoraj."
+            "Podaj daty YYYY-MM-DD od początku do końca, najpóźniej dzisiaj."
         ) from None
     return start, end
 
@@ -330,6 +330,7 @@ class MCPData:
         coverage = snap.coverage(begin, finish)
         gaps = compress_days(coverage["missing_days"], "missing_archive")
         gaps += compress_days(coverage["unimported_or_partial_days"], "partial_decode")
+        gaps += compress_days(coverage.get("ongoing_days", []), "current_day")
         tables = []
         days = {d.isoformat() for d in dates(begin, finish)}
         for parameter, observations in zip(parameters, rows):
@@ -382,6 +383,10 @@ class MCPData:
                     days=len(coverage["unimported_or_partial_days"]),
                 ),
             ]
+            if coverage.get("ongoing_days"):
+                gaps.append(
+                    dict(reason="current_day", days=len(coverage["ongoing_days"]))
+                )
             result = self.envelope(snap, start, end)
             result.update(
                 series=tables,

@@ -87,7 +87,7 @@ python -m garmin_database.bootstrap.cli export --parameters hrv_value.value --su
 python -m garmin_database.bootstrap.cli export --from 2026-09-01 --to 2026-09-30 --parameters monitoring.heart_rate --recent-days 30 --output exports
 ```
 
-Opcja `--full-samples` została usunięta. Początek szczegółów to późniejsza z dat: początek historii i koniec minus N−1 dni. Koniec domyślny to wczoraj. W UI „Podsumowania historii” wybiera dzień lub miesiąc, „Szczegółowe ostatnie dni” wybiera N, a „Folder na eksporty” jest katalogiem nadrzędnym nowych pakietów. „Otwórz folder eksportu” otwiera ostatni ukończony pakiet w bieżącym oknie. Wybory są zapisywane w `%LOCALAPPDATA%/GarminDatabase/settings.json`; dawny `full_samples` jest ignorowany.
+Opcja `--full-samples` została usunięta. Początek szczegółów to późniejsza z dat: początek historii i koniec minus N−1 dni. Koniec domyślny to dzisiaj Europe/Warsaw; bieżący dzień ma potencjalnie niepełną kompletność. W UI „Podsumowania historii” wybiera dzień lub miesiąc, „Szczegółowe ostatnie dni” wybiera N, a „Folder na eksporty” jest katalogiem nadrzędnym nowych pakietów. „Otwórz folder eksportu” otwiera ostatni ukończony pakiet w bieżącym oknie. Wybory są zapisywane w `%LOCALAPPDATA%/GarminDatabase/settings.json`; dawny `full_samples` jest ignorowany.
 
 Pliki szczegółowe nadal mogą być duże: 90 dni nie oznacza limitu liczby tokenów. Można zawęzić liczbę dni lub parametrów, bez automatycznego obcinania danych. Nie dzielimy pojedynczego parametru na miesiące ani nie obiecujemy zgodności z konkretnym limitem modelu.
 
@@ -102,3 +102,5 @@ Wszystkie pliki v2 zachowują dotychczasowe kolumny i precyzję. Nagłówki maj�
 Średnia okresowa MCP i miesięczna średnia eksportu korzystają ze wspólnego `period_summary`: `sum(mean_day * valid_count_day) / sum(valid_count_day)`. Obliczenie używa niezaokrąglonych danych. Dni bez poprawnych próbek nie są zerami i nie mają wagi. Średnie nie są ważone czasem. Wynik dla tego samego okresu i rewizji jest zgodny przed formatowaniem.
 
 Limit 92 dni na stronę i 16 KiB wyniku dotyczy MCP. Eksport nadal strumieniowo zapisuje cały wybrany zakres do nowego pakietu, bez cichego obcinania i bez usuwania poprzednich eksportów. Oba kanały jawnie rozróżniają brak archiwum, częściowy import oraz brak poprawnych próbek metryki. Nie wyliczamy `wear_pct` z liczby próbek, ponieważ nie jest to wiarygodny czas noszenia zegarka.
+
+Kompletność zawiera `ongoing_days` dla bieżącego dnia, który może otrzymać kolejne dane. Pole `decode_status` nadal opisuje stan dekodowania otrzymanych FIT. MCP używa powodu luki `current_day` dla takiego dnia.

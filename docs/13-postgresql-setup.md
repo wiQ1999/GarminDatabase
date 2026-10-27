@@ -80,7 +80,7 @@ Na zdalnym serwerze użyj np. `host=db.example.internal port=5432 dbname=garmin 
 
 ## Dane ze starszych wersji
 
-Aplikacja nie migruje danych SQLite. Pustą bazę PostgreSQL zasila ponowne pobranie lub import zachowanych ZIP. `data_dir` wskazuje archiwa i metadane lokalne, nie plik SQL. Przeniesienie folderu `data/` nie przenosi bazy; do przenoszenia PostgreSQL służą jego narzędzia administracyjne. Usuwanie danych użytkownika nie jest częścią konfiguracji nowej bazy ani testów.
+Aplikacja nie migruje danych SQLite. Pustą bazę PostgreSQL zasila ponowne pobranie lub import zachowanych ZIP. `data_dir` wskazuje metadane lokalne i ewentualne wcześniejsze archiwa; nowe sieciowe ZIP nie są zapisywane na dysku. Nie jest to lokalizacja plików serwera SQL. Przeniesienie folderu `data/` nie przenosi bazy; do przenoszenia PostgreSQL służą jego narzędzia administracyjne. Usuwanie danych użytkownika nie jest częścią konfiguracji nowej bazy ani testów.
 
 ## Ochrona danych na dysku
 

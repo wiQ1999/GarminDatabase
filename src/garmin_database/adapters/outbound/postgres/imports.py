@@ -2,12 +2,14 @@
 
 import importlib.metadata
 from hashlib import file_digest, sha256
+from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
 
 import fitdecode
 
 from garmin_database.adapters.outbound.postgres.fit_decode import FitDecoder
+from garmin_database.application.archive_payload import ArchivePayload
 from garmin_database.domain.cancellation import Cancelled, check_stop
 from garmin_database.domain.time import utc_now
 from garmin_database.domain.values import dumps
@@ -60,19 +62,14 @@ class Importer:
         force=False,
         origin="local_archive",
     ):
-        from datetime import date
-
         check_stop(stop)
-        path = Path(path)
-        day = date.fromisoformat(path.stem).isoformat()
-        relative = path.resolve().relative_to(self.db.root.resolve()).as_posix()
-        with path.open("rb") as stream:
-            digest = file_digest(stream, "sha256").hexdigest()
-        with self.db.connect() as conn, ZipFile(path) as archive:
+        downloaded, day, relative, digest, size, source = self.archive_source(path)
+        # Source bytes are owned by this invocation; no persistent network ZIP.
+        with self.db.connect() as conn, ZipFile(source) as archive:
             previous = conn.execute(
                 "SELECT id,sha256 FROM archives WHERE day=%s", (day,)
             ).fetchone()
-            if previous and previous[1] != digest:
+            if previous and previous[1] != digest and not downloaded:
                 raise ValueError("Zmienione archiwum źródłowe")
             profile = self.profile(conn)
             entries = [
@@ -80,18 +77,18 @@ class Importer:
                 for i, item in enumerate(archive.infolist())
                 if not item.is_dir()
             ]
-            if (
-                previous
-                and not force
-                and self.complete(conn, previous[0], profile, len(entries))
+            if not downloaded and self.can_skip_archive(
+                conn, previous, digest, profile, len(entries), force
             ):
                 return 0
             aid = self.register_archive(
-                conn, path, day, relative, digest, entries, origin
+                conn, size, day, relative, digest, entries, origin
             )
             # Publish every origin before the first decoded FIT, so a reader
             # cannot mistake a partly registered day for a complete one.
-            prepared = self.prepare_entries(conn, archive, aid, stop)
+            prepared = self.prepare_entries(conn, archive, aid, stop, downloaded)
+            if self.download_complete(conn, aid, profile, downloaded, force):
+                return 0
             run = conn.execute(
                 "INSERT INTO decode_runs(profile_id,started_at,status) VALUES(%s,%s,'running') RETURNING id",
                 (profile, utc_now()),
@@ -100,6 +97,45 @@ class Importer:
             return self.import_entries(
                 conn, archive, prepared, day, aid, profile, run, stop, progress, force
             )
+
+    def can_skip_archive(self, conn, previous, digest, profile, count, force):
+        return bool(
+            previous
+            and previous[1] == digest
+            and not force
+            and self.complete(conn, previous[0], profile, count)
+        )
+
+    @staticmethod
+    def download_complete(conn, aid, profile, downloaded, force):
+        if not downloaded or force:
+            return False
+        return not conn.execute(
+            """SELECT 1 FROM archive_entries e WHERE e.archive_id=%s AND NOT EXISTS(
+            SELECT 1 FROM file_decodes d WHERE d.fit_file_id=e.fit_file_id AND d.profile_id=%s AND d.is_active=1 AND d.status='complete') LIMIT 1""",
+            (aid, profile),
+        ).fetchone()
+
+    def archive_source(self, path):
+        from datetime import date
+
+        downloaded = isinstance(path, ArchivePayload)
+        if downloaded:
+            day = date.fromisoformat(path.day).isoformat()
+            content = path.content
+            relative = f"remote/{day}.zip"
+            digest = sha256(content).hexdigest()
+            size = len(content)
+            source = BytesIO(content)
+        else:
+            path = Path(path)
+            day = date.fromisoformat(path.stem).isoformat()
+            relative = path.resolve().relative_to(self.db.root.resolve()).as_posix()
+            with path.open("rb") as stream:
+                digest = file_digest(stream, "sha256").hexdigest()
+            size = path.stat().st_size
+            source = path
+        return downloaded, day, relative, digest, size, source
 
     @staticmethod
     def complete(conn, aid, profile, count):
@@ -115,7 +151,7 @@ class Importer:
         return registered == count and not incomplete
 
     @staticmethod
-    def register_archive(conn, path, day, relative, digest, entries, origin):
+    def register_archive(conn, size, day, relative, digest, entries, origin):
         conn.execute(
             "INSERT INTO import_days(day,download_status,checked_at) VALUES(%s,%s,%s) "
             "ON CONFLICT(day) DO UPDATE SET download_status=excluded.download_status",
@@ -124,7 +160,7 @@ class Importer:
         conn.execute(
             "INSERT INTO archives(day,relative_path,sha256,size_bytes,acquired_at,acquisition_origin) "
             "VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
-            (day, relative, digest, path.stat().st_size, utc_now(), origin),
+            (day, relative, digest, size, utc_now(), origin),
         )
         return conn.execute("SELECT id FROM archives WHERE day=%s", (day,)).fetchone()[
             0
@@ -167,7 +203,7 @@ class Importer:
             raise
         return failed
 
-    def prepare_entries(self, conn, archive, aid, stop):
+    def prepare_entries(self, conn, archive, aid, stop, downloaded=False):
         prepared = []
         existing = dict(
             conn.execute(
@@ -175,6 +211,17 @@ class Importer:
                 (aid,),
             )
         )
+        known = (
+            dict(
+                conn.execute(
+                    "SELECT f.sha256,e.fit_file_id FROM archive_entries e JOIN fit_files f ON f.id=e.fit_file_id WHERE e.archive_id=%s",
+                    (aid,),
+                )
+            )
+            if downloaded
+            else {}
+        )
+        next_index = max(existing, default=-1) + 1
         for index, item in enumerate(archive.infolist()):
             check_stop(stop)
             # Read through EOF to verify ZIP CRC, also for unused directory entries.
@@ -182,11 +229,14 @@ class Importer:
             if item.is_dir():
                 continue
             digest = sha256(payload).hexdigest()
-            fid = existing.get(index)
+            fid = known.get(digest) if downloaded else existing.get(index)
+            entry_index = next_index if downloaded else index
             if fid is None:
                 fid = self.register_entry(
-                    conn, aid, index, item.filename, digest, len(payload)
+                    conn, aid, entry_index, item.filename, digest, len(payload)
                 )
+                next_index += 1
+                known[digest] = fid
             prepared.append((index, item, fid, digest))
         return prepared
 
@@ -239,7 +289,7 @@ class Importer:
             self.record_failure(conn, fid, profile, run, error)
             progress(
                 day,
-                f"Błąd importu FIT — {type(error).__name__}. Archiwum ZIP zachowano; nieukończony zapis FIT wycofano.",
+                f"Błąd importu FIT — {type(error).__name__}. Nieukończony zapis FIT wycofano. Pobieranie można ponowić.",
                 index,
                 total,
             )

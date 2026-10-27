@@ -14,11 +14,11 @@ Wersje bibliotek są określone w `requirements-probe.txt`, `requirements-analys
 
 Synchronizacja urządzenia może udostępnić w Garmin Connect dane, których brakowało przy wcześniejszym eksporcie. Zaobserwowano, że późniejszy eksport tego samego dnia zawierał dodatkowy FIT, a wcześniej dostępne pliki pozostały identyczne. Jest to obserwacja, a nie gwarancja Garmin: nie ustalono, że pliki FIT nigdy się nie zmieniają, że każda synchronizacja tworzy jeden plik ani po jakim czasie dzień staje się kompletny. Przedział czasów w FIT nie określa częstotliwości jego publikacji.
 
-Ponowne pobranie może zmienić hash całego ZIP-u nawet przy identycznej zawartości FIT. Zmian danych nie należy wnioskować z hasha kontenera: porównanie wymaga hashy rozpakowanych plików i ich pochodzenia. Deduplikacja identycznych FIT po SHA-256 nie dowodzi braku nakładających się pomiarów w różnych plikach. Obecna aplikacja zachowuje pierwszy ZIP i nie aktualizuje automatycznie zakończonych dni; importer odrzuca inny hash ZIP dla zarejestrowanego dnia. Obsługa ponownego pobierania i zmienionych archiwów wymaga osobnej zmiany aplikacji.
+Ponowne pobranie może zmienić hash całego ZIP-u nawet przy identycznej zawartości FIT. Zmian danych nie należy wnioskować z hasha kontenera: porównanie wymaga hashy rozpakowanych plików i ich pochodzenia. Deduplikacja identycznych FIT po SHA-256 nie dowodzi braku nakładających się pomiarów w różnych plikach. Aplikacja deduplikuje FIT w SQL niezależnie od kolejności wpisów ZIP. Pobierany ZIP pozostaje tylko w pamięci; ponowne pobranie może dodać nowe pochodzenia i pliki bez ponownego dekodowania kompletnych FIT.
 
 ## Oryginał i dekodowanie
 
-ZIP jest zachowywany bez ponownego pakowania. FIT odczytuje się bez trwałego rozpakowywania całego archiwum. Strukturalny dekoder `fitdecode` dostarcza fizyczne definicje i wartości raw, a przypięty publiczny profil Garmin FIT SDK — nazwy, jednostki i reguły interpretacji.
+ZIP pobrany z sieci jest walidowany i przetwarzany w pamięci, bez trwałego zapisu oryginału. Starsze lokalne ZIP pozostają dostępne dla poleceń CLI importu i ponownego dekodowania; aplikacja ich nie usuwa. FIT odczytuje się bez trwałego rozpakowywania całego archiwum. Strukturalny dekoder `fitdecode` dostarcza fizyczne definicje i wartości raw, a przypięty publiczny profil Garmin FIT SDK — nazwy, jednostki i reguły interpretacji.
 
 Nazwy plików i wiadomości nie dowodzą dostępności konkretnej metryki. Brak nazwy w profilu nie powoduje odrzucenia pola; dane pozostają pod identyfikatorami źródłowymi. Pokrycie strukturalne i rozpoznanie semantyki są różnymi informacjami. Reguły zachowania danych opisują [architektura](03-architecture.md) i [schemat](10-postgresql-schema.md).
 

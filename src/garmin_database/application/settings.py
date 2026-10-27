@@ -12,7 +12,7 @@ class Settings:
     parameters: list[str] = field(default_factory=list)
     summary_period: str = "day"
     history_from: str = "2024-01-01"
-    history_to: str = ""  # empty means yesterday, not a frozen relative date
+    history_to: str = ""  # empty means today, not a frozen relative date
     delay: float = 3.0
     settings_version: int = 1
     export_parameters: list[str] | None = None

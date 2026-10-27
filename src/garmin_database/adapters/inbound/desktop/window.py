@@ -59,7 +59,7 @@ from garmin_database.domain.aggregation import (
     has_chart_summary,
     summary_method,
 )
-from garmin_database.domain.time import yesterday
+from garmin_database.domain.time import today
 
 from .workers import Worker
 
@@ -97,7 +97,7 @@ def date_edit(value):
     result = QDateEdit(QDate(value.year, value.month, value.day))
     result.setCalendarPopup(True)
     result.setDisplayFormat("yyyy-MM-dd")
-    result.setMaximumDate(QDate(yesterday().year, yesterday().month, yesterday().day))
+    result.setMaximumDate(QDate(today().year, today().month, today().day))
     return result
 
 
@@ -211,7 +211,7 @@ class Window(QMainWindow):
     def build_start(self):
         layout = self.page(
             "Twoje archiwum Garmin",
-            "Pobieraj zakończone dni, sprawdzaj dostępność danych i stan importu.",
+            "Pobieraj dane do dzisiaj, sprawdzaj dostępność danych i stan importu.",
         )
         self.status = QLabel()
         self.status.setText("Odczytywanie stanu archiwum…")
@@ -234,16 +234,10 @@ class Window(QMainWindow):
         self.status_error.hide()
         layout.addWidget(self.status_error)
         actions = QHBoxLayout()
-        self.download_button = button("Pobierz dane", self.sync, True)
+        self.download_button = button("Pobierz nowe dane", self.sync, True)
         actions.addWidget(self.download_button)
-        self.import_button = button(
-            "Importuj lokalne archiwa", lambda: self.sync(local_only=True)
-        )
-        actions.addWidget(self.import_button)
-        self.reprocess_button = button(
-            "Przetwórz ponownie", lambda: self.sync(local_only=True, force=True)
-        )
-        actions.addWidget(self.reprocess_button)
+        self.download_all_button = button("Pobierz wszystko", lambda: self.sync(refresh_all=True))
+        actions.addWidget(self.download_all_button)
         layout.addLayout(actions)
         self.progress = QProgressBar()
         self.progress.setValue(0)
@@ -284,8 +278,9 @@ class Window(QMainWindow):
         )
         self.range.setCurrentIndex(2)
         controls.addWidget(self.range)
-        self.chart_from = date_edit(yesterday() - timedelta(days=29))
-        self.chart_to = date_edit(yesterday())
+        layout.addWidget(QLabel("Dane bieżącego dnia mogą być niepełne do kolejnej synchronizacji."))
+        self.chart_from = date_edit(today() - timedelta(days=29))
+        self.chart_to = date_edit(today())
         controls.addWidget(self.chart_from)
         controls.addWidget(self.chart_to)
         right.addLayout(controls)
@@ -344,7 +339,7 @@ class Window(QMainWindow):
         self.export_to = date_edit(
             date.fromisoformat(self.settings.history_to)
             if self.settings.history_to
-            else yesterday()
+            else today()
         )
         form.addRow("Historia od", self.export_from)
         form.addRow("Historia do", self.export_to)
@@ -753,7 +748,7 @@ class Window(QMainWindow):
             if k not in {"downloaded", "empty_zip", "no_data_confirmed"}
         )
         self.status.setText(
-            f"Ostatni pobrany dzień: {info['last_downloaded'] or 'brak'}\nZakres zarejestrowany w bazie: {info['first_day'] or 'brak'} — {info['last_day'] or 'brak'}\nArchiwa w bazie: {info['archives']}   •   Zaimportowane FIT: {info['files']}\nWiadomości: {info['messages']:,}   •   Fizyczne pola: {info['fields']:,}\nDni czekające na rejestrację: {info['pending_days']}   •   Oczekujące FIT: {info['pending_files']}\nDni brakujące / nierozstrzygnięte: {unresolved}   •   Nieznane warianty pól: {info['unknown_variants']}\nZIP w bazie: {info['archive_bytes'] / 1024**2:.1f} MB   •   PostgreSQL: {info['database_bytes'] / 1024**2:.1f} MB"
+            f"Ostatni pobrany dzień: {info['last_downloaded'] or 'brak'}\nZakres zarejestrowany w bazie: {info['first_day'] or 'brak'} — {info['last_day'] or 'brak'}\nArchiwa w bazie: {info['archives']}   •   Zaimportowane FIT: {info['files']}\nWiadomości: {info['messages']:,}   •   Fizyczne pola: {info['fields']:,}\nDni czekające na rejestrację: {info['pending_days']}   •   Oczekujące FIT: {info['pending_files']}\nDni brakujące / nierozstrzygnięte: {unresolved}   •   Nieznane warianty pól: {info['unknown_variants']}\nRozmiar zarejestrowanych ZIP: {info['archive_bytes'] / 1024**2:.1f} MB   •   PostgreSQL: {info['database_bytes'] / 1024**2:.1f} MB"
         )
         count = (
             str(len(self.parameters))
@@ -942,8 +937,7 @@ class Window(QMainWindow):
         busy = self.work_is_running() or self.aux_worker is not None or self.closing
         for b in (
             self.download_button,
-            self.import_button,
-            self.reprocess_button,
+            self.download_all_button,
             self.export_button,
             self.login_button,
             self.save_button,
@@ -1047,28 +1041,15 @@ class Window(QMainWindow):
             )
         self.close_if_idle()
 
-    def sync(self, local_only=False, force=False):
+    def sync(self, refresh_all=False):
         db = self.services
         delay = self.settings.delay
-        trigger = (
-            self.reprocess_button
-            if force
-            else self.import_button
-            if local_only
-            else self.download_button
-        )
+        trigger = self.download_all_button if refresh_all else self.download_button
         self.start_work(
             lambda w: db.sync(
-                date(2024, 1, 1),
-                yesterday(),
-                w.stop,
-                w.progress.emit,
-                local_only,
-                force,
-                delay,
-                detailed=True,
-            ),
-            trigger,
+                date(2024, 1, 1), today(), w.stop, w.progress.emit,
+                delay=delay, detailed=True, refresh_all=refresh_all,
+            ), trigger,
         )
 
     def login(self):

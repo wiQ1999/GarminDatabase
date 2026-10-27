@@ -620,3 +620,17 @@ def test_mcp_postgresql_deadline_interrupts_blocked_catalog(source, monkeypatch)
     with pytest.raises(AccessError, match="Przekroczono"):
         create_service(source[2], seconds=0.1).catalog()
     assert time.monotonic() - began < 2
+
+
+def test_current_day_is_reported_separately_from_decode_errors(source):
+    from garmin_database.domain.time import today
+
+    _, _, _, service = source
+    day = today().isoformat()
+    daily = service.daily(day, day, [KEY])
+    period = service.period(day, day, [KEY])
+    assert any(gap["reason"] == "current_day" for gap in daily["gaps"])
+    assert any(
+        gap["reason"] == "current_day" and gap["days"] == 1 for gap in period["gaps"]
+    )
+    assert daily["decode_status"] == period["decode_status"] == "complete"

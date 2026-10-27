@@ -2,15 +2,15 @@
 
 ## Przebieg synchronizacji
 
-1. Ustal aktualną datę w `Europe/Warsaw`; maksymalny dzień importu to wczoraj. Brak dodatkowego opóźnienia po północy.
+1. Ustal aktualną datę w `Europe/Warsaw`; maksymalny dzień importu to dzisiaj. Brak dodatkowego opóźnienia po północy.
 2. Domyślny początek historii: 2024-01-01. Użytkownik może podać węższy okres.
-3. Sprawdź dni chronologicznie. Pomiń poprawnie pobrane dni oraz potwierdzone dni bez danych.
-4. Jeżeli poprawny ZIP istnieje lokalnie, zarejestruj go i przetwórz bez pobierania.
-5. Pobierz brakujący dzień, zweryfikuj ZIP i zapisz oryginał. Błąd nie oznacza zakończenia dnia.
-6. Przetwórz ZIP do PostgreSQL. Po zapisaniu bieżącego ZIP można pobierać kolejny dzień w tle; rejestracja i import pozostają chronologiczne. Błąd parsera nie unieważnia udanego pobrania; ponawiaj przetwarzanie lokalnego pliku.
-7. Wyświetl wynik każdego dnia i podsumowanie całego zakresu: poprawne importy, pominięte dni, potwierdzony brak danych, nierozstrzygnięte HTTP 404 i odrębne błędy pobierania/importu. CLI zwraca niezerowy kod także dla nierozstrzygniętych dni; aplikacja Windows pokazuje nagłówek całej operacji i bezpieczne szczegóły w dzienniku.
+3. „Pobierz nowe dane” zaczyna od ostatniego dnia zarejestrowanego archiwum (włącznie), uwzględniając także wcześniejsze błędy i niekompletne importy. Przy pustej bazie zaczyna od początku zakresu. Znane nierozstrzygnięte HTTP 404 pozostają jawne i nie są ponawiane w tym trybie.
+4. „Pobierz wszystko” sprawdza cały zakres, również ponawiając nierozstrzygnięte dni. Nie wymusza ponownego dekodowania istniejących kompletnych FIT.
+5. Pobierz i zweryfikuj ZIP w pamięci. Zarejestruj pochodzenia FIT i deduplikuj je po SHA-256 w PostgreSQL. Nazwa ani pozycja wpisu w kolejnym ZIP nie jest identyfikatorem treści FIT.
+6. Importuj nowe lub nieukończone FIT. Po błędzie lub anulowaniu wznowienie pobiera dzień ponownie; ukończone FIT zachowują wyniki. Nie ma trwałego zapisu nowych ZIP ani rozpakowanych FIT.
+7. Wyświetl wynik każdego dnia i podsumowanie operacji. Dzisiejsze dane mogą być niepełne; otrzymanie późniejszego FIT nie dowodzi, że Garmin udostępnił wszystkie wcześniejsze pomiary.
 
-Nie aktualizujemy automatycznie zakończonych dni. Użytkownik świadomie akceptuje, że późniejsze zmiany Garmin nie zostaną w tej wersji pobrane.
+Odczyty, eksport i MCP dopuszczają bieżący dzień Europe/Warsaw. Kompletność oznacza go jako potencjalnie niepełny, także gdy wszystkie dotychczas otrzymane FIT są ukończone. Program nie usuwa wcześniejszych archiwów użytkownika. Import lokalny i wymuszone dekodowanie pozostają pomocniczymi poleceniami CLI.
 
 ## Stany
 
@@ -29,13 +29,13 @@ Nie logować odpowiedzi zawierających zdrowotne dane, hasła, kody MFA, ciastec
 
 HTTP 404 jest opisywane jako brak zwróconego archiwum dla konkretnej daty, bez rozstrzygania, czy konto nie ma wtedy danych. Synchronizacja sprawdza kolejne dni. Przy wznowieniu zapisany `not_found_unverified` nie wysyła ponownego żądania, ale pozostaje w liczbie nierozstrzygniętych dni i otrzymuje osobny komunikat w szczegółach. Nie wolno prezentować takiego wznowienia jako pełnego sukcesu.
 
-Błąd importu FIT emituje komunikat z datą, numerem pliku w archiwum i klasą błędu; oryginalny ZIP pozostaje zachowany, a nieukończona transakcja FIT jest wycofana. Dziennik operacji jest stale widoczny na widoku głównym; po zakończeniu UI dopisuje podsumowanie, także dla błędów i nierozstrzygniętych dni. Nowa operacja pobierania, importu lub eksportu czyści panel poprzedniej operacji.
+Błąd importu FIT emituje komunikat z datą, numerem pliku w archiwum i klasą błędu; nieukończona transakcja FIT jest wycofana, a wznowienie pobiera ZIP ponownie. Dziennik operacji jest stale widoczny na widoku głównym; po zakończeniu UI dopisuje podsumowanie, także dla błędów i nierozstrzygniętych dni. Nowa operacja pobierania, importu lub eksportu czyści panel poprzedniej operacji.
 
 Komunikat „Rozpoczynanie importu FIT (n/N)” oznacza początek przetwarzania pliku. Po obsłużeniu archiwum aplikacja emituje osobny **„Wynik dnia”**: import bez błędów, liczba błędów FIT, błąd archiwum/pobierania, nierozstrzygnięty HTTP 404 albo pominięcie w trybie lokalnym. Sukces dotyczy danego dnia, także gdy inne dni w operacji pozostają nierozstrzygnięte.
 
 **„Podsumowanie całej operacji”** podaje żądany zakres, liczbę obsłużonych dni i osobne kategorie z jednostkami: dni z poprawnym importem, potwierdzony brak danych, pominięte dni bez lokalnego ZIP, błędy pobierania w dniach, błędy importu FIT w plikach, błędy archiwów w dniach oraz dni nierozstrzygnięte HTTP 404. Dla 404 podaje granice dat i przypomina, że brak danych nie został potwierdzony. Wynik ostatniego obsłużonego dnia jest osobną informacją. Nierozstrzygniętych 404 nie dodaje się do licznika błędów importu; przerwanie przed końcem zakresu jest jawne. CLI zachowuje niezerowy kod także przy samych nierozstrzygniętych dniach oraz końcowy JSON stanu po podsumowaniu tekstowym.
 
-„Pobierz dane” wykonuje pobieranie i import do PostgreSQL. Osobna operacja ponownego przetwarzania korzysta wyłącznie z lokalnych ZIP. Pasek postępu pokazuje aktualny dzień, etap i licznik ukończonych dni. „Zatrzymaj” bezpiecznie kończy pracę z zachowaniem transakcji i postępu. Zamknięcie okna podczas pracy wymaga potwierdzenia zatrzymania i wyjścia. Zwykłe zamknięcie kończy aplikację; pierwsza wersja nie pracuje w zasobniku ani według harmonogramu. Szczegóły w [specyfikacji UI](11-desktop-ui.md).
+„Pobierz nowe dane” i „Pobierz wszystko” wykonują pobieranie i przyrostowy import do PostgreSQL. Pasek postępu pokazuje aktualny dzień, etap i licznik ukończonych dni. „Zatrzymaj” bezpiecznie kończy pracę z zachowaniem transakcji i postępu. Zamknięcie okna podczas pracy wymaga potwierdzenia zatrzymania i wyjścia. Zwykłe zamknięcie kończy aplikację; pierwsza wersja nie pracuje w zasobniku ani według harmonogramu. Szczegóły w [specyfikacji UI](11-desktop-ui.md).
 
 ## Logowanie
 
@@ -50,15 +50,15 @@ python -m garmin_database.bootstrap.cli status
 python -m garmin_database.bootstrap.cli reprocess --from 2024-01-01
 ```
 
-`sync` nadgania brakujące dni do wczoraj. `reprocess` działa wyłącznie na lokalnych archiwach. Aktualizowanie archiwów przez ponowne pobranie to osobny, późniejszy etap.
+`sync` nadgania brakujące dni do dzisiaj. `reprocess` działa wyłącznie na lokalnych archiwach. `sync-all` ponownie pobiera cały zakres, `sync` pobiera przyrostowo.
 
 ## Wydajność i potok synchronizacji
 
-Synchronizacja ma jednego właściciela SQL i jednego pracownika sieciowego. Po pobraniu, pełnej walidacji ZIP i atomowym zapisie oryginału koordynator rejestruje próbę następnego dnia i zleca pobranie w tle. W tym czasie importuje bieżący ZIP. Oczekuje najwyżej jeden kolejny dzień; kolejka przechowuje ścieżkę i wynik operacji, bez zatrzymywania gotowych payloadów ZIP w RAM. Klient Garmin zwraca w pamięci jeden bieżący ZIP, którego rozmiar zależy od danych źródłowych.
+Synchronizacja ma jednego właściciela SQL i jednego pracownika sieciowego. Po pobraniu i pełnej walidacji ZIP w pamięci koordynator rejestruje próbę następnego dnia i zleca pobranie w tle. W tym czasie importuje bieżący ZIP. Oczekuje najwyżej jeden kolejny dzień; bufor przechowuje najwyżej jeden kolejny ZIP oprócz aktualnie importowanego. Klient Garmin zwraca w pamięci jeden bieżący ZIP, którego rozmiar zależy od danych źródłowych.
 
 ```mermaid
 flowchart LR
-    N[Jedna sekwencja HTTP] --> Z[Walidacja i atomowy zapis ZIP]
+    N[Jedna sekwencja HTTP] --> Z[Walidacja i bufor ZIP w pamięci]
     Z --> Q[Najwyżej jeden następny dzień]
     Q --> C[Koordynator: kolejność dni i FIT]
     C --> B[Partie wiadomości i COPY pól]
@@ -69,7 +69,7 @@ Blokada writera i inicjalizacja obejmują całą operację. Sieciowy pracownik n
 
 Przerwa domyślna 3 s zaczyna się przed kolejnym żądaniem, po zakończeniu poprzedniego pobrania; może upływać podczas importu. Aplikacja wykonuje najwyżej trzy próby. `retry_attempts=0` wyłącza dodatkowe ponowienia SDK; `Retry-After` i oczekiwanie przed ponowieniem należą do koordynatora. Są to ustawienia aplikacji, nie deklarowane limity Garmin. Odpowiedź 401/403/429 pobrana z wyprzedzeniem nie uruchamia następnego żądania; można dokończyć import bieżącego archiwum, zanim koordynator zaprezentuje błąd kolejnego dnia.
 
-Anulowanie przerywa oczekiwanie koordynatora, przerwę sieciową i dekodowanie. Zamykanie operacji dołącza pracownika zamiast pozostawiać go w tle. Bieżące żądanie HTTP może wymagać oczekiwania do zakończenia/timeoutu. Poprawnie otrzymany ZIP zostaje zachowany również wtedy, gdy podczas HTTP anulowano import lub wystąpił błąd writera; wznowienie wykorzysta oryginał. Jeśli pracownik otrzymał nierozstrzygnięte 404, koordynator zapisuje ten stan także podczas anulowania, bez powtórzenia żądania przy wznowieniu. Próba anulowana podczas przerwy, przed wywołaniem źródła, jest wycofywana z licznika prób. Błąd lokalnego zapisu ZIP nie jest powodem automatycznego ponowienia HTTP.
+Anulowanie przerywa oczekiwanie koordynatora, przerwę sieciową i dekodowanie. Zamykanie operacji dołącza pracownika zamiast pozostawiać go w tle. Bieżące żądanie HTTP może wymagać oczekiwania do zakończenia/timeoutu. Po anulowaniu bufory ZIP są zwalniane; wznowienie ponawia pobieranie. Jeśli pracownik otrzymał nierozstrzygnięte 404, koordynator zapisuje ten stan także podczas anulowania, bez powtórzenia żądania przy wznowieniu. Próba anulowana podczas przerwy, przed wywołaniem źródła, jest wycofywana z licznika prób. Pracownik sieciowy nie zapisuje ZIP na dysku.
 
 ### Partie SQL i atomowość
 
@@ -79,7 +79,7 @@ Wiadomości trafiają do jednego `INSERT ... SELECT FROM unnest(...) RETURNING i
 
 Każda partia należy do tej samej transakcji FIT. Flush nie wykonuje commitu. Końcowy błąd CRC lub anulowanie cofa wszystkie zapisane partie tego FIT, także wymianę wcześniejszego dekodowania i jego rewizję. Dopiero poprawny koniec FIT aktywuje wynik i zatwierdza transakcję. Błąd SQL zachowuje wcześniejszy wynik i nie oznacza oryginalnych bajtów FIT jako uszkodzonych; status integralności `invalid` wymaga błędu dekodera FIT.
 
-Przed rozpoczęciem dekodowania pierwszego FIT importer odczytuje i weryfikuje CRC wszystkich wpisów ZIP, liczy ich SHA-256 i rejestruje wszystkie powiązania w jednej transakcji metadanych. Dzięki temu snapshot czytelnika widzi pozostałe FIT jako oczekujące, zamiast pozornie kompletnego dnia po pierwszym pliku. Dla już zarejestrowanych wpisów nie wykonuje ponownych INSERT i nie podbija rewizji pustym ON CONFLICT. Niezmieniony, kompletny ZIP w tym samym profilu przechodzi strumieniowe porównanie SHA-256, lecz nie jest ponownie dekompresowany i nie tworzy decode_runs. Nowe, niekompletne i wymuszone archiwa nadal są weryfikowane.
+Przed rozpoczęciem dekodowania pierwszego FIT importer odczytuje i weryfikuje CRC wszystkich wpisów ZIP, liczy ich SHA-256 i rejestruje wszystkie powiązania w jednej transakcji metadanych. Dzięki temu snapshot czytelnika widzi pozostałe FIT jako oczekujące, zamiast pozornie kompletnego dnia po pierwszym pliku. Dla już zarejestrowanych wpisów nie wykonuje ponownych INSERT i nie podbija rewizji pustym ON CONFLICT. Sieciowy ZIP jest sprawdzany przy każdym pobraniu. Kompletne FIT w tym samym profilu są pomijane; bez nowych lub nieukończonych FIT nie powstaje decode_runs. Lokalny importer CLI zachowuje skrót dla identycznego kompletnego ZIP.
 
 ### Kolejność i podsumowania
 

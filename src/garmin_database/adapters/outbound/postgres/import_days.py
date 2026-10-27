@@ -56,7 +56,7 @@ class ImportDays:
     def attempt(self, day):
         with self.db.connect() as conn:
             conn.execute(
-                "INSERT INTO import_days(day,download_status,attempts) VALUES(%s,'pending',1) ON CONFLICT(day) DO UPDATE SET attempts=import_days.attempts+1",
+                "INSERT INTO import_days(day,download_status,attempts) VALUES(%s,'pending',1) ON CONFLICT(day) DO UPDATE SET download_status='pending',attempts=import_days.attempts+1",
                 (day,),
             )
 
@@ -80,3 +80,31 @@ class ImportDays:
                 "UPDATE import_days SET attempts=greatest(attempts-1,0) WHERE day=%s",
                 (day,),
             )
+
+    def download_days(self, start, end, refresh_all=False):
+        from garmin_database.domain.time import dates
+
+        requested = list(dates(start, end))
+        if refresh_all:
+            return requested
+        with self.db.connect(readonly=True) as conn:
+            last = conn.execute(
+                "SELECT max(day) FROM archives WHERE day BETWEEN %s AND %s",
+                (start.isoformat(), end.isoformat()),
+            ).fetchone()[0]
+            pending = {
+                r[0]
+                for r in conn.execute(
+                    """SELECT day FROM import_days d
+                WHERE day BETWEEN %s AND %s AND (download_status IN ('pending','failed','local_invalid','not_found_unverified')
+                OR download_status='downloaded' AND (NOT EXISTS(SELECT 1 FROM archives a WHERE a.day=d.day)
+                OR EXISTS(SELECT 1 FROM archives a JOIN archive_entries e ON e.archive_id=a.id WHERE a.day=d.day
+                AND NOT EXISTS(SELECT 1 FROM file_decodes f WHERE f.fit_file_id=e.fit_file_id AND f.is_active=1 AND f.status='complete'))))""",
+                    (start.isoformat(), end.isoformat()),
+                )
+            }
+        return [
+            day
+            for day in requested
+            if last is None or day.isoformat() >= last or day.isoformat() in pending
+        ]

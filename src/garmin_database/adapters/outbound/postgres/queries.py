@@ -203,6 +203,9 @@ class Queries:
                     (start.isoformat(), end.isoformat()),
                 )
             ]
+        from garmin_database.domain.time import today
+
+        ongoing = [today().isoformat()] if start <= today() <= end else []
         missing = [
             d.isoformat()
             for d in dates(start, end)
@@ -210,6 +213,7 @@ class Queries:
         ]
         return {
             "missing_days": missing,
+            "ongoing_days": ongoing,
             "unimported_or_partial_days": pending,
             "decode_status": "partial" if pending else "complete",
         }

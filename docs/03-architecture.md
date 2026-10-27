@@ -65,15 +65,15 @@ Port odczytu udostępnia cały spójny snapshot, a nie niezależne repozytoria o
 ```mermaid
 flowchart LR
     G[Garmin: dzienny ZIP] --> D[Pobranie i walidacja]
-    D --> R[Oryginalny ZIP]
+    D --> R[ZIP w pamięci]
     R --> P[Dekoder FIT]
     P --> S[PostgreSQL]
     S --> E[Eksport JSON na polecenie]
 ```
 
-Pobieranie, dekodowanie i eksport to odrębne operacje. Zmiana parsera nie wymaga ponownego pobierania. Dekoder czyta FIT z ZIP; nie utrzymujemy osobnego rozpakowanego archiwum, zrzutów JSON ani kopii bazy.
+Pobieranie, dekodowanie i eksport to odrębne operacje. Ponowne dekodowanie danych sieciowych wymaga ponownego pobrania; lokalne starsze ZIP można nadal przetworzyć przez CLI. Dekoder czyta FIT z ZIP; nie utrzymujemy osobnego rozpakowanego archiwum, zrzutów JSON ani kopii bazy.
 
-`application/use_cases/download_ahead.py` uruchamia jednego pracownika sieciowego, który może pobrać i atomowo zapisać następny ZIP podczas importu bieżącego. Nie wykonuje SQL. `Sync` pozostaje właścicielem blokady, inicjalizacji, prób i rejestracji w kolejności dni. Zamykanie operacji dołącza pracownika i zachowuje stan potrzebny do wznowienia. Nie ma niezależnych writerów dniowych ani zmiany algorytmu podsumowań.
+`application/use_cases/download_ahead.py` uruchamia jednego pracownika sieciowego, który może pobrać i zachować w pamięci następny ZIP podczas importu bieżącego. Nie wykonuje SQL. `Sync` pozostaje właścicielem blokady, inicjalizacji, prób i rejestracji w kolejności dni. Zamykanie operacji dołącza pracownika i zachowuje stan potrzebny do wznowienia. Nie ma niezależnych writerów dniowych ani zmiany algorytmu podsumowań.
 
 `Sync.run_summary` zwraca `SyncSummary` z zakresem, osobnymi licznikami i wynikiem ostatniego dnia; `Sync.run` zachowuje liczbowy wynik problemów dla dotychczasowych wywołań. `Services.sync(detailed=True)` udostępnia wynik strukturalny GUI i CLI. `application/sync_messages.py` formatuje wspólne komunikaty całej operacji bez zależności od Qt. Wyniki podsumowania powstają z przebiegu operacji, bez dodatkowych skanów pomiarów w PostgreSQL.
 
@@ -83,13 +83,13 @@ Adapter PostgreSQL rozdziela obsługę archiwum (`imports.py`), kontekst ramek F
 
 ```text
 data/
-  raw/YYYY-MM-DD.zip
+  raw/YYYY-MM-DD.zip  # wcześniejsze oryginały / lokalne źródła CLI
 local-runtime/                 # lokalne zasoby wdrożenia; poza Git
 exports/GarminDatabase_DATA_CZAS/  # osobny pakiet: history/, details/, manifest.json
 logs/                    # log techniczny, bez wartości zdrowotnych i sekretów
 ```
 
-Ścieżka danych jest konfigurowalna. Katalog zawiera oryginalne archiwa, a dane SQL znajdują się w osobnym serwerze PostgreSQL. Aplikacja zapisuje ścieżki archiwów względem katalogu danych. Serwer może działać na tym samym urządzeniu lub docelowym hoście; typ bazy i kod pozostają takie same. Konfiguracja: [PostgreSQL](13-postgresql-setup.md).
+Ścieżka danych jest konfigurowalna. Katalog może zawierać wcześniejsze oryginalne archiwa, a dane SQL znajdują się w osobnym serwerze PostgreSQL. Dla lokalnych ZIP aplikacja zapisuje ścieżki względem katalogu danych; remote/YYYY-MM-DD.zip to identyfikator sieciowego pochodzenia bez pliku na dysku. Serwer może działać na tym samym urządzeniu lub docelowym hoście; typ bazy i kod pozostają takie same. Konfiguracja: [PostgreSQL](13-postgresql-setup.md).
 
 Aplikacja Windows zapisuje ustawienia w `%LOCALAPPDATA%/GarminDatabase/settings.json`, a sesję zaszyfrowaną DPAPI w `auth/session.bin` pod tym samym katalogiem. Nie zapisuje hasła ani kodu MFA. Szczegóły: [UI i ustawienia](11-desktop-ui.md).
 
@@ -121,12 +121,12 @@ Identyczny FIT obecny w kilku archiwach ma jedną reprezentację danych i wiele 
 
 ## Wierność danych
 
-- Oryginalny ZIP jest niezmieniany i pozostaje podstawą ponownego dekodowania.
+- Sieciowy ZIP jest buforem operacji, bez trwałego zapisu; tożsamość FIT i pochodzenie pozostają w SQL. Wcześniejszych lokalnych oryginałów nie usuwać.
 - Zachować precyzję, tablice, kody wyliczeniowe, jednostki i oryginalne znaczniki czasu. Nie interpolować ani nie redukować próbek.
 - Rozróżniać brak pola, wartość nieważną według FIT i błąd dekodowania. Nie zastępować ich zerem.
-- Nie zgadywać znaczenia nieznanych pól. Zachować ich identyfikatory i odczytywalną reprezentację; nieobsługiwane dane pozostają również w oryginalnym FIT.
+- Nie zgadywać znaczenia nieznanych pól. Zachować ich identyfikatory i odczytywalną reprezentację; ponowna analiza bajtów źródłowych wymaga pobrania lub posiadania starszego lokalnego FIT.
 - Dzień żądania jest metadanym pobrania, nie automatycznie datą każdego pomiaru. Plik może zawierać rekordy przekraczające granicę dnia.
-- `Europe/Warsaw` określa granicę „wczoraj”. Gdy dane podają UTC, zachować UTC i udostępniać jednoznaczną reprezentację czasu. Nie zakładać, że wszystkie lokalne czasy Garmin są czasem Warszawy. Czas niejednoznaczny oznaczyć, zwłaszcza przy zmianie czasu lub podróży.
+- `Europe/Warsaw` określa granicę bieżącego dnia. Gdy dane podają UTC, zachować UTC i udostępniać jednoznaczną reprezentację czasu. Nie zakładać, że wszystkie lokalne czasy Garmin są czasem Warszawy. Czas niejednoznaczny oznaczyć, zwłaszcza przy zmianie czasu lub podróży.
 
 ## Wspólny odczyt eksportu i MCP
 
@@ -146,6 +146,6 @@ Specyfikacja transportu: [MCP stdio](https://modelcontextprotocol.io/specificati
 
 ## Trwałość zapisu
 
-Pobranie jest zapisywane do pliku tymczasowego w katalogu docelowym, weryfikowane i atomowo przenoszone do nazwy docelowej. Istniejące archiwum nie jest nadpisywane. Tymczasowy plik jest usuwany po błędzie. Rejestracja archiwum wraz ze wszystkimi pochodzeniami FIT i dekodowanie każdego FIT mają osobne transakcje PostgreSQL. Pozostałe pliki są widoczne jako oczekujące przed publikacją pierwszego wyniku. Stany pobrania i dekodowania są niezależne; wznowienie pomija ukończone FIT i nie dekompresuje ponownie identycznego, kompletnego ZIP.
+Pobranie jest walidowane i przechowywane wyłącznie w pamięci do końca importu.  Rejestracja archiwum wraz ze wszystkimi pochodzeniami FIT i dekodowanie każdego FIT mają osobne transakcje PostgreSQL. Pozostałe pliki są widoczne jako oczekujące przed publikacją pierwszego wyniku. Stany pobrania i dekodowania są niezależne; wznowienie pobiera ZIP ponownie i pomija ukończone FIT po ich SHA-256.
 
-Zapis jest chroniony blokadą sesyjną PostgreSQL advisory dla bazy/schematu oraz blokadą OS katalogu ZIP. Importer, inicjalizacja, synchronizacja i publikacja cache respektują tę samą blokadę. Awaria po zapisie ZIP, ale przed rejestracją w bazie, musi zostać rozpoznana przy następnym uruchomieniu: sprawdzić lokalny ZIP zamiast ponownie go pobierać.
+Zapis jest chroniony blokadą sesyjną PostgreSQL advisory dla bazy/schematu oraz blokadą OS katalogu ZIP. Importer, inicjalizacja, synchronizacja i publikacja cache respektują tę samą blokadę. Awaria przed ukończeniem importu wymaga ponownego pobrania dnia; transakcje ukończonych FIT pozostają zachowane.

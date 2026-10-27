@@ -29,3 +29,30 @@ class Archives:
         if path.exists():
             raise FileExistsError("Archiwum już istnieje")
         atomic_write(path, payload)
+
+
+class MemoryArchives:
+    """Bounded network staging; original archives are never persisted."""
+
+    def __init__(self):
+        self.payloads = {}
+
+    def restore_manifest(self):
+        return {}
+
+    def exists(self, day):
+        return day in self.payloads
+
+    def save(self, day, payload):
+        self.payloads[day] = payload
+
+    def path(self, day):
+        from garmin_database.application.archive_payload import ArchivePayload
+
+        return ArchivePayload(day, self.payloads[day])
+
+    def release(self, day):
+        self.payloads.pop(day, None)
+
+    def clear(self):
+        self.payloads.clear()

@@ -31,7 +31,7 @@ class PeriodInput(BaseModel):
         str,
         Field(
             pattern=r"^\d{4}-\d{2}-\d{2}$",
-            description="Ostatni dzień włącznie, najpóźniej wczoraj",
+            description="Ostatni dzień włącznie, najpóźniej dzisiaj",
         ),
     ]
     metrics: Annotated[

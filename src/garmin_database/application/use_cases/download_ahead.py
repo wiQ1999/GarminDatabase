@@ -90,8 +90,8 @@ class DownloadAhead:
             raise
         except Exception as error:
             return error
-        # Preserve a successfully received original even if the SQL owner failed
-        # or cancellation arrived during HTTP. It is recoverable on the next run.
-        # A local save error propagates; it never repeats the network request.
+        # The store controls retention: network staging is memory-only;
+        # legacy local import tests may use a persistent store.
+        # A staging error propagates; it never repeats the network request.
         self.archives.save(day, payload)
         return None

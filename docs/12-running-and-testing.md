@@ -10,7 +10,7 @@ Windows: `.venv/Scripts/python.exe -m garmin_database` lub `dist/GarminDatabase/
 
 1. W Ustawieniach sprawdź folder archiwów i połączenie PostgreSQL. Nie podawaj hasła w polu połączenia; ustawienia je odrzucą.
 2. Zaloguj się do Garmin, jeśli chcesz pobierać nowe dni. Import lokalnych ZIP nie wymaga sesji.
-3. „Pobierz dane” nadrabia dni do wczoraj Europe/Warsaw i importuje do PostgreSQL. „Przetwórz ponownie” wymienia wyniki dekodowania atomowo.
+3. „Pobierz nowe dane” odświeża ostatni pobrany dzień i nadrabia dane do dzisiaj Europe/Warsaw wraz z wcześniejszymi nieukończonymi importami. „Pobierz wszystko” pobiera cały zakres. Nowe ZIP nie są zapisywane na dysku; FIT są deduplikowane po SHA-256 w SQL.
 4. Dane pokazują szczegóły dnia, źródłowe podsumowania Garmin lub oznaczone średnie pięciu obsługiwanych parametrów. Wykres odświeża się automatycznie. Trend jest wyłącznie warstwą prezentacji.
 5. Eksport tworzy nowy folder z historią podsumowań, szczegółami i manifestem. Zachowuje wcześniejsze pakiety.
 
@@ -157,7 +157,7 @@ Przykładowe argumenty metod odczytu:
 {"date_from":"2026-09-01","date_to":"2026-09-30","metrics":["monitoring.heart_rate","hrv_value.value"]}
 ```
 
-Zakres obejmuje obie daty w Warszawie i kończy się najpóźniej wczoraj. Wynik jest w `structuredContent.series`; seria podaje `parameter`, `unit`, `description`, `aggregation`, `precision`, `columns` i tablicę wierszy `data`. Krótka część tekstowa nie powiela JSON. Czas jest lokalny z pełną datą i offsetem, np. `2026-10-22T13:30:00+02:00`. Dni zmiany czasu mają rzeczywiste granice 23/25 godzin; PostgreSQL i eksport v2 zachowują momenty UTC.
+Zakres obejmuje obie daty w Warszawie i kończy się najpóźniej dzisiaj. Wynik jest w `structuredContent.series`; seria podaje `parameter`, `unit`, `description`, `aggregation`, `precision`, `columns` i tablicę wierszy `data`. Krótka część tekstowa nie powiela JSON. Czas jest lokalny z pełną datą i offsetem, np. `2026-10-22T13:30:00+02:00`. Dni zmiany czasu mają rzeczywiste granice 23/25 godzin; PostgreSQL i eksport v2 zachowują momenty UTC.
 
 `description` występuje zarówno w `metrics[]` katalogu, jak i `series[]` obu metod odczytu. Ma `version`, `language`, `reviewed_on`, `meaning`, `measurement`, `limitations`, `presentation`, `evidence` i `sources[]` (`title`, `url`). To lokalnie przechowywana polska parafraza publicznych materiałów Garmin, a nie tekst pobierany z internetu podczas zapytania. `manufacturer_explanation` oznacza opis funkcji przez producenta; `fit_profile_only` ograniczony opis pola; `not_documented` brak zweryfikowanej interpretacji. Wersja opisu jest niezależna od rewizji danych i algorytmu agregacji. Dodanie tego pola jest rozszerzeniem odpowiedzi v1 i nie zmienia wartości ani kolumn. [Katalog objaśnień i zasady porównania z Garmin Connect](14-parameter-descriptions.md).
 

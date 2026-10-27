@@ -1,6 +1,9 @@
 """Composition root for desktop/CLI. Architecture: docs/03-architecture.md."""
 
-from garmin_database.adapters.outbound.filesystem.archives import Archives
+from garmin_database.adapters.outbound.filesystem.archives import (
+    Archives,
+    MemoryArchives,
+)
 from garmin_database.adapters.outbound.filesystem.files import (
     open_directory,
     open_location,
@@ -23,7 +26,15 @@ from garmin_database.domain.cancellation import DeadlineStop
 
 
 def create_sync(db, source=None, delay=3.0):
-    return Synchronize(ImportDays(db), Archives(db.root), Importer(db), source, delay)
+    sync = Synchronize(
+        ImportDays(db),
+        MemoryArchives() if source is not None else Archives(db.root),
+        Importer(db),
+        source,
+        delay,
+    )
+    sync.network = source is not None
+    return sync
 
 
 def create_exporter(db, settings=None, settings_path=None):
@@ -119,10 +130,12 @@ class Services:
         delay=3.0,
         *,
         detailed=False,
+        refresh_all=False,
     ):
         sync = create_sync(
             self.db, None if local_only else self.source_factory(), delay
         )
+        sync.refresh_all = refresh_all
         run = sync.run_summary if detailed else sync.run
         return run(
             start,

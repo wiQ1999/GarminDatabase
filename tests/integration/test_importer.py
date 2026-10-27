@@ -130,7 +130,8 @@ def test_download_then_resume(tmp_path):
     sync = Sync(db, s, 0)
     sync.run(date(2024, 6, 19), date(2024, 6, 19), threading.Event())
     sync.run(date(2024, 6, 19), date(2024, 6, 19), threading.Event())
-    assert s.calls == 1 and db.status()["fields"] == 8
+    assert s.calls == 2 and db.status()["fields"] == 8
+    assert not (tmp_path / "raw").exists()
 
 
 @pytest.mark.integration

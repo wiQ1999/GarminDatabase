@@ -698,3 +698,18 @@ def test_startup_database_error_explains_password_failure(
     assert ui.main(["--settings-file", str(settings_path)]) == 1
     assert "STARTUP/PASSWORD_MISSING" in messages[0]
     assert "pgpass" in messages[0] and "private-secret" not in messages[0]
+
+
+def test_download_menu_and_current_day_range(qtbot, tmp_path):
+    from garmin_database.domain.time import today
+    w = window(qtbot, tmp_path)
+    day = today()
+    current = QDate(day.year, day.month, day.day)
+    assert w.download_button.text() == "Pobierz nowe dane"
+    assert w.download_all_button.text() == "Pobierz wszystko"
+    labels = {button.text() for button in w.findChildren(QPushButton)}
+    assert "Importuj lokalne archiwa" not in labels
+    assert "Przetwórz ponownie" not in labels
+    assert w.chart_to.date() == current
+    assert w.chart_to.maximumDate() == current
+    w.close()

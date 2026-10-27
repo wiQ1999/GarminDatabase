@@ -391,7 +391,7 @@ def test_404_is_explained_and_next_day_downloads_then_resume_reports_unresolved(
     assert db.status()["archives"] == 1
     stages.clear()
     assert sync.run(begin, end, threading.Event(), progress) == 1
-    assert len(source.calls) == 2
+    assert source.calls == ["2024-01-01", "2024-01-02", "2024-01-02"]
     assert any("poprzednio HTTP 404" in stage for stage in stages)
     assert db.status()["days"] == {"not_found_unverified": 1, "downloaded": 1}
 

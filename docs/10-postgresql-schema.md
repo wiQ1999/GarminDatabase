@@ -20,7 +20,7 @@ Przechowujemy fizyczne pola FIT z ich wartościami źródłowymi, definicjami i 
 
 Ustalony zestaw: `fitdecode==0.11.0` do struktury, fizycznych definicji i wartości raw oraz publiczny profil `garmin-fit-sdk==21.218.0` do aktualnych nazw, jednostek i reguł. W `decoder_profiles.options_json` zapisać obie wersje, pochodzenie semantyki i sposób rozwijania. Reguły wariantu, np. `steps`, mają pierwszeństwo przed skalą pola nadrzędnego `cycles`. Nie nakładać konwersji profilu SDK na już przeskalowane wartości `fitdecode.value` — źródłem jest `raw_value`.
 
-Oryginalny ZIP pozostaje na dysku. Baza nie kopiuje całych FIT jako BLOB ani nie utrzymuje rozpakowanych plików. Identyczne FIT występujące w różnych ZIP mają jedną reprezentację danych w bazie i wiele powiązań z archiwami. To deduplikacja bajtów pliku po SHA-256, nie zgadywanie, czy podobne pomiary są duplikatami.
+Sieciowy ZIP jest buforowany tylko w pamięci; wcześniej zapisane oryginały pozostają na dysku. Baza nie kopiuje całych FIT jako BLOB ani nie utrzymuje rozpakowanych plików. Identyczne FIT występujące w różnych ZIP mają jedną reprezentację danych w bazie i wiele powiązań z archiwami. To deduplikacja bajtów pliku po SHA-256, nie zgadywanie, czy podobne pomiary są duplikatami.
 
 Deduplikacja nie zakłada, że podobne pomiary pochodzą z tego samego FIT. Nie stosujemy deduplikacji po samej parze czas–wartość ani odrzucania powtarzających się wartości.
 
@@ -31,9 +31,9 @@ Deduplikacja nie zakłada, że podobne pomiary pochodzą z tego samego FIT. Nie 
 | `schema_migrations` | Zastosowane migracje i hash ich SQL. |
 | `decoder_profiles` | Wersja parsera, profilu FIT oraz opcje dekodowania. |
 | `import_days` | Wszystkie sprawdzone daty, status pobrania, próby i bezpieczne metadane błędu. |
-| `archives` | Jeden oryginalny ZIP dla daty; ścieżka względna, rozmiar i SHA-256. |
+| `archives` | Rejestr dnia źródłowego ZIP; dla sieci ścieżka remote/YYYY-MM-DD.zip jest identyfikatorem, nie plikiem. Rozmiar i hash opisują pierwszą rejestrację. |
 | `fit_files` | Unikatowe treści FIT identyfikowane SHA-256; wersje nagłówka i integralność. |
-| `archive_entries` | Każde wystąpienie pliku w ZIP, z pozycją wpisu, nazwą i kategorią. |
+| `archive_entries` | Pochodzenie FIT, nazwa i kategoria. Sieciowe odświeżenie dopisuje nowe treści z kolejnym entry_index; pozycja w nowej odpowiedzi nie zastępuje wcześniejszego powiązania. |
 | `decode_runs` | Przebieg zadania dekodowania. |
 | `file_decodes` | Stan dekodowania konkretnego pliku określoną wersją parsera. |
 | `field_catalog` | Nazwy, jednostki, skala, offset i semantyka pól według przypiętego profilu. |
@@ -72,7 +72,7 @@ Numery lokalnych wiadomości są wielokrotnie używane i redefiniowane wewnątrz
 
 Wartości skalarne nie są pakowane do JSON. Tablice zachowują długość, kolejność i pozycje `null`, także gdy część elementów jest nieważna według FIT. `uint64` spoza zakresu signed int64 należy zapisać jako liczbę dziesiętną w tekście; w tablicach stosować jawnie oznaczone obiekty, np. `{"integer_text":"18446744073709551614"}`. Nie konwertować takich liczb do DOUBLE PRECISION. Bajty są tablicą liczb 0–255, a nie zgadywanym tekstem. Nieprawidłowe sekwencje tekstowe pozostają odtwarzalne z oryginału i muszą mieć wpis w `decode_issues`.
 
-`validity` rozróżnia poprawne pole, nieważną wartość FIT, częściowo nieważną tablicę i błąd dekodowania. „Valid” oznacza poprawność reprezentacji FIT, nie prawidłowy wynik zdrowotny ani pełną interpretację wszystkich kodów specjalnych. Wartości specjalne mieszczące się w typie bazowym pozostają zachowane. Brak pola w definicji to brak wiersza, nie zero ani `null` z pomiaru. Sentinel nieważności rozpoznaje dekoder według typu bazowego; jego oryginalne bajty pozostają w ZIP.
+`validity` rozróżnia poprawne pole, nieważną wartość FIT, częściowo nieważną tablicę i błąd dekodowania. „Valid” oznacza poprawność reprezentacji FIT, nie prawidłowy wynik zdrowotny ani pełną interpretację wszystkich kodów specjalnych. Wartości specjalne mieszczące się w typie bazowym pozostają zachowane. Brak pola w definicji to brak wiersza, nie zero ani `null` z pomiaru. Sentinel nieważności rozpoznaje dekoder według typu bazowego; sieciowe bajty źródłowe nie są trwale przechowywane.
 
 Przechowujemy wartości przed skalowaniem. Rozpoznane pola skalarne udostępnia widok `v_numeric_parameters`, stosujący wyłącznie regułę profilu `raw / scale - offset`. Jest to dekodowanie jednostki, nie obliczanie nowego wskaźnika. Widok wymaga jawnego `numeric_projection_enabled=1` w katalogu: importer włącza go dopiero dla jednoznacznej reguły skalarnej. Pola bitowe, wieloskładnikowe i enumy nie stają się automatycznie pomiarami liczbowymi. Tablicowe reguły skali i jednostek SDK pozostają w `profile_metadata_json`. Typy wyliczeniowe zachowują kody; etykiety pochodzą z metadanych profilu. Pola nieznane nie otrzymują zgadywanej skali ani jednostki.
 

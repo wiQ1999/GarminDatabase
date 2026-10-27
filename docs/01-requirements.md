@@ -16,9 +16,9 @@ Zachować dane dostępne w dziennym eksporcie dobrostanu Garmin i udostępnić j
 
 ## Dostępny zakres
 
-1. Pobieranie dziennego ZIP dobrostanu przez WebAPI. Domyślny początek historii to 2024-01-01, koniec to wczoraj według Europe/Warsaw. Użytkownik może zawęzić zakres.
-2. Pobieranie brakujących dni, import lokalnych ZIP i ponowne dekodowanie bez ponownego pobierania. Przerwane operacje można wznowić; ukończone dni nie są automatycznie aktualizowane.
-3. Zachowanie oryginalnych archiwów, definicji i fizycznych pól FIT w PostgreSQL, także bez rozpoznanej nazwy lub semantyki. Identyczne treści FIT są deduplikowane po SHA-256.
+1. Pobieranie dziennego ZIP dobrostanu przez WebAPI. Domyślny początek historii to 2024-01-01, koniec to dzisiaj według Europe/Warsaw. Użytkownik może zawęzić zakres.
+2. Pobieranie przyrostowe od ostatniego pobranego dnia oraz pobieranie całego zakresu. Wcześniejsze błędy i nieukończone importy są ponawiane. Import lokalnych ZIP i ponowne dekodowanie pozostają w CLI.
+3. Zachowanie definicji i fizycznych pól FIT w PostgreSQL bez trwałego zapisywania pobieranych ZIP, także bez rozpoznanej nazwy lub semantyki. Identyczne treści FIT są deduplikowane po SHA-256.
 4. Ekrany Start, Dane, Eksport i Ustawienia; postęp, zatrzymanie i przeglądanie już zatwierdzonych danych podczas importu.
 5. Szczegóły pojedynczego dnia. Dłuższe zakresy pokazują oryginalne podsumowania Garmin albo oznaczone średnie dzienne HRV, tętna, oddechu, saturacji i stresu. Wykres odświeża się automatycznie; opcjonalny trend jest tylko prezentacją.
 6. Ręczny eksport JSON v2 z wyborem parametrów, zakresu, dnia/miesiąca podsumowań i ostatnich N dni szczegółów. Każdy eksport tworzy nowy folder i zachowuje poprzednie pakiety.

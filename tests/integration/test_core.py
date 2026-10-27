@@ -55,7 +55,7 @@ def test_legacy_export_settings_ignore_full_samples(tmp_path):
 @pytest.mark.parametrize(
     "start,end",
     [
-        (yesterday() + timedelta(days=1), yesterday() + timedelta(days=1)),
+        (yesterday() + timedelta(days=2), yesterday() + timedelta(days=2)),
         (yesterday(), yesterday() - timedelta(days=1)),
     ],
 )

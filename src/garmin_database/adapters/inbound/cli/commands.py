@@ -8,7 +8,7 @@ from datetime import date
 from garmin_database.application.read_models import select_parameters
 from garmin_database.application.sync_messages import sync_summary_text
 from garmin_database.domain.cancellation import Cancelled
-from garmin_database.domain.time import yesterday
+from garmin_database.domain.time import today
 
 
 def parse_args(argv):
@@ -16,7 +16,7 @@ def parse_args(argv):
         description="GarminDatabase — import, status i eksport"
     )
     parser.add_argument(
-        "command", choices=["sync", "import-local", "reprocess", "status", "export"]
+        "command", choices=["sync", "sync-all", "import-local", "reprocess", "status", "export"]
     )
     parser.add_argument("--data-dir")
     parser.add_argument("--settings-file")
@@ -24,7 +24,7 @@ def parse_args(argv):
         "--from", dest="start", type=date.fromisoformat, default=date(2024, 1, 1)
     )
     parser.add_argument(
-        "--to", dest="end", type=date.fromisoformat, default=yesterday()
+        "--to", dest="end", type=date.fromisoformat, default=today()
     )
     parser.add_argument("--output")
     parser.add_argument(
@@ -67,15 +67,16 @@ def export_files(args, settings, db, stop):
 
 
 def run_command(args, services, settings, stop):
-    if args.command in {"sync", "import-local", "reprocess"}:
+    if args.command in {"sync", "sync-all", "import-local", "reprocess"}:
         result = services.sync(
             args.start,
             args.end,
             stop,
             progress,
-            local_only=args.command != "sync",
+            local_only=args.command not in {"sync", "sync-all"},
             force=args.command == "reprocess",
             detailed=True,
+            refresh_all=args.command == "sync-all",
         )
         print(sync_summary_text(result), flush=True)
         print(json.dumps(services.status(), ensure_ascii=False), flush=True)
