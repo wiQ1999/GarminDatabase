@@ -1,4 +1,4 @@
-"""Session persistence uses DPAPI, never a plaintext temporary token store."""
+"""Session persistence uses encrypted stores, never plaintext token files."""
 
 import logging
 
@@ -30,7 +30,9 @@ class GarminSource:
         self.api = None
         self.set_login_stage("connect", progress)
         api = None
+        token = None
         try:
+            token = self.login_token(email)
             api = self.factory(
                 email=email,
                 password=password,
@@ -39,7 +41,7 @@ class GarminSource:
             )
             # Inline JSON explicitly overrides upstream GARMINTOKENS environment
             # paths, so the library cannot persist an unencrypted token store.
-            api.login(self.login_token(email))
+            api.login(token)
             check_stop(stop)
             self.set_login_stage("session_save", progress)
             self.store.save(api.client.dumps())
@@ -50,6 +52,7 @@ class GarminSource:
         except Exception as error:
             raise login_failure(self.login_stage, error) from error
         finally:
+            token = None
             if api is not None:
                 api.password = None
                 api.prompt_mfa = None

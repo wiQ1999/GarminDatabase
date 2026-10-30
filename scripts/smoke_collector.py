@@ -41,7 +41,15 @@ def main():
                 [str(binary), *arguments], capture_output=True, text=True, timeout=30
             )
             if result.returncode:
-                print("Collector smoke failed; exit code", result.returncode)
+                print(
+                    "Collector smoke failed:",
+                    arguments[-1],
+                    "exit code",
+                    result.returncode,
+                )
+                # Only synthetic offline configuration is used by this smoke.
+                print(result.stdout[-4000:])
+                print(result.stderr[-4000:])
                 return 1
         assert not (base / "data").exists() and not (base / "state").exists()
     print("Collector smoke OK: offline status, disabled run, no data writes")

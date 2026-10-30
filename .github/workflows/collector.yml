@@ -52,6 +52,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python scripts/smoke_mcp.py --executable dist/GarminDatabaseMCP/GarminDatabaseMCP.exe
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/smoke_scheduler.py dist/GarminDatabaseCollector/GarminDatabaseCollector.exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -69,6 +71,17 @@ jobs:
   arm64:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: garmin_tests
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      GARMIN_TEST_DATABASE_DSN: host=127.0.0.1 port=55432 dbname=garmin_tests user=postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -85,6 +98,7 @@ jobs:
           mkdir -p work
           python scripts/build.py --only collector
           python scripts/smoke_collector.py dist/GarminDatabaseCollector/GarminDatabaseCollector
+          sudo --preserve-env=GARMIN_TEST_DATABASE_DSN "$(which python)" scripts/smoke_scheduler.py dist/GarminDatabaseCollector/GarminDatabaseCollector
       - uses: actions/upload-artifact@v4
         with:
           name: linux-arm64-collector-build

@@ -145,6 +145,7 @@ def test_systemd_apply_status_failure_and_disabled_do_not_start_sync(
     )
     assert not scheduler.status(config)["installed"]
     scheduler.apply(config)
+    assert files.config_path.stat().st_mode & 0o777 == 0o640
     assert scheduler.status(config) == {
         "installed": True,
         "enabled": True,

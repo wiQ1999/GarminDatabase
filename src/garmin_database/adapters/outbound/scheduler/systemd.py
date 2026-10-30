@@ -98,6 +98,8 @@ WantedBy=timers.target
         account = pwd.getpwnam(config.run_as)
         if account.pw_uid == 0:
             raise PermissionError("Kolektor wymaga konta bez uprawnień root")
+        os.chown(self.config_path, 0, account.pw_gid)
+        self.config_path.chmod(0o640)
         for directory in (
             config.state_dir,
             str(Path(config.session_path).parent),

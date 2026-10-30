@@ -138,9 +138,11 @@ def test_corrupt_session_never_reaches_network_or_exposes_exception():
 
     store, api = Mock(), Mock()
     store.load.side_effect = ValueError("synthetic-private-token HTTP 403")
-    source = GarminSource(store, factory=lambda **_: api)
+    factory = Mock(return_value=api)
+    source = GarminSource(store, factory=factory)
     with pytest.raises(SessionStorageError) as error:
         source.download_health_snapshot("2026-10-30")
     assert "synthetic-private" not in str(error.value)
     api.login.assert_not_called()
     api.download_health_snapshot.assert_not_called()
+    factory.assert_not_called()
