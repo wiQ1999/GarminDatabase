@@ -107,7 +107,9 @@ Zmiany parametru i filtrów automatycznie uruchamiają odczyt. UI wykonuje jedno
 
 Sortowanie punktów i obliczenie regresji odbywają się w workerze odczytu. Wyszukanie punktu pod kursorem używa wyszukiwania binarnego bez kopiowania współrzędnych wszystkich punktów przy każdym ruchu myszy. Ikony parametrów są współdzielone przez ograniczony cache w warstwie Qt.
 
-Planowany kolektor cykliczny dla Windows, Linux i Raspberry Pi OS ma [osobną specyfikację do realizacji](15-scheduled-collector.md). Będzie uruchamiany jako jednorazowy proces przez harmonogram systemowy i użyje istniejącego Sync bez Qt. Sesja, konfiguracja i status należą do maszyny kolektora, a PostgreSQL może działać na innym hoście. Protokół huba, zdalne sterowanie i uwierzytelnianie klientów Windows pozostają późniejszym zakresem. Połączenie z PostgreSQL używa protokołu serwera, bez współdzielenia pliku bazy przez sieć.
+[Kolektor cykliczny](15-scheduled-collector.md) dla Windows, Linux i Raspberry Pi OS jest jednorazowym procesem `bootstrap/collector.py`, uruchamianym przez harmonogram systemowy. `RunCollector` używa istniejącego Sync bez Qt; port runtime dostarcza zegar, blokady i trwały stan. Adaptery realizują Task Scheduler/systemd, DPAPI/AES-GCM i pliki konfiguracji. Sesja, konfiguracja i status należą do maszyny kolektora, a PostgreSQL może działać na innym hoście. Rejestracja zadania jest oddzielna od zapisu JSON. Protokół huba, zdalne sterowanie i uwierzytelnianie klientów Windows pozostają późniejszym zakresem.
+
+`Database.schema_ready()` sprawdza wersje i sumy schematu przez odczyt. `Services.prepare()` inicjalizuje bazę pod writerem tylko wtedy, gdy schemat tego wymaga. Odczyty GUI działają z bieżącym schematem podczas importu innego procesu. Odzyskiwanie markerów importu nadal odbywa się wyłącznie przy inicjalizacji pod blokadą. `SessionStore.lock()` obejmuje logowanie i cały sieciowy Sync tego samego magazynu, również zapis odświeżonych tokenów. Kolektor ma dodatkową blokadę instancji.
 
 ## Model danych PostgreSQL
 

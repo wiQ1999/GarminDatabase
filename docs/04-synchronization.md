@@ -35,11 +35,13 @@ Komunikat „Rozpoczynanie importu FIT (n/N)” oznacza początek przetwarzania 
 
 **„Podsumowanie całej operacji”** podaje żądany zakres, liczbę obsłużonych dni i osobne kategorie z jednostkami: dni z poprawnym importem, potwierdzony brak danych, pominięte dni bez lokalnego ZIP, błędy pobierania w dniach, błędy importu FIT w plikach, błędy archiwów w dniach oraz dni nierozstrzygnięte HTTP 404. Dla 404 podaje granice dat i przypomina, że brak danych nie został potwierdzony. Wynik ostatniego obsłużonego dnia jest osobną informacją. Nierozstrzygniętych 404 nie dodaje się do licznika błędów importu; przerwanie przed końcem zakresu jest jawne. CLI zachowuje niezerowy kod także przy samych nierozstrzygniętych dniach oraz końcowy JSON stanu po podsumowaniu tekstowym.
 
-„Pobierz nowe dane” i „Pobierz wszystko” wykonują pobieranie i przyrostowy import do PostgreSQL. Pasek postępu pokazuje aktualny dzień, etap i licznik ukończonych dni. „Zatrzymaj” bezpiecznie kończy pracę z zachowaniem transakcji i postępu. Zamknięcie okna podczas pracy wymaga potwierdzenia zatrzymania i wyjścia. Zwykłe zamknięcie kończy aplikację; pierwsza wersja nie pracuje w zasobniku ani według harmonogramu. Szczegóły w [specyfikacji UI](11-desktop-ui.md).
+„Pobierz nowe dane” i „Pobierz wszystko” wykonują pobieranie i przyrostowy import do PostgreSQL. Pasek postępu pokazuje aktualny dzień, etap i licznik ukończonych dni. „Zatrzymaj” bezpiecznie kończy pracę z zachowaniem transakcji i postępu. Zamknięcie okna podczas pracy ręcznej wymaga potwierdzenia zatrzymania i wyjścia. Okno nie pracuje w zasobniku. Osobny [kolektor cykliczny](15-scheduled-collector.md) używa tego samego Sync i harmonogramu systemowego; zamknięcie GUI nie wyłącza jego zadania. Zajęta blokada powoduje tylko wpis w logu automatu i oczekiwanie do następnego zwykłego terminu.
 
 ## Logowanie
 
 Logowanie odbywa się w formularzu ustawień Windows: e-mail, maskowane hasło i kod MFA, jeśli konto go wymaga. Hasło i kod nie są zapisywane. Sesja jest przechowywana poza projektem i bazą, w `%LOCALAPPDATA%/GarminDatabase/auth/session.bin`, zaszyfrowana DPAPI w zakresie użytkownika Windows. Wygaśnięcie sesji wymaga ponownego logowania i nie niszczy istniejących danych. Przeniesienie na inny komputer wymaga nowego logowania. Import lokalny i odczyty MCP nie wymagają logowania Garmin.
+
+Kolektor ma oddzielne logowanie CLI i sesję konta zadania. Linux/Pi używa szyfrowanego magazynu z poświadczeniem systemd. Brak sesji, lokalny błąd jej zabezpieczenia i odmowa HTTP mają strukturalne wyniki, a automatyzacja zachowuje pauzę sesji i Retry-After między procesami. Uszkodzony magazyn sesji nie wywołuje kolejnych prób sieciowych wewnątrz operacji.
 
 ## Polecenia realizowane przez moduł CLI
 

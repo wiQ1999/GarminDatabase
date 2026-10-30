@@ -4,9 +4,9 @@ Aplikacja Windows i rdzeń bez UI używają wyłącznie PostgreSQL 16+. Ten sam 
 
 ## Uruchomienie
 
-Projekt ma układ `src/`. Przed uruchomieniem źródeł, testów lub budowania zainstaluj pakiet w środowisku: `python -m pip install -e .` (albo `uv pip install --python .venv/Scripts/python.exe -e .`). Samo dodanie katalogu projektu do `PYTHONPATH` nie zastępuje instalacji. Punkty wejścia to `garmin-database`, `garmin-db` i `garmin-db-mcp`; działają także moduły `garmin_database.bootstrap.desktop`, `.cli` i `.mcp`.
+Projekt ma układ `src/`. Przed uruchomieniem źródeł, testów lub budowania zainstaluj pakiet w środowisku: `python -m pip install -e '.[desktop,mcp,collector]'` (albo odpowiednik uv dla wybranego interpretera). Samo dodanie katalogu projektu do `PYTHONPATH` nie zastępuje instalacji. Punkty wejścia to `garmin-database`, `garmin-db`, `garmin-db-mcp` i `garmin-db-collector`; działają także moduły `garmin_database.bootstrap.desktop`, `.cli`, `.mcp` i `.collector`. Sam kolektor wymaga dodatku `[collector]`, bez Qt/MCP, lub `requirements-collector.txt` i instalacji pakietu.
 
-Windows: `.venv/Scripts/python.exe -m garmin_database` lub `dist/GarminDatabase/GarminDatabase.exe` po standardowym buildzie. Ścieżka paczki przy własnym `--destination` ma ten sam układ we wskazanym folderze. Zachowaj cały folder dystrybucji z `_internal`. PostgreSQL działa niezależnie od EXE. Hasło PostgreSQL pobierane jest z pgpass lub środowiska, a hasło Garmin służy wyłącznie logowaniu i nie jest zapisywane. Sesja Garmin tej wersji nadal wymaga Windows DPAPI.
+Windows: `.venv/Scripts/python.exe -m garmin_database` lub `dist/GarminDatabase/GarminDatabase.exe` po standardowym buildzie. Ścieżka paczki przy własnym `--destination` ma ten sam układ we wskazanym folderze. Zachowaj cały folder dystrybucji z `_internal`. PostgreSQL działa niezależnie od EXE. Hasło PostgreSQL pobierane jest z pgpass lub środowiska, a hasło Garmin służy wyłącznie logowaniu i nie jest zapisywane. GUI i kolektor Windows używają DPAPI właściwego konta. [Kolektor Linux/Pi](15-scheduled-collector.md) ma szyfrowany magazyn z kluczem systemd.
 
 1. W Ustawieniach sprawdź folder archiwów i połączenie PostgreSQL. Nie podawaj hasła w polu połączenia; ustawienia je odrzucą.
 2. Zaloguj się do Garmin, jeśli chcesz pobierać nowe dni. Import lokalnych ZIP nie wymaga sesji.
@@ -43,7 +43,7 @@ export GARMIN_TEST_DATABASE_DSN='host=localhost port=5432 dbname=garmin_tests us
 | Integracyjne | Prawdziwy PostgreSQL, DDL i ograniczenia, atomowe migracje i SHA, import/rollback/CRC, idempotencja, advisory lock między katalogami, spójne snapshoty, cache i anulowanie, eksport i kursory serwerowe, brak fallbacku przy niedostępnej bazie |
 | UI | Nawigacja, zakresy i daty, spinner, nieaktualne odpowiedzi, trend, eksport, ustawienia PostgreSQL, zatrzymanie, MFA |
 
-Dwa istniejące testy integracji Windows DPAPI są pomijane na innych systemach, z jawnym powodem; muszą zostać uruchomione na Windows. Sam backend PostgreSQL nie wymaga Windows. Testy protokołu MCP sprawdzają także dostępność transportu, politykę udostępniania, limity i anulowanie.
+Testy prawdziwego Windows DPAPI są pomijane na innych systemach, z jawnym powodem; muszą zostać uruchomione na Windows. Testy specyficznych uprawnień Linux/systemd mają odpowiednie oznaczenie platformy. Sam backend PostgreSQL nie wymaga Windows. Testy protokołu MCP sprawdzają także dostępność transportu, politykę udostępniania, limity i anulowanie. Coverage używa `source_pkgs` dla pakietu `garmin_database`, aby katalog o tej samej nazwie poza `src/` nie przesłaniał źródeł.
 
 Kontrola statyczna:
 
@@ -107,7 +107,7 @@ python -m garmin_database.bootstrap.cli reprocess --data-dir data --from 2026-09
 python -m garmin_database.bootstrap.cli export --data-dir data --parameters monitoring.heart_rate --from 2026-09-01 --to 2026-09-30 --recent-days 30 --summary-period day --output exports
 ```
 
-CLI i UI czytają ten sam `database_dsn`, `GARMIN_DATABASE_DSN` i konfigurację libpq. Opcjonalne `--settings-file` wskazuje osobne ustawienia. `sync` nadal wymaga sesji Windows; ochrona sesji Linux pozostaje osobnym zakresem.
+CLI i UI czytają ten sam `database_dsn`, `GARMIN_DATABASE_DSN` i konfigurację libpq. Opcjonalne `--settings-file` wskazuje osobne ustawienia. Dotychczasowy `garmin-db sync` używa sesji GUI Windows. Do sieciowego pobierania na Linux/Pi służy `garmin-db-collector` z oddzielną konfiguracją i sesją, opisany w [instrukcji kolektora](15-scheduled-collector.md).
 
 ## Wznowienie i utrzymanie
 
@@ -119,7 +119,7 @@ Odbiór danych rzeczywistych jest oddzielny od testów syntetycznych. Nie zastę
 
 ## Lokalny MCP — konfiguracja i uruchomienie
 
-Budowanie tworzy dwa sąsiednie foldery: `GarminDatabase/` z okienkowym EXE i `GarminDatabaseMCP/` z serwerem mającym standardowe strumienie. Zachowaj oba foldery wraz z ich `_internal`. `build_windows.ps1 -Destination ...` buduje oba we wskazanym miejscu. Nie zatrzymuj wcześniejszej aplikacji użytkownika w celu nadpisania plików.
+Budowanie tworzy trzy sąsiednie foldery: `GarminDatabase/` z okienkowym EXE, `GarminDatabaseMCP/` z serwerem stdio i `GarminDatabaseCollector/` z kolektorem. Zachowaj foldery wraz z ich `_internal`. `build_windows.ps1 -Destination ...` buduje wszystkie we wskazanym miejscu. `build.py --only collector` działa w środowisku bez Qt/MCP. Nie zatrzymuj wcześniejszej aplikacji użytkownika w celu nadpisania plików.
 
 1. Przygotuj bazę przez aplikację. MCP nie pobiera, nie importuje i nie migruje danych; nie wymaga logowania Garmin.
 2. W Ustawieniach włącz „Zezwalaj na odczyt przez lokalny MCP”, wybierz metryki w kolumnie MCP i zapisz ustawienia.

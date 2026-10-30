@@ -4,20 +4,21 @@ Prywatna aplikacja Windows do pobierania dziennych archiwów dobrostanu z Garmin
 
 ## Możliwości aplikacji
 
-- Pobieranie brakujących dni od wybranego początku do wczoraj według Europe/Warsaw, import i wznowienie przerwanej pracy.
-- Zachowanie oryginalnych ZIP i fizycznych pól FIT, w tym pól bez rozpoznanej semantyki.
+- Pobieranie przyrostowe do dzisiaj według Europe/Warsaw, import i wznowienie przerwanej pracy.
+- Zachowanie fizycznych pól FIT, także bez rozpoznanej semantyki; sieciowe ZIP są przetwarzane w pamięci, a starsze lokalne oryginały pozostają zachowane.
 - Szczegóły pojedynczego dnia, podsumowania Garmin i jawnie oznaczone średnie dzienne obsługiwanych pomiarów.
 - Eksport v2: nowy folder z manifestem oraz osobnymi plikami historii i szczegółów dla każdego parametru.
 - Niezależny wybór parametrów eksportu i MCP. MCP nie pobiera danych z Garmin i nie zapisuje do bazy.
 - Logowanie z MFA i sesją chronioną Windows DPAPI. Hasła i kody nie są zapisywane.
+- Cykliczny kolektor bez GUI dla Windows, Linux i Raspberry Pi OS: domyślnie co 2 h, konfiguracja i status lokalnie, chroniona sesja również na Linux.
 
-Aplikacja wymaga **PostgreSQL 16+**. Serwer działa osobno i nie jest częścią EXE. Nie ma wariantu SQLite ani migracji jego danych. Rdzeń importu i eksportu działa bez UI. Kolektor cykliczny Windows/Linux/Raspberry Pi OS ma [uzgodnioną specyfikację do realizacji](docs/15-scheduled-collector.md); harmonogram i sesja Linux nie są jeszcze dostępne. Hub Raspberry Pi pozostaje późniejszym zakresem.
+Aplikacja wymaga **PostgreSQL 16+**. Serwer działa osobno i nie jest częścią EXE. Nie ma wariantu SQLite ani migracji jego danych. Rdzeń importu i eksportu działa bez UI. [Instrukcja kolektora cyklicznego](docs/15-scheduled-collector.md) opisuje konta, harmonogramy, konfigurację i odbiór na maszynie docelowej. Hub Raspberry Pi pozostaje późniejszym zakresem.
 
 ## Uruchomienie
 
 Najpierw [przygotuj PostgreSQL i połączenie](docs/13-postgresql-setup.md). Użytkownik paczki Windows uruchamia `GarminDatabase.exe`, zachowując cały folder dystrybucji z `_internal`. W Ustawieniach konfiguruje folder danych, połączenie i logowanie Garmin, a następnie wybiera „Pobierz dane”.
 
-Kod ma układ `src/` i stosuje [Clean Architecture](docs/03-architecture.md). Ze źródeł: po instalacji `python -m pip install -e .` uruchom `python -m garmin_database`. Instalację zależności, CLI, build i testy opisuje [instrukcja uruchamiania](docs/12-running-and-testing.md). Szczegóły istniejącej lokalnej instalacji i jej launchera znajdują się w ignorowanym `local-runtime/README-local.md`.
+Kod ma układ `src/` i stosuje [Clean Architecture](docs/03-architecture.md). Ze źródeł: po instalacji `python -m pip install -e '.[desktop,mcp,collector]'` uruchom `python -m garmin_database`. Sam kolektor: `python -m pip install '.[collector]'`, następnie `garmin-db-collector --help`. Instalację zależności, CLI, build i testy opisuje [instrukcja uruchamiania](docs/12-running-and-testing.md). Szczegóły istniejącej lokalnej instalacji i jej launchera znajdują się w ignorowanym `local-runtime/README-local.md`.
 
 Hasło PostgreSQL dostarcza pgpass lub środowisko procesu. Dane, sesje i eksporty są poza Git; wykluczenie z repozytorium nie zastępuje ochrony nośnika ani kopii zapasowej.
 
