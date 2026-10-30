@@ -113,6 +113,7 @@ def test_systemd_render_matches_real_calendar_parser_and_hardening(setup, tmp_pa
     service, timer = scheduler.render(config)
     assert "Type=oneshot" in service and "TimeoutStartSec=0" in service
     assert "LoadCredentialEncrypted=garmin-session-key:" in service
+    assert 'garmin-session-key:"' not in service
     assert "NoNewPrivileges=true" in service
     assert "Persistent=false" in timer and "OnBootSec" not in timer
     result = subprocess.run(

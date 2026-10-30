@@ -244,7 +244,7 @@ def main():
                     database_dsn=make_conninfo(dsn, options="-c search_path=" + schema),
                     interval_minutes=15,
                     enabled=True,
-                    anchor_at=(datetime.now(timezone.utc) + timedelta(minutes=1))
+                    anchor_at=(datetime.now(timezone.utc) + timedelta(minutes=2))
                     .replace(second=0, microsecond=0)
                     .isoformat(),
                 )
@@ -258,7 +258,7 @@ def main():
                 if os.name != "nt":
                     manager.prepare_key(config)
                 manager.apply(config)
-                deadline = time.monotonic() + 150
+                deadline = time.monotonic() + 210
                 while time.monotonic() < deadline:
                     state = files.load_state(config)
                     if state.outcome == "auth_required":

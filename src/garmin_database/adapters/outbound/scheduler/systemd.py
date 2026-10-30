@@ -58,6 +58,10 @@ class SystemdScheduler:
                 ]
             )
         )
+        credential = str(Path(config.credential_path).resolve())
+        if any(c in credential for c in "\r\n\x00"):
+            raise ValueError("Nieprawidłowa ścieżka poświadczenia")
+        credential = credential.replace("%", "%%")
         service = f"""[Unit]
 Description=GarminDatabase collector {config.revision}
 After=network.target
@@ -66,7 +70,7 @@ After=network.target
 Type=oneshot
 User={config.run_as}
 ExecStart={command}
-LoadCredentialEncrypted=garmin-session-key:{quote(config.credential_path)}
+LoadCredentialEncrypted=garmin-session-key:{credential}
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
