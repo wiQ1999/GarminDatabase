@@ -157,7 +157,7 @@ def diagnostics(instance, state):
     if os.name == "nt":
         print(
             powershell(
-                "$s=New-Object -ComObject 'Schedule.Service'; $s.Connect(); $t=$s.GetFolder('\\').GetTask($p.name); @{state=$t.State; result=[long]$t.LastTaskResult} | ConvertTo-Json",
+                "$s=New-Object -ComObject 'Schedule.Service'; $s.Connect(); $t=$s.GetFolder('\\').GetTask($p.name); @{state=$t.State; result=[long]$t.LastTaskResult; now=[datetime]::UtcNow.ToString('o'); next=$t.NextRunTime.ToUniversalTime().ToString('o'); last=$t.LastRunTime.ToUniversalTime().ToString('o'); xml=$t.Xml} | ConvertTo-Json; Get-WinEvent -LogName 'Microsoft-Windows-TaskScheduler/Operational' -MaxEvents 100 -ErrorAction SilentlyContinue | ForEach-Object { $e=[xml]$_.ToXml(); if($e.Event.EventData.Data | Where-Object { $_.Name -eq 'TaskName' -and $_.'#text' -eq ('\\' + $p.name) }) { @{id=$_.Id; data=$e.Event.EventData.OuterXml} | ConvertTo-Json -Compress } }",
                 {"name": "GarminDatabase-" + instance},
             )
         )
@@ -200,6 +200,12 @@ def main():
         "garmin-ci-" + nonce
     )
     base.mkdir(mode=0o755)
+    if os.name == "nt" and not options.preflight:
+        subprocess.run(
+            ["wevtutil.exe", "sl", "Microsoft-Windows-TaskScheduler/Operational", "/e:true"],
+            check=True,
+            capture_output=True,
+        )
     created = False
     try:
         account, password = create_account(name, base)
