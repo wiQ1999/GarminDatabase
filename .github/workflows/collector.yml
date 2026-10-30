@@ -43,6 +43,14 @@ jobs:
           "GARMIN_CI_PG_BIN=$pgBin" >> $env:GITHUB_ENV
       - name: Verify disposable service account
         run: python scripts/smoke_scheduler.py --preflight
+      - name: Build and verify native Windows collector
+        run: |
+          python scripts/build.py --only collector
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/smoke_collector.py dist/GarminDatabaseCollector/GarminDatabaseCollector.exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/smoke_scheduler.py dist/GarminDatabaseCollector/GarminDatabaseCollector.exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Tests and lint
         run: |
           python -m ruff check src scripts tests
@@ -57,8 +65,6 @@ jobs:
           python scripts/smoke.py dist/GarminDatabase/GarminDatabase.exe
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python scripts/smoke_mcp.py --executable dist/GarminDatabaseMCP/GarminDatabaseMCP.exe
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python scripts/smoke_scheduler.py dist/GarminDatabaseCollector/GarminDatabaseCollector.exe
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         if: always()

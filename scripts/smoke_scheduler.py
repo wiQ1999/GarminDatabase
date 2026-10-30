@@ -9,6 +9,7 @@ import ctypes
 import getpass
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -31,13 +32,13 @@ from garmin_database.adapters.outbound.scheduler.manager import ScheduleManager
 def powershell(script, payload):
     result = subprocess.run(
         [
-            "powershell.exe",
+            shutil.which("pwsh.exe") or "powershell.exe",
             "-NoProfile",
             "-NonInteractive",
             "-Command",
             "$ErrorActionPreference='Stop'; $p=ConvertFrom-Json ([Console]::In.ReadToEnd()); try { "
             + script
-            + " } catch { [Console]::Error.WriteLine(($_.CategoryInfo.Reason + ':' + $_.FullyQualifiedErrorId)); exit 1 }",
+            + " } catch { [Console]::Error.WriteLine(($_.CategoryInfo.Reason + ':' + $_.FullyQualifiedErrorId + ':' + $_.InvocationInfo.MyCommand.Name)); exit 1 }",
         ],
         input=json.dumps(payload),
         text=True,
@@ -49,8 +50,6 @@ def powershell(script, payload):
         # Only this isolated smoke uses generated credentials. Never print the
         # PowerShell exception message, command source, payload or password.
         category = result.stderr.strip().splitlines()[-1] if result.stderr else "unknown"
-        import re
-
         if not re.fullmatch(r"[A-Za-z0-9_.:, -]{1,240}", category):
             category = "unknown"
         raise RuntimeError("Native Windows smoke operation failed: " + category)
