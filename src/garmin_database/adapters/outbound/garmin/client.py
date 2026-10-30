@@ -1,9 +1,10 @@
-"""Session persistence uses DPAPI, never a plaintext temporary token store."""
+"""Session persistence uses encrypted stores, never plaintext token files."""
 
 import logging
 
 from garmin_database.application.errors import (
     SessionRequired,
+    SessionStorageError,
 )
 from garmin_database.domain.cancellation import Cancelled, check_stop
 
@@ -29,7 +30,9 @@ class GarminSource:
         self.api = None
         self.set_login_stage("connect", progress)
         api = None
+        token = None
         try:
+            token = self.login_token(email)
             api = self.factory(
                 email=email,
                 password=password,
@@ -38,17 +41,18 @@ class GarminSource:
             )
             # Inline JSON explicitly overrides upstream GARMINTOKENS environment
             # paths, so the library cannot persist an unencrypted token store.
-            api.login(self.login_token(email))
+            api.login(token)
             check_stop(stop)
             self.set_login_stage("session_save", progress)
             self.store.save(api.client.dumps())
             self.api = api
             self.set_login_stage("ready", progress)
-        except (Cancelled, SessionRequired):
+        except (Cancelled, SessionRequired, SessionStorageError):
             raise
         except Exception as error:
             raise login_failure(self.login_stage, error) from error
         finally:
+            token = None
             if api is not None:
                 api.password = None
                 api.prompt_mfa = None
@@ -60,6 +64,8 @@ class GarminSource:
             return self.store.load()
         except FileNotFoundError:
             raise SessionRequired() from None
+        except Exception:
+            raise SessionStorageError() from None
 
     def set_login_stage(self, stage, progress):
         self.login_stage = stage
@@ -83,5 +89,8 @@ class GarminSource:
         if self.api is None:
             self.login()
         payload = self.api.download_health_snapshot(day)
-        self.store.save(self.api.client.dumps())  # retain refreshed tokens
+        try:
+            self.store.save(self.api.client.dumps())  # retain refreshed tokens
+        except Exception:
+            raise SessionStorageError() from None
         return payload

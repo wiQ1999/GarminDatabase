@@ -6,6 +6,8 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
+from garmin_database.application.errors import BusyError
+
 
 def open_location(location):
     """Hand a user-selected directory or HTTPS link to the desktop shell."""
@@ -52,10 +54,17 @@ def atomic_json(path, value):
 
 @contextmanager
 def writer_lock(data_dir):
+    with file_lock(Path(data_dir) / "writer.lock"):
+        yield
+
+
+@contextmanager
+def file_lock(path):
     """An OS lock is released even when the process crashes; the file is metadata."""
-    root = Path(data_dir)
+    path = Path(path)
+    root = path.parent
     root.mkdir(parents=True, exist_ok=True)
-    with (root / "writer.lock").open("a+b") as stream:
+    with path.open("a+b") as stream:
         if os.fstat(stream.fileno()).st_size == 0:
             stream.write(b"0")
             stream.flush()
@@ -70,7 +79,7 @@ def writer_lock(data_dir):
 
                 fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            raise RuntimeError("Inny proces zapisuje dane") from None
+            raise BusyError() from None
         try:
             yield
         finally:

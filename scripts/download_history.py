@@ -1,19 +1,19 @@
 """Collect original daily Garmin wellness ZIPs and a resumable metadata report."""
 
 import argparse
+import json
+import logging
+import math
+import os
+import re
+import sys
+import time
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from getpass import getpass
 from hashlib import sha256
 from io import BytesIO
-import json
-import logging
-import math
-import os
 from pathlib import Path
-import re
-import sys
-import time
 from zipfile import ZipFile
 from zoneinfo import ZoneInfo
 

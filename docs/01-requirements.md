@@ -12,7 +12,7 @@ Zachować dane dostępne w dziennym eksporcie dobrostanu Garmin i udostępnić j
 - Aplikacja okienkowa Windows 11, uruchamiana ręcznie z EXE, bez konsoli, instalatora i osobnej instalacji Pythona.
 - Rdzeń Python 3.12+, PostgreSQL Community 16+, psycopg 3. Ten sam silnik lokalnie i na serwerze; bez fallbacku SQLite i bez migracji jego danych.
 - Polski interfejs PySide6/Qt Widgets, wykresy QPainter i dystrybucja PyInstaller onedir.
-- Import, przetwarzanie i eksport są oddzielone od UI. Sesja Garmin tej wersji wymaga Windows DPAPI.
+- Import, przetwarzanie i eksport są oddzielone od UI. GUI używa Windows DPAPI; kolektor ma magazyn DPAPI Windows albo szyfrowaną sesję Linux z kluczem systemd.
 
 ## Dostępny zakres
 
@@ -25,6 +25,7 @@ Zachować dane dostępne w dziennym eksporcie dobrostanu Garmin i udostępnić j
 7. Niezależne listy udostępniania eksportu i MCP. Pusta lista nie udostępnia żadnych danych; nowe serie nie włączają się same.
 8. Lokalny MCP przez `stdio`: katalog, podsumowania dzienne i statystyki całego okresu dla pięciu obsługiwanych średnich pomiarów. Bez zapisów do bazy, sesji Garmin i serwera HTTP.
 9. Logowanie Garmin z MFA i zaszyfrowaną sesją DPAPI. Hasła i kody MFA nie są zapisywane; błędy nie ujawniają sekretów ani treści odpowiedzi.
+10. [Kolektor cykliczny](15-scheduled-collector.md) dla Windows 11 x64, Raspberry Pi OS 64-bit i Debian/Ubuntu 64-bit z systemd. Harmonogram uruchamia jednorazowy proces, domyślnie co 2 h i minimum co 15 min, ze wspólnym przyrostowym pobieraniem, osobnym kontem/sesją i lokalnym zarządzaniem. PostgreSQL może być na oddzielnej maszynie.
 
 ## Granice interpretacji i przechowywania
 
@@ -34,7 +35,7 @@ Archiwa, PostgreSQL i eksporty są trwałymi zasobami użytkownika. Foldery dany
 
 ## Kierunki rozwoju i funkcje poza zakresem
 
-- Raspberry Pi jako automat importu i hub danych: wymaga projektu harmonogramu, ochrony sesji Linux, protokołu i relacji z aplikacją Windows.
+- Raspberry Pi jako hub danych, protokół udostępniania i zdalna relacja z aplikacją Windows pozostają osobnym późniejszym zakresem.
 - Sieciowy HTTP/API, zdalny MCP i dodatkowe kanały udostępniania wymagają osobnego projektu.
 - Osobne pobieranie treningów, innych metryk, aktualizowanie pobranych dni i automatyczny eksport nie są dostępne.
 - Kolejne funkcje MCP, źródłowe nocne podsumowania, okna godzinowe i dodatkowe statystyki wymagają doprecyzowania zakresu.

@@ -4,3 +4,4 @@ $ErrorActionPreference = 'Stop'
 if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
 Write-Output (Join-Path $Destination 'GarminDatabase/GarminDatabase.exe')
 Write-Output (Join-Path $Destination 'GarminDatabaseMCP/GarminDatabaseMCP.exe')
+Write-Output (Join-Path $Destination 'GarminDatabaseCollector/GarminDatabaseCollector.exe')

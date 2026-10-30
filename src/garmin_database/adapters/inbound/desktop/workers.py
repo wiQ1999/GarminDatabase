@@ -2,7 +2,12 @@ import threading
 
 from PySide6.QtCore import QThread, Signal
 
-from garmin_database.application.errors import LoginFailed, SessionRequired
+from garmin_database.application.errors import (
+    BusyError,
+    LoginFailed,
+    SessionRequired,
+    SessionStorageError,
+)
 from garmin_database.application.ports import ReadFailure
 from garmin_database.domain.cancellation import Cancelled, check_stop
 
@@ -53,7 +58,10 @@ class Worker(QThread):
         except Exception as error:
             self.failure.emit(
                 str(error)
-                if isinstance(error, (SessionRequired, LoginFailed))
+                if isinstance(
+                    error,
+                    (SessionRequired, SessionStorageError, LoginFailed, BusyError),
+                )
                 else "Operacja nie powiodła się: "
                 + type(error).__name__
                 + ". Sprawdź połączenie, sesję i katalog docelowy."

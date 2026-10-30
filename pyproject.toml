@@ -7,11 +7,17 @@ name = "garmin-database"
 version = "1.0.0"
 requires-python = ">=3.12"
 description = "Private Garmin wellness archive and desktop viewer"
-dependencies = ["psycopg[binary]==3.2.13", "mcp==1.28.0", "fitdecode==0.11.0", "garmin-fit-sdk==21.218.0", "garminconnect==0.3.20", "tzdata==2026.5", "PySide6-Essentials==6.12.0"]
+dependencies = ["psycopg[binary]==3.2.13", "fitdecode==0.11.0", "garmin-fit-sdk==21.218.0", "garminconnect==0.3.20", "tzdata==2026.5"]
+
+[project.optional-dependencies]
+collector = ["cryptography==50.0.2"]
+desktop = ["PySide6-Essentials==6.12.0", "cryptography==50.0.2"]
+mcp = ["mcp==1.28.0"]
 
 [project.scripts]
 garmin-db = "garmin_database.bootstrap.cli:main"
 garmin-db-mcp = "garmin_database.bootstrap.mcp:main"
+garmin-db-collector = "garmin_database.bootstrap.collector:main"
 
 [project.gui-scripts]
 garmin-database = "garmin_database.bootstrap.desktop:main"
@@ -31,7 +37,7 @@ testpaths = ["tests"]
 markers = ["unit: fast isolated rules", "integration: database and archive pipeline", "ui: desktop interaction"]
 
 [tool.coverage.run]
-source = ["garmin_database"]
+source_pkgs = ["garmin_database"]
 omit = ["*/adapters/inbound/desktop/*", "*/bootstrap/desktop.py", "*/__main__.py"]
 
 [tool.coverage.report]

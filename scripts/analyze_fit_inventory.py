@@ -4,14 +4,14 @@ Source rules: docs/02-source-validation.md. Local reports are not product docs.
 """
 
 import argparse
+import importlib.metadata
+import json
+import time
+import warnings
 from collections import Counter
 from datetime import datetime
 from hashlib import sha256
-import importlib.metadata
-import json
 from pathlib import Path
-import time
-import warnings
 from zipfile import ZipFile
 
 import fitdecode

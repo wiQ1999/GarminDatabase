@@ -30,6 +30,7 @@ from garmin_database.domain.values import dumps
 MAX_BYTES = 16 * 1024
 PAGE_DAYS = 92
 READ_SECONDS = 60
+READ_TIMEOUT_MESSAGE = "Przekroczono 60 s odczytu. Zawęź zakres lub wybór metryk."
 ZONE = ZoneInfo("Europe/Warsaw")
 
 
@@ -49,9 +50,7 @@ class ReadBudget:
         if self.stop.is_set():
             raise AccessError("Anulowano odczyt.")
         if self.is_set():
-            raise AccessError(
-                "Przekroczono 60 s odczytu. Zawęź zakres lub wybór metryk."
-            )
+            raise AccessError(READ_TIMEOUT_MESSAGE)
 
 
 def policy_key(settings):
@@ -179,8 +178,12 @@ class MCPData:
                 yield settings, snapshot, budget, identity
                 budget.check()
                 self.check_policy(key)
-        except (Cancelled, ReadFailure):
+        except (Cancelled, ReadFailure) as error:
             budget.check()
+            if isinstance(error, ReadFailure) and error.reason == "timeout":
+                # PostgreSQL rounds statement_timeout to milliseconds. It can
+                # expire just before the client monotonic deadline on Windows.
+                raise AccessError(READ_TIMEOUT_MESSAGE) from None
             raise AccessError(
                 "Nie można odczytać bazy. Przygotuj ją w aplikacji i ponów odczyt."
             ) from None

@@ -5,7 +5,7 @@ import os
 from ctypes import wintypes
 from pathlib import Path
 
-from garmin_database.adapters.outbound.filesystem.files import atomic_write
+from garmin_database.adapters.outbound.filesystem.files import atomic_write, file_lock
 from garmin_database.adapters.outbound.filesystem.settings_json import application_dir
 
 
@@ -48,6 +48,9 @@ class SessionStore:
     def __init__(self, path=None, protector=dpapi):
         self.path = Path(path or application_dir() / "auth/session.bin")
         self.protector = protector
+
+    def lock(self):
+        return file_lock(self.path.with_suffix(self.path.suffix + ".lock"))
 
     def save(self, token):
         atomic_write(self.path, self.protector(token.encode("utf-8")))

@@ -121,11 +121,13 @@ Ekran Eksport pokazuje tylko parametry dozwolone na liście eksportowej. Dostęp
 
 Proces uruchamia zgodny klient `stdio`; okno aplikacji nie musi działać. Nie ma osobnego przycisku startu serwera. Serwer ponownie sprawdza zapisane ustawienia przy odczycie i przed odpowiedzią, więc wyłączenie dostępu działa również dla już uruchomionego klienta. Zmiana folderu danych lub listy MCP unieważnia kursory. Uszkodzony plik ustawień zamyka dostęp zamiast włączać wszystkie parametry. Eksport korzysta z wyboru rozpoczętego zadania; stare pakiety użytkownika nie są usuwane.
 
-## Raspberry Pi i dostęp sieciowy — późniejszy etap
+## Kolektor cykliczny i dostęp sieciowy
 
-Wspólny rdzeń Python obsługuje pobieranie, import, ponowne przetwarzanie i eksport niezależnie od UI. Raspberry Pi ma działać bez okna jako automat importu według harmonogramu oraz hub dostępu do danych. Eksport nie staje się automatyczny bez osobnej zmiany wymagań.
+W Ustawieniach sekcja „Automatyczne pobieranie” obsługuje lokalny plik kolektora, włączenie, interwał od 15 minut, początek harmonogramu, konto i połączenie PostgreSQL. „Zapisz konfigurację” i „Zastosuj harmonogram” są osobnymi operacjami. „Wczytaj”, „Sprawdź stan” i „Pokaż log” wykonują odczyty poza wątkiem Qt; odpowiedź starej ścieżki konfiguracji jest odrzucana. Wybraną ścieżkę pliku można utrwalić przez główne „Zapisz ustawienia”. [Instrukcja kolektora](15-scheduled-collector.md) opisuje przygotowanie konta i logowanie przez CLI.
 
-Sposób udostępniania danych, uwierzytelnianie klientów, lokalizacja głównej bazy i połączenie z Windows wymagają projektu w tym etapie. Windows DPAPI nie jest przenośnym magazynem sesji dla Raspberry Pi; mechanizm ochrony sesji na Linux zostanie ustalony osobno. Nie przewiduje się obecnie dostępu sieciowego w pierwszej wersji Windows.
+Automat używa dokładnie obecnego przyrostowego pobierania. Zajętość blokady przez ręczną operację zapisuje tylko w swoim logu, bez powiadomienia użytkownika. Jego zadanie działa przy zamkniętym GUI; zamknięcie okna nie wyłącza harmonogramu. Eksport pozostaje ręczny.
+
+PostgreSQL może działać przy kolektorze lub na innym hoście. Windows DPAPI pozostaje magazynem konta Windows; kolektor na osobnym koncie wymaga własnego logowania. Sesja Linux/Pi jest szyfrowana z kluczem przekazywanym przez systemd. Hub, zdalne sterowanie kolektorem z GUI i uwierzytelnianie klientów sieciowych pozostają osobnym późniejszym zakresem.
 
 ## Kryteria odbioru UI
 

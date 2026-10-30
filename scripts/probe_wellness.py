@@ -1,15 +1,15 @@
 """Download one wellness ZIP and compare decompressed content, without storing credentials."""
 
 import argparse
+import json
+import logging
+import sys
 from collections import Counter
 from datetime import date, datetime, timedelta
 from getpass import getpass
 from hashlib import sha256
 from io import BytesIO
-import json
-import logging
 from pathlib import Path
-import sys
 from zipfile import ZipFile
 from zoneinfo import ZoneInfo
 
@@ -24,11 +24,13 @@ def inventory(payload):
             if item.is_dir():
                 continue
             content = archive.read(item)
-            entries.append({
-                "name": item.filename,
-                "bytes": len(content),
-                "sha256": sha256(content).hexdigest(),
-            })
+            entries.append(
+                {
+                    "name": item.filename,
+                    "bytes": len(content),
+                    "sha256": sha256(content).hexdigest(),
+                }
+            )
     if not entries:
         raise ValueError("Empty archive; no-data semantics need separate verification")
     return sorted(entries, key=lambda row: (row["name"], row["sha256"]))
@@ -37,7 +39,10 @@ def inventory(payload):
 def compare(reference, candidate):
     original = inventory(reference)
     downloaded = inventory(candidate)
-    hashes = lambda entries: Counter((row["bytes"], row["sha256"]) for row in entries)
+
+    def hashes(entries):
+        return Counter((row["bytes"], row["sha256"]) for row in entries)
+
     return {
         "zip_bytes_equal": reference == candidate,
         "entries_equal_including_names": original == downloaded,
@@ -51,8 +56,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--date", required=True, type=date.fromisoformat)
     parser.add_argument("--reference", required=True, type=Path)
-    parser.add_argument("--candidate", type=Path, help="Compare a local ZIP, without logging in")
-    parser.add_argument("--output", type=Path, help="Download path; existing files are never overwritten")
+    parser.add_argument(
+        "--candidate", type=Path, help="Compare a local ZIP, without logging in"
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Download path; existing files are never overwritten",
+    )
     args = parser.parse_args()
     reference = args.reference.read_bytes()
     inventory(reference)
@@ -99,5 +110,8 @@ if __name__ == "__main__":
         print("Interrupted.", file=sys.stderr)
         sys.exit(130)
     except Exception as error:
-        print(f"Probe failed ({type(error).__name__}); no credentials were logged.", file=sys.stderr)
+        print(
+            f"Probe failed ({type(error).__name__}); no credentials were logged.",
+            file=sys.stderr,
+        )
         sys.exit(1)
