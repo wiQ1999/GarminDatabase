@@ -35,8 +35,9 @@ def powershell(script, payload):
             "-NoProfile",
             "-NonInteractive",
             "-Command",
-            "$ErrorActionPreference='Stop'; $p=ConvertFrom-Json ([Console]::In.ReadToEnd()); "
-            + script,
+            "$ErrorActionPreference='Stop'; $p=ConvertFrom-Json ([Console]::In.ReadToEnd()); try { "
+            + script
+            + " } catch { [Console]::Error.WriteLine(($_.CategoryInfo.Reason + ':' + $_.FullyQualifiedErrorId)); exit 1 }",
         ],
         input=json.dumps(payload),
         text=True,
@@ -45,7 +46,14 @@ def powershell(script, payload):
         timeout=60,
     )
     if result.returncode:
-        raise RuntimeError("Native Windows smoke operation failed")
+        # Only this isolated smoke uses generated credentials. Never print the
+        # PowerShell exception message, command source, payload or password.
+        category = result.stderr.strip().splitlines()[-1] if result.stderr else "unknown"
+        import re
+
+        if not re.fullmatch(r"[A-Za-z0-9_.:, -]{1,240}", category):
+            category = "unknown"
+        raise RuntimeError("Native Windows smoke operation failed: " + category)
     return result.stdout
 
 
@@ -173,8 +181,12 @@ def diagnostics(instance, state):
 
 def main():
     args = argparse.ArgumentParser()
-    args.add_argument("executable", type=Path)
-    binary = args.parse_args().executable.resolve()
+    args.add_argument("executable", type=Path, nargs="?")
+    args.add_argument("--preflight", action="store_true")
+    options = args.parse_args()
+    if options.executable is None and not options.preflight:
+        args.error("executable is required unless --preflight is selected")
+    binary = options.executable.resolve() if options.executable else None
     dsn = os.environ.get("GARMIN_TEST_DATABASE_DSN")
     if not dsn:
         raise RuntimeError("Separate GARMIN_TEST_DATABASE_DSN is required")
@@ -193,6 +205,9 @@ def main():
     try:
         account, password = create_account(name, base)
         created = True
+        if options.preflight:
+            print("Native scheduler account preflight OK")
+            return
         program = base / "program"
         shutil.copytree(binary.parent, program)
         source = base / "source"

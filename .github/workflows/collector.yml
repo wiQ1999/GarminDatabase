@@ -41,6 +41,8 @@ jobs:
           if ($LASTEXITCODE) { throw 'Test database creation failed' }
           'GARMIN_TEST_DATABASE_DSN=host=127.0.0.1 port=55432 dbname=garmin_tests user=postgres' >> $env:GITHUB_ENV
           "GARMIN_CI_PG_BIN=$pgBin" >> $env:GITHUB_ENV
+      - name: Verify disposable service account
+        run: python scripts/smoke_scheduler.py --preflight
       - name: Tests and lint
         run: |
           python -m ruff check src scripts tests
