@@ -7,6 +7,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from math import gcd
 
+from .windows_access import grant_batch_logon
+
 NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"
 
 
@@ -71,13 +73,22 @@ def credential(account):
 
 
 class WindowsScheduler:
-    def __init__(self, command, config_path, *, run=subprocess.run, prompt=credential):
+    def __init__(
+        self,
+        command,
+        config_path,
+        *,
+        run=subprocess.run,
+        prompt=credential,
+        grant_batch=grant_batch_logon,
+    ):
         self.command, self.config_path, self.run, self.prompt = (
             command,
             str(config_path),
             run,
             prompt,
         )
+        self.grant_batch = grant_batch
 
     def name(self, config):
         return "GarminDatabase-" + config.instance
@@ -159,6 +170,7 @@ $s=New-Object -ComObject 'Schedule.Service'; $s.Connect();
 $null=$s.GetFolder('\\').RegisterTask($p.name,$p.xml,6,$p.user,$p.password,1,$null);
 exit 0 } catch { exit 1 }"""
         try:
+            self.grant_batch(config.run_as)
             result = self._powershell(
                 script,
                 {

@@ -69,7 +69,7 @@ Windows domyślnie używa `%PROGRAMDATA%/GarminDatabase/collector/default/collec
 
 W `state_dir` znajdują się `status.json`, `collector.lock` i `logs/collector.log`. Plik statusu przechowuje m.in. ostatni wynik, terminy, ostatni sukces, bezpieczne liczniki, pauzę sesji, `not_before` i zastosowaną rewizję. Status/log można odczytać bez PostgreSQL. Log ma limit 5 MiB i pięć kopii rotacji. Nie zawiera pomiarów, tokenów, haseł, MFA, odpowiedzi dostawcy, pełnych wyjątków ani DSN.
 
-Zapis konfiguracji i zastosowanie zadania to osobne operacje. Po zapisie wybierz „Zastosuj harmonogram” albo `schedule apply`. Rejestracja wymaga uprawnień systemowych. Błąd rejestracji nie jest prezentowany jako sukces; status porównuje zapisany plik z rzeczywistą definicją zadania. Zwykłe GUI działa bez podniesionych uprawnień, a rejestracja Windows ma osobny pomocnik UAC.
+Zapis konfiguracji i zastosowanie zadania to osobne operacje. Po zapisie wybierz „Zastosuj harmonogram” albo `schedule apply`. Rejestracja wymaga uprawnień systemowych. Błąd rejestracji nie jest prezentowany jako sukces; status porównuje zapisany plik z rzeczywistą definicją zadania. Zwykłe GUI działa bez podniesionych uprawnień, a rejestracja Windows ma osobny pomocnik UAC. Pomocnik przyznaje wyłącznie kontu zadania wymagane `SeBatchLogonRight` przez LSA, bez zastępowania listy pozostałych uprawnień i bez członkostwa w Administratorach. Wyłączenie zadania nie odbiera kontu tego prawa. Nadrzędna zasada odmowy logowania wsadowego musi zostać rozstrzygnięta przez administratora systemu.
 
 ## CLI
 

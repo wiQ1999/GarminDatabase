@@ -15,6 +15,42 @@ from garmin_database.application.errors import LoginFailed, SessionRequired
 pytestmark = pytest.mark.unit
 
 
+@pytest.mark.parametrize("failure", [None, "lookup", "resolve", "policy", "grant"])
+def test_batch_logon_grants_only_required_right_and_closes_policy(monkeypatch, failure):
+    def lookup(system, account, sid, size, domain, domain_size, kind):
+        assert account == "synthetic-service"
+        if sid is None:
+            size._obj.value = 0 if failure == "lookup" else 24
+            domain_size._obj.value = 32
+            return False
+        return failure != "resolve"
+
+    def open_policy(system, attributes, access, handle):
+        assert system is None and access == 0x810
+        assert attributes._obj.Length == ctypes.sizeof(attributes._obj)
+        handle._obj.value = 7
+        return 1 if failure == "policy" else 0
+
+    def grant(handle, sid, rights, count):
+        assert handle.value == 7 and count == 1
+        assert rights._obj.Buffer == "SeBatchLogonRight"
+        return 1 if failure == "grant" else 0
+
+    api = SimpleNamespace(
+        LookupAccountNameW=lookup,
+        LsaOpenPolicy=open_policy,
+        LsaAddAccountRights=grant,
+        LsaClose=Mock(return_value=0),
+    )
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **k: api, raising=False)
+    if failure:
+        with pytest.raises(PermissionError):
+            windows_access.grant_batch_logon("synthetic-service")
+    else:
+        windows_access.grant_batch_logon("synthetic-service")
+    assert api.LsaClose.call_count == int(failure in {None, "grant"})
+
+
 @pytest.mark.parametrize("code,changed_user", [(0, False), (1223, False), (0, True)])
 def test_windows_credential_dialog_clears_buffer_and_checks_identity(
     monkeypatch, code, changed_user

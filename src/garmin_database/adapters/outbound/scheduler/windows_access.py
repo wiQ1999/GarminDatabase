@@ -7,6 +7,98 @@ import subprocess
 from pathlib import Path
 
 
+def grant_batch_logon(account):
+    """Grant the task account its required logon right without replacing policy."""
+    from ctypes import wintypes
+
+    class UnicodeString(ctypes.Structure):
+        _fields_ = [
+            ("Length", wintypes.USHORT),
+            ("MaximumLength", wintypes.USHORT),
+            ("Buffer", wintypes.LPWSTR),
+        ]
+
+    class ObjectAttributes(ctypes.Structure):
+        _fields_ = [
+            ("Length", wintypes.ULONG),
+            ("RootDirectory", wintypes.HANDLE),
+            ("ObjectName", ctypes.POINTER(UnicodeString)),
+            ("Attributes", wintypes.ULONG),
+            ("SecurityDescriptor", wintypes.LPVOID),
+            ("SecurityQualityOfService", wintypes.LPVOID),
+        ]
+
+    api = ctypes.WinDLL("advapi32", use_last_error=True)
+    lookup = api.LookupAccountNameW
+    lookup.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        wintypes.LPVOID,
+        ctypes.POINTER(wintypes.DWORD),
+        wintypes.LPWSTR,
+        ctypes.POINTER(wintypes.DWORD),
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    lookup.restype = wintypes.BOOL
+    size, domain_size, kind = wintypes.DWORD(), wintypes.DWORD(), wintypes.DWORD()
+    lookup(
+        None,
+        account,
+        None,
+        ctypes.byref(size),
+        None,
+        ctypes.byref(domain_size),
+        ctypes.byref(kind),
+    )
+    if not size.value:
+        raise PermissionError("Nie można rozpoznać konta zadania Windows")
+    sid = ctypes.create_string_buffer(size.value)
+    domain = ctypes.create_unicode_buffer(max(1, domain_size.value))
+    if not lookup(
+        None,
+        account,
+        sid,
+        ctypes.byref(size),
+        domain,
+        ctypes.byref(domain_size),
+        ctypes.byref(kind),
+    ):
+        raise PermissionError("Nie można rozpoznać konta zadania Windows")
+    attributes = ObjectAttributes()
+    attributes.Length = ctypes.sizeof(attributes)
+    handle = wintypes.HANDLE()
+    api.LsaOpenPolicy.argtypes = [
+        ctypes.POINTER(UnicodeString),
+        ctypes.POINTER(ObjectAttributes),
+        wintypes.ULONG,
+        ctypes.POINTER(wintypes.HANDLE),
+    ]
+    api.LsaOpenPolicy.restype = wintypes.LONG
+    # POLICY_LOOKUP_NAMES | POLICY_CREATE_ACCOUNT: add a single account right.
+    if api.LsaOpenPolicy(None, ctypes.byref(attributes), 0x810, ctypes.byref(handle)):
+        raise PermissionError("Nie można otworzyć zasad logowania Windows")
+    api.LsaAddAccountRights.argtypes = [
+        wintypes.HANDLE,
+        wintypes.LPVOID,
+        ctypes.POINTER(UnicodeString),
+        wintypes.ULONG,
+    ]
+    api.LsaAddAccountRights.restype = wintypes.LONG
+    api.LsaClose.argtypes = [wintypes.HANDLE]
+    api.LsaClose.restype = wintypes.LONG
+    name = "SeBatchLogonRight"
+    buffer = ctypes.create_unicode_buffer(name)
+    width = ctypes.sizeof(ctypes.c_wchar)
+    right = UnicodeString(
+        len(name) * width, (len(name) + 1) * width, ctypes.cast(buffer, wintypes.LPWSTR)
+    )
+    try:
+        if api.LsaAddAccountRights(handle, sid, ctypes.byref(right), 1):
+            raise PermissionError("Nie można przyznać prawa logowania wsadowego")
+    finally:
+        api.LsaClose(handle)
+
+
 def elevate(command):
     from ctypes import wintypes
 

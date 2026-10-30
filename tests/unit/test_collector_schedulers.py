@@ -60,13 +60,16 @@ def test_windows_xml_is_noninteractive_fixed_and_does_not_catch_up(setup):
 def test_windows_password_only_in_registration_pipe(setup):
     files, config = setup
     run = Mock(return_value=SimpleNamespace(returncode=0))
+    grant = Mock()
     scheduler = WindowsScheduler(
         ["collector.exe"],
         files.config_path,
         run=run,
         prompt=lambda _: "synthetic-secret",
+        grant_batch=grant,
     )
     scheduler.apply(config)
+    grant.assert_called_once_with(config.run_as)
     args, kwargs = run.call_args
     assert "synthetic-secret" not in repr(args)
     assert json.loads(kwargs["input"])["password"] == "synthetic-secret"
@@ -75,6 +78,11 @@ def test_windows_password_only_in_registration_pipe(setup):
         scheduler.apply(config)
     with pytest.raises(ValueError):
         scheduler.render(replace(config, run_as=""))
+    run.reset_mock()
+    grant.side_effect = PermissionError("synthetic policy failure")
+    with pytest.raises(PermissionError):
+        scheduler.apply(config)
+    run.assert_not_called()
 
 
 @pytest.mark.parametrize("returncode,expected", [(0, True), (3, False), (1, None)])
