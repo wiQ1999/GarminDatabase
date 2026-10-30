@@ -38,7 +38,11 @@ def main():
             ["--config", str(path), "run", "--scheduled"],
         ):
             result = subprocess.run(
-                [str(binary), *arguments], capture_output=True, text=True, timeout=30
+                [str(binary), *arguments],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
             )
             if result.returncode:
                 print(

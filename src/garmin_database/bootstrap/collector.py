@@ -27,7 +27,9 @@ def synchronize(config, stop):
 
     store = session_store(config)
     with store.lock():
-        sync = create_sync(Database(config.data_dir, config.database_dsn), GarminSource(store))
+        sync = create_sync(
+            Database(config.data_dir, config.database_dsn), GarminSource(store)
+        )
         return sync.run_summary(date(2024, 1, 1), today(), stop)
 
 
@@ -38,10 +40,17 @@ def create_manager(config_path=None):
 
 
 def main(argv=None):
+    from garmin_database.adapters.inbound.cli.stdio import configure_stdio
     from garmin_database.adapters.inbound.collector.commands import main as run
 
-    return run(argv, files_factory=CollectorFiles, manager_factory=create_manager,
-               session_factory=session_store, synchronize=synchronize)
+    configure_stdio()
+    return run(
+        argv,
+        files_factory=CollectorFiles,
+        manager_factory=create_manager,
+        session_factory=session_store,
+        synchronize=synchronize,
+    )
 
 
 if __name__ == "__main__":
