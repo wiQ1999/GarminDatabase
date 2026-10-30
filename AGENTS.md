@@ -22,7 +22,7 @@ Pamięć projektu utrzymuj jako aktualne decyzje i ograniczenia, nie dziennik se
 
 - Checkout Windows: `D:/Projects/GarminDatabase`; wcześniejszy C: nie jest głównym checkoutem. W środowisku cloud: `/workspace/GarminDatabase`.
 - Python 3.12+, PostgreSQL, psycopg 3. Zachowujemy fizyczne pola FIT raz i wersjonowaną semantykę publicznego profilu. Nowe sieciowe ZIP są przetwarzane wyłącznie w pamięci; starszych oryginałów nie usuwać. Nie zgadujemy prywatnych metryk.
-- Polski UI Windows 11: PySide6 Essentials/Qt Widgets, wykres QPainter, PyInstaller onedir bez konsoli. Rdzeń nie importuje Qt. Raspberry Pi: rdzeń bez UI; ochrona sesji Linux i protokół huba wymagają osobnego projektu.
+- Polski UI Windows 11: PySide6 Essentials/Qt Widgets, wykres QPainter, PyInstaller onedir bez konsoli. Rdzeń nie importuje Qt. Kolektor cykliczny Windows/Linux/Pi ma uzgodnioną specyfikację do realizacji w `docs/15-scheduled-collector.md`; bieżący kod nie ma harmonogramu ani sesji Linux. Protokół huba pozostaje osobnym zakresem.
 - Sesja Garmin: DPAPI użytkownika, `%LOCALAPPDATA%/GarminDatabase/auth/session.bin`, bez hasła/MFA. Nie logować surowych wyjątków Garmin/psycopg, tokenów, parametrów połączenia ani pomiarów. Dwa testy prawdziwego DPAPI wymagają Windows i mają jawny skip na Linux.
 - Dane, eksporty, logi, build/dist, work i raporty są ignorowane w Git. Testy korzystają z syntetycznych FIT/ZIP, nigdy prywatnych fixture. Skany rzeczywistych danych mogą raportować wyłącznie liczniki i bezpieczne metadane; usuwać tylko własne testowe kopie.
 

@@ -107,7 +107,7 @@ Zmiany parametru i filtrów automatycznie uruchamiają odczyt. UI wykonuje jedno
 
 Sortowanie punktów i obliczenie regresji odbywają się w workerze odczytu. Wyszukanie punktu pod kursorem używa wyszukiwania binarnego bez kopiowania współrzędnych wszystkich punktów przy każdym ruchu myszy. Ikony parametrów są współdzielone przez ograniczony cache w warstwie Qt.
 
-Raspberry Pi będzie w przyszłości uruchamiać te same operacje bez UI, według harmonogramu, i służyć jako hub dostępu do danych. Protokół dostępu, uwierzytelnianie i relacja z aplikacją Windows pozostają zakresem późniejszego etapu; połączenie z PostgreSQL używa protokołu serwera, bez współdzielenia pliku bazy przez sieć.
+Planowany kolektor cykliczny dla Windows, Linux i Raspberry Pi OS ma [osobną specyfikację do realizacji](15-scheduled-collector.md). Będzie uruchamiany jako jednorazowy proces przez harmonogram systemowy i użyje istniejącego Sync bez Qt. Sesja, konfiguracja i status należą do maszyny kolektora, a PostgreSQL może działać na innym hoście. Protokół huba, zdalne sterowanie i uwierzytelnianie klientów Windows pozostają późniejszym zakresem. Połączenie z PostgreSQL używa protokołu serwera, bez współdzielenia pliku bazy przez sieć.
 
 ## Model danych PostgreSQL
 

@@ -34,7 +34,8 @@ Archiwa, PostgreSQL i eksporty są trwałymi zasobami użytkownika. Foldery dany
 
 ## Kierunki rozwoju i funkcje poza zakresem
 
-- Raspberry Pi jako automat importu i hub danych: wymaga projektu harmonogramu, ochrony sesji Linux, protokołu i relacji z aplikacją Windows.
+- Kolektor cykliczny Windows/Linux/Raspberry Pi OS ma [uzgodnioną specyfikację do realizacji](15-scheduled-collector.md): jednorazowy proces przez harmonogram systemowy, domyślnie co 2 h i minimum co 15 min, wspólne przyrostowe pobieranie, osobne konto i sesja oraz lokalne zarządzanie. Funkcja nie jest jeszcze dostępna.
+- Raspberry Pi jako hub danych, protokół udostępniania i zdalna relacja z aplikacją Windows pozostają osobnym późniejszym zakresem.
 - Sieciowy HTTP/API, zdalny MCP i dodatkowe kanały udostępniania wymagają osobnego projektu.
 - Osobne pobieranie treningów, innych metryk, aktualizowanie pobranych dni i automatyczny eksport nie są dostępne.
 - Kolejne funkcje MCP, źródłowe nocne podsumowania, okna godzinowe i dodatkowe statystyki wymagają doprecyzowania zakresu.

@@ -14,6 +14,7 @@ Ten katalog opisuje aktualny stan aplikacji, jej kontrakty, wymagania, cele rozw
 | [Uruchamianie i testy](12-running-and-testing.md) | Instalacja, CLI, build, smoke, testy oraz konfiguracja i kontrakt MCP |
 | [Konfiguracja PostgreSQL](13-postgresql-setup.md) | Serwer, role, połączenie, pgpass i ochrona danych |
 | [Objaśnienia parametrów Garmin](14-parameter-descriptions.md) | Oficjalne źródła, znaczenie pól, czujniki i algorytmy oraz porównanie UI/MCP z Garmin Connect |
+| [Kolektor cykliczny — specyfikacja](15-scheduled-collector.md) | Uzgodniony zakres do realizacji: harmonogram Windows/Linux/Pi, sesje, konfiguracja, współbieżność, wdrożenie i odbiór |
 
 ## Zasada utrzymania
 

@@ -11,7 +11,7 @@ Prywatna aplikacja Windows do pobierania dziennych archiwów dobrostanu z Garmin
 - Niezależny wybór parametrów eksportu i MCP. MCP nie pobiera danych z Garmin i nie zapisuje do bazy.
 - Logowanie z MFA i sesją chronioną Windows DPAPI. Hasła i kody nie są zapisywane.
 
-Aplikacja wymaga **PostgreSQL 16+**. Serwer działa osobno i nie jest częścią EXE. Nie ma wariantu SQLite ani migracji jego danych. Rdzeń importu i eksportu działa bez UI; harmonogram, ochrona sesji Linux i hub Raspberry Pi pozostają kierunkami rozwoju.
+Aplikacja wymaga **PostgreSQL 16+**. Serwer działa osobno i nie jest częścią EXE. Nie ma wariantu SQLite ani migracji jego danych. Rdzeń importu i eksportu działa bez UI. Kolektor cykliczny Windows/Linux/Raspberry Pi OS ma [uzgodnioną specyfikację do realizacji](docs/15-scheduled-collector.md); harmonogram i sesja Linux nie są jeszcze dostępne. Hub Raspberry Pi pozostaje późniejszym zakresem.
 
 ## Uruchomienie
 

@@ -121,11 +121,11 @@ Ekran Eksport pokazuje tylko parametry dozwolone na liście eksportowej. Dostęp
 
 Proces uruchamia zgodny klient `stdio`; okno aplikacji nie musi działać. Nie ma osobnego przycisku startu serwera. Serwer ponownie sprawdza zapisane ustawienia przy odczycie i przed odpowiedzią, więc wyłączenie dostępu działa również dla już uruchomionego klienta. Zmiana folderu danych lub listy MCP unieważnia kursory. Uszkodzony plik ustawień zamyka dostęp zamiast włączać wszystkie parametry. Eksport korzysta z wyboru rozpoczętego zadania; stare pakiety użytkownika nie są usuwane.
 
-## Raspberry Pi i dostęp sieciowy — późniejszy etap
+## Kolektor cykliczny i dostęp sieciowy — zakres planowany
 
-Wspólny rdzeń Python obsługuje pobieranie, import, ponowne przetwarzanie i eksport niezależnie od UI. Raspberry Pi ma działać bez okna jako automat importu według harmonogramu oraz hub dostępu do danych. Eksport nie staje się automatyczny bez osobnej zmiany wymagań.
+Wspólny rdzeń Python obsługuje pobieranie, import, ponowne przetwarzanie i eksport niezależnie od UI. [Uzgodniona specyfikacja kolektora](15-scheduled-collector.md) obejmuje lokalną konfigurację harmonogramu, jego zastosowanie i odczyt statusu w Ustawieniach Windows oraz CLI na Linux/Pi. Jest to zakres do realizacji; obecne GUI nie rejestruje jeszcze zadania. Automat użyje dokładnie obecnego przyrostowego pobierania. Zajętość blokady przez ręczną operację zapisuje tylko w swoim logu, bez powiadomienia użytkownika. Eksport pozostaje ręczny.
 
-Sposób udostępniania danych, uwierzytelnianie klientów, lokalizacja głównej bazy i połączenie z Windows wymagają projektu w tym etapie. Windows DPAPI nie jest przenośnym magazynem sesji dla Raspberry Pi; mechanizm ochrony sesji na Linux zostanie ustalony osobno. Nie przewiduje się obecnie dostępu sieciowego w pierwszej wersji Windows.
+PostgreSQL może działać przy kolektorze lub na innym hoście. Windows DPAPI pozostaje magazynem konta Windows; kolektor na osobnym koncie wymaga własnego logowania. Projekt sesji Linux/Pi przewiduje szyfrowany plik i klucz przekazywany przez systemd. Hub, zdalne sterowanie kolektorem z GUI i uwierzytelnianie klientów sieciowych pozostają osobnym późniejszym zakresem.
 
 ## Kryteria odbioru UI
 
