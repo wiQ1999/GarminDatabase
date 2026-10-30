@@ -25,12 +25,13 @@ def synchronize(config, stop):
     from garmin_database.bootstrap.dependencies import create_sync
     from garmin_database.domain.time import today
 
+    config = CollectorFiles().resolve_settings(config)
     store = session_store(config)
     with store.lock():
         sync = create_sync(
             Database(config.data_dir, config.database_dsn), GarminSource(store)
         )
-        return sync.run_summary(date(2024, 1, 1), today(), stop)
+        return sync.run_summary(date.fromisoformat(config.download_from), today(), stop)
 
 
 def create_manager(config_path=None):

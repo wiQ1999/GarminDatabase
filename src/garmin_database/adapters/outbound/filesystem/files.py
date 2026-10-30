@@ -38,9 +38,35 @@ def atomic_write(path, payload):
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(name, path)
+        replace_file(name, path)
     finally:
         Path(name).unlink(missing_ok=True)
+
+
+def replace_file(source, target):
+    """Keep explicit Windows ACLs when publishing updated configuration/state."""
+    if os.name != "nt" or not Path(target).exists():
+        os.replace(source, target)
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    replace = ctypes.WinDLL("kernel32", use_last_error=True).ReplaceFileW
+    replace.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.LPVOID,
+    ]
+    replace.restype = wintypes.BOOL
+    if not replace(
+        str(Path(target).resolve()), str(Path(source).resolve()), None, 0, None, None
+    ):
+        raise OSError(
+            ctypes.get_last_error(), "Nie można atomowo zapisać pliku Windows"
+        )
 
 
 def atomic_json(path, value):

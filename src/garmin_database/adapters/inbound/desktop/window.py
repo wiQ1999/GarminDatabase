@@ -439,6 +439,13 @@ class Window(QMainWindow):
             "Parametry PostgreSQL bez hasła. Hasło: pgpass; puste pole: GARMIN_DATABASE_DSN / libpq."
         )
         form.addRow("Połączenie PostgreSQL", self.database_dsn)
+        self.download_from = date_edit(date.fromisoformat(self.settings.download_from))
+        form.addRow("Początek pobierania z Garmin", self.download_from)
+        self.config_directory = QLineEdit(
+            str(self.services.settings_store.location(self.settings_path).parent)
+        )
+        self.config_directory.setReadOnly(True)
+        form.addRow("Folder plików konfiguracji", self.config_directory)
         layout.addLayout(form)
         label = QLabel(
             "Ustawienia: "
@@ -1045,12 +1052,13 @@ class Window(QMainWindow):
         self.close_if_idle()
 
     def sync(self, refresh_all=False):
+        start = date.fromisoformat(self.settings.download_from)
         db = self.services
         delay = self.settings.delay
         trigger = self.download_all_button if refresh_all else self.download_button
         self.start_work(
             lambda w: db.sync(
-                date(2024, 1, 1), today(), w.stop, w.progress.emit,
+                start, today(), w.stop, w.progress.emit,
                 delay=delay, detailed=True, refresh_all=refresh_all,
             ), trigger,
         )
@@ -1142,6 +1150,7 @@ class Window(QMainWindow):
             self.settings,
             data_dir=self.data_path.text(),
             database_dsn=self.database_dsn.text(),
+            download_from=selected_date(self.download_from).isoformat(),
             export_dir=self.output.text(),
             export_parameters=self.sharing_keys(2),
             mcp_parameters=self.sharing_keys(3),

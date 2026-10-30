@@ -26,6 +26,8 @@ def test_save_collector_config_is_separate_from_apply_and_gui_preferences(
     config = CollectorFiles(path).load_config()
     assert config.enabled and config.run_as == "garmin"
     assert config.data_dir == w.settings.data_dir
+    assert config.database_dsn is None and config.download_from is None
+    assert config.settings_path == str(tmp_path / "settings.json")
     assert "Zastosuj" in panel.message.text()
     w.save_settings()
     ready(qtbot, w)
@@ -34,6 +36,59 @@ def test_save_collector_config_is_separate_from_apply_and_gui_preferences(
     panel.buttons["load"].click()
     ready(qtbot, w)
     assert panel.interval.value() == 120
+
+
+def test_defaults_share_configuration_directory_and_current_account(qtbot, tmp_path):
+    w = window(qtbot, tmp_path)
+    panel = w.collector_panel
+    assert panel.path.text() == str(tmp_path / "collector.json")
+    assert panel.path.isReadOnly() and w.config_directory.isReadOnly()
+    assert w.config_directory.text() == str(tmp_path)
+    assert panel.account.text() == w.services.current_account()
+    assert not hasattr(panel, "dsn")
+    assert not hasattr(panel, "data_dir")
+
+
+def test_missing_config_shows_actionable_message(qtbot, tmp_path):
+    w = window(qtbot, tmp_path)
+    for action in ("load", "status", "logs", "apply"):
+        w.collector_panel.buttons[action].click()
+        ready(qtbot, w)
+        assert "Zapisz konfigurację" in w.collector_panel.message.text()
+
+
+def test_global_download_start_is_saved_and_used_by_manual_sync(
+    qtbot, tmp_path, monkeypatch
+):
+    from datetime import date
+
+    from PySide6.QtCore import QDate
+
+    from garmin_database.adapters.outbound.filesystem.settings_json import Settings
+
+    w = window(qtbot, tmp_path)
+    w.download_from.setDate(QDate(2025, 2, 3))
+    w.save_settings()
+    ready(qtbot, w)
+    assert Settings.load(w.settings_path).download_from == "2025-02-03"
+    calls = []
+    monkeypatch.setattr(w.services, "sync", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(
+        w,
+        "start_work",
+        lambda operation, trigger: operation(
+            type(
+                "W",
+                (),
+                {
+                    "stop": threading.Event(),
+                    "progress": type("P", (), {"emit": lambda *a: None})(),
+                },
+            )()
+        ),
+    )
+    w.sync()
+    assert calls[0][0] == date(2025, 2, 3)
 
 
 def test_slow_schedule_operation_keeps_qt_alive_and_discards_old_path(

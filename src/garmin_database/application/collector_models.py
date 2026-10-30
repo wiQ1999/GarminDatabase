@@ -14,7 +14,7 @@ class CollectorConfig:
     data_dir: str
     state_dir: str
     session_path: str
-    database_dsn: str = ""
+    database_dsn: str | None = ""
     instance: str = "default"
     enabled: bool = False
     interval_minutes: int = 120
@@ -23,6 +23,8 @@ class CollectorConfig:
     credential_path: str = ""
     status_reader: str = ""
     schema_version: int = 1
+    settings_path: str = ""
+    download_from: str | None = "2024-01-01"
 
     @property
     def schedule(self):
@@ -49,8 +51,17 @@ class CollectorConfig:
             self.credential_path and not Path(self.credential_path).is_absolute()
         ):
             raise ValueError("Ścieżka poświadczenia musi być bezwzględna")
-        if not isinstance(self.database_dsn, str):
+        if self.database_dsn is not None and not isinstance(self.database_dsn, str):
             raise ValueError("Nieprawidłowe połączenie PostgreSQL")
+        if self.settings_path and not Path(self.settings_path).is_absolute():
+            raise ValueError("Ścieżka ustawień aplikacji musi być bezwzględna")
+        if self.database_dsn is None or self.download_from is None:
+            if not self.settings_path:
+                raise ValueError("Wskaż ustawienia aplikacji dla wspólnej konfiguracji")
+        if self.download_from is not None:
+            from datetime import date
+
+            date.fromisoformat(self.download_from)
         if not isinstance(self.run_as, str) or any(
             c in self.run_as for c in '\r\n\x00"'
         ):

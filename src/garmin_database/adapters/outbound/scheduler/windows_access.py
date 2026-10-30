@@ -164,14 +164,27 @@ def prepare_paths(config, config_path):
             raise ValueError("Wybierz wydzielony katalog kolektora")
     for directory in (state, auth, Path(config.data_dir)):
         directory.mkdir(parents=True, exist_ok=True)
+    same_account = config.run_as.casefold() == operator.casefold()
     rules = [
         (
-            Path(config_path).parent,
-            [config.run_as + ":(OI)(CI)R", operator + ":(OI)(CI)M"],
+            Path(config_path),
+            [operator + ":M"] + ([] if same_account else [config.run_as + ":R"]),
         ),
-        (state, [config.run_as + ":(OI)(CI)M", operator + ":(OI)(CI)R"]),
+        (
+            state,
+            [config.run_as + ":(OI)(CI)M"]
+            + ([] if same_account else [operator + ":(OI)(CI)R"]),
+        ),
         (auth, [config.run_as + ":(OI)(CI)F"]),
     ]
+    if config.settings_path:
+        # Shared non-secret settings only; never grant access to GUI auth files.
+        rules.append(
+            (
+                Path(config.settings_path),
+                [operator + ":M"] + ([] if same_account else [config.run_as + ":R"]),
+            )
+        )
     for path, grants in rules:
         result = subprocess.run(
             [

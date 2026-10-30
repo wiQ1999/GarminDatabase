@@ -1,15 +1,19 @@
 """Local, atomic collector records, available while PostgreSQL is offline."""
 
+import getpass
 import json
 import logging
 import os
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from garmin_database.adapters.outbound.filesystem.files import atomic_json, file_lock
-from garmin_database.adapters.outbound.filesystem.settings_json import Settings
+from garmin_database.adapters.outbound.filesystem.settings_json import (
+    Settings,
+    application_dir,
+)
 from garmin_database.application.collector_models import (
     OUTCOMES,
     CollectorConfig,
@@ -17,12 +21,16 @@ from garmin_database.application.collector_models import (
 )
 
 
-def default_config_path():
+def current_account():
+    user = getpass.getuser()
+    return os.environ.get("USERDOMAIN", ".") + "\\" + user if os.name == "nt" else user
+
+
+def default_config_path(settings_path=None):
+    if settings_path is not None:
+        return Path(settings_path).resolve().parent / "collector.json"
     if os.name == "nt":
-        return (
-            Path(os.environ.get("PROGRAMDATA", "C:/ProgramData"))
-            / "GarminDatabase/collector/default/collector.json"
-        )
+        return application_dir() / "collector.json"
     return Path("/etc/garmin-database/collector.json")
 
 
@@ -30,7 +38,7 @@ class CollectorFiles:
     def __init__(self, config_path=None):
         self.config_path = Path(config_path or default_config_path()).resolve()
 
-    def defaults(self, data_dir=None, database_dsn=""):
+    def defaults(self, data_dir=None, database_dsn="", *, settings_path=None):
         base = self.config_path.parent
         state = (
             base / "state"
@@ -43,6 +51,27 @@ class CollectorFiles:
             session_path=str(state / "auth/session.bin"),
             database_dsn=database_dsn,
             credential_path=str(base / "session-key.cred"),
+            run_as=current_account(),
+            settings_path=str(Path(settings_path).resolve()) if settings_path else "",
+            download_from=None if settings_path else "2024-01-01",
+        )
+
+    def resolve_settings(self, config):
+        """Resolve shared values once per run; explicit standalone overrides win."""
+        if config.database_dsn is not None and config.download_from is not None:
+            return config
+        path = Path(config.settings_path)
+        if not path.is_file():
+            raise FileNotFoundError("Brak wspólnych ustawień aplikacji")
+        settings = Settings.load(path)
+        return replace(
+            config,
+            database_dsn=settings.database_dsn
+            if config.database_dsn is None
+            else config.database_dsn,
+            download_from=settings.download_from
+            if config.download_from is None
+            else config.download_from,
         )
 
     def load_config(self):
@@ -50,12 +79,12 @@ class CollectorFiles:
             **json.loads(self.config_path.read_text(encoding="utf-8"))
         )
         config.validate()
-        Settings(database_dsn=config.database_dsn).validate()
+        Settings(database_dsn=config.database_dsn or "").validate()
         return config
 
     def save_config(self, config):
         config.validate()
-        Settings(database_dsn=config.database_dsn).validate()
+        Settings(database_dsn=config.database_dsn or "").validate()
         atomic_json(self.config_path, asdict(config))
 
     def lock(self, config):

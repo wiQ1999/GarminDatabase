@@ -69,14 +69,23 @@ class Services:
     def reconfigure(self, settings):
         return Services(settings)
 
-    def collector_path(self):
+    def collector_path(self, settings_path=None):
         from garmin_database.adapters.outbound.filesystem.collector_files import (
             default_config_path,
         )
-        return str(default_config_path())
+
+        return str(default_config_path(settings_path))
+
+    def current_account(self):
+        from garmin_database.adapters.outbound.filesystem.collector_files import (
+            current_account,
+        )
+
+        return current_account()
 
     def collector_manager(self, path=None):
         from garmin_database.bootstrap.collector import create_manager
+
         return create_manager(path)
 
     def status(self):

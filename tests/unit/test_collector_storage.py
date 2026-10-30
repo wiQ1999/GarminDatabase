@@ -50,6 +50,54 @@ def test_configuration_rejects_dsn_password_and_does_not_write(files, tmp_path):
     assert not files.config_path.exists()
 
 
+def test_shared_settings_follow_changes_and_explicit_overrides_win(files, tmp_path):
+    from garmin_database.adapters.outbound.filesystem.settings_json import Settings
+
+    path = tmp_path / "settings.json"
+    config = files.defaults(tmp_path / "data", None, settings_path=path)
+    files.save_config(config)
+    with pytest.raises(FileNotFoundError):
+        files.resolve_settings(config)
+    for start, dsn in [("2025-01-02", "host=first"), ("2026-02-03", "host=second")]:
+        Settings(database_dsn=dsn, download_from=start).save(path)
+        resolved = files.resolve_settings(files.load_config())
+        assert resolved.database_dsn == dsn and resolved.download_from == start
+        assert files.load_config().database_dsn is None
+    explicit = replace(config, database_dsn="host=remote", download_from="2024-03-04")
+    path.unlink()
+    assert files.resolve_settings(explicit) == explicit
+    with pytest.raises(ValueError):
+        files.save_config(replace(config, settings_path=""))
+    with pytest.raises(ValueError):
+        files.save_config(replace(config, download_from="invalid"))
+
+
+def test_default_path_and_identity_match_application(monkeypatch, tmp_path):
+    from garmin_database.adapters.outbound.filesystem import collector_files
+    from garmin_database.adapters.outbound.filesystem.settings_json import (
+        application_dir,
+    )
+
+    monkeypatch.setattr(collector_files.getpass, "getuser", lambda: "synthetic-user")
+    monkeypatch.setenv("USERDOMAIN", "SYNTHETIC-PC")
+    assert (
+        collector_files.default_config_path(tmp_path / "settings.json")
+        == tmp_path / "collector.json"
+    )
+    if os.name == "nt":
+        assert (
+            collector_files.default_config_path()
+            == application_dir() / "collector.json"
+        )
+        assert files_account(collector_files) == "SYNTHETIC-PC\\synthetic-user"
+    else:
+        assert files_account(collector_files) == "synthetic-user"
+
+
+def files_account(module):
+    return module.CollectorFiles().defaults().run_as
+
+
 def test_corrupt_state_fails_closed_and_log_is_allowlisted(files, tmp_path):
     config = replace(files.defaults(tmp_path), state_dir=str(tmp_path / "state"))
     assert files.logs(config) == "Brak logów kolektora"

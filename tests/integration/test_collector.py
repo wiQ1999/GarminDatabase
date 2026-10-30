@@ -85,10 +85,12 @@ def test_collector_runs_the_real_incremental_import_and_busy_is_only_logged(
     source = Mock()
     source.download_health_snapshot.return_value = buffer.getvalue()
     monkeypatch.setattr(client, "GarminSource", lambda store: source)
-    monkeypatch.setattr(time, "today", lambda: date(2024, 1, 1))
+    monkeypatch.setattr(time, "today", lambda: date(2024, 1, 3))
     files = CollectorFiles(tmp_path / "collector.json")
+    settings_path = tmp_path / "settings.json"
+    Settings(download_from="2024-01-03").save(settings_path)
     config = replace(
-        files.defaults(tmp_path / "data"),
+        files.defaults(tmp_path / "data", None, settings_path=settings_path),
         state_dir=str(tmp_path / "state"),
         session_path=str(tmp_path / "auth/session.bin"),
         enabled=True,
@@ -116,4 +118,5 @@ def test_collector_runs_the_real_incremental_import_and_busy_is_only_logged(
     assert files.load_state(config).outcome == "success"
     assert "skipped_busy" in files.logs(config)
     assert source.download_health_snapshot.call_count == 2
+    assert source.download_health_snapshot.call_args.args[0] == "2024-01-03"
     assert not list(tmp_path.rglob("*.zip"))

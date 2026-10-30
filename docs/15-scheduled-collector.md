@@ -20,7 +20,7 @@ Kolektor aktualizuje PostgreSQL danymi z dotychczasowego eksportu dobrostanu Gar
 | Konfiguracja | Lokalna zakładka Ustawienia Windows albo plik i CLI/SSH na maszynie kolektora |
 | Dystrybucja | Windows: EXE onedir; Linux/Pi: Python 3.12+ i venv bez Qt/MCP |
 
-Proces używa obecnego `Sync`: od ostatniego zarejestrowanego dnia włącznie do dzisiaj, z dotychczasową obsługą wcześniejszych błędów i nieukończonych importów. Przy pustej bazie obowiązuje początek 2024-01-01. Znane `not_found_unverified` pozostają nierozstrzygnięte i nie są ponawiane w tym trybie. Kolektor nie ustawia `refresh_all`. Kompletne FIT są deduplikowane po SHA-256, nowe ZIP pozostają w pamięci. Szczegóły: [synchronizacja](04-synchronization.md).
+Proces używa obecnego `Sync`: od ostatniego zarejestrowanego dnia włącznie do dzisiaj, w granicach zapisanego początku pobierania, z dotychczasową obsługą wcześniejszych błędów i nieukończonych importów. Przy pustej bazie obowiązuje `download_from`, domyślnie 2024-01-01. Jest to ustawienie wspólne z ręcznym pobieraniem, niezależne od zakresu eksportu i początku harmonogramu. Znane `not_found_unverified` pozostają nierozstrzygnięte i nie są ponawiane w tym trybie. Kolektor nie ustawia `refresh_all`. Kompletne FIT są deduplikowane po SHA-256, nowe ZIP pozostają w pamięci. Szczegóły: [synchronizacja](04-synchronization.md).
 
 Nie ma stałego demona, kolejki poleceń, HTTP/API ani zdalnego sterowania kolektorem z GUI Windows. Eksport, MCP, powiadomienia zewnętrzne i nowe źródła danych pozostają osobnymi funkcjami. Ręczne GUI pobiera niezależnie, przez te same reguły i wspólne blokady. Odłożenie automatu nie wywołuje komunikatu ani wpisu w dzienniku ręcznych operacji.
 
@@ -46,7 +46,7 @@ Blokady obejmują lokalną instancję kolektora, plik sesji i dotychczasowy writ
 
 ## Harmonogram systemowy
 
-Windows używa TimeTrigger z powtarzaniem, bez BootTrigger/LogonTrigger, z `IgnoreNew`, wyłączonym `StartWhenAvailable`, bez wybudzania maszyny i bez limitu 72 godzin na długi import. Proces działa pod dedykowanym kontem z logowaniem Password i najmniejszymi uprawnieniami. S4U nie zastępuje go ze względu na ograniczenia dostępu do sieci i zaszyfrowanych plików.
+Windows używa TimeTrigger z powtarzaniem, bez BootTrigger/LogonTrigger, z `IgnoreNew`, wyłączonym `StartWhenAvailable`, bez wybudzania maszyny i bez limitu 72 godzin na długi import. Proces działa pod wskazanym kontem z logowaniem Password i najmniejszymi uprawnieniami. Domyślnie wybrane jest aktualne konto Windows; można wskazać osobne konto. PIN/Hello nie zastępuje hasła wymaganego do pracy po wylogowaniu. S4U nie zastępuje logowania Password ze względu na ograniczenia dostępu do sieci i zaszyfrowanych plików.
 
 Linux używa `Type=oneshot`, `Persistent=false`, braku dodatkowych ponowień systemowych i minutowego wywołania kontrolnego. Taki wyzwalacz pozwala obsługiwać dowolny interwał, również 17 lub 90 minut, bez skracania go przy północy. Poza właściwym terminem proces od razu kończy pracę. Windows stosuje podobną kontrolę dla interwałów przekraczających natywny limit powtarzania zadania wynoszący 31 dni.
 
@@ -59,13 +59,17 @@ Wyłączenie harmonogramu zatrzymuje przyszłe uruchomienia. Rozpoczęta operacj
 Konfiguracja kolektora jest oddzielna od preferencji GUI. Schemat JSON ma wersję 1. `init` tworzy konfigurację wyłączoną, z interwałem 120 minut. Ustawienia obejmują:
 
 - `data_dir`, `state_dir`, `session_path`: bezwzględne ścieżki; używać wydzielonych katalogów aplikacji.
-- `database_dsn`: parametry PostgreSQL bez hasła. Kolejność wyboru: niepusty DSN, GARMIN_DATABASE_DSN, libpq. Hasło przez pgpass/PGPASSFILE albo środowisko konta zadania.
+- `settings_path`: bezwzględna ścieżka wspólnych ustawień aplikacji, zapisywana przez GUI.
+- `database_dsn`: `null` w konfiguracji utworzonej przez GUI oznacza odczyt z `settings_path` przy każdym uruchomieniu. Jawny tekst nadpisuje wartość aplikacji; puste `""` wybiera GARMIN_DATABASE_DSN, następnie libpq. Hasło przez pgpass/PGPASSFILE albo środowisko konta zadania, nigdy w DSN.
+- `download_from`: `null` oznacza odczyt globalnego początku pobierania z `settings_path`; jawna data ISO nadpisuje tę wartość. Starsze samodzielne pliki bez tego pola zachowują 2024-01-01. Brak wskazanych wspólnych ustawień jest błędem, bez cichego użycia domyślnej bazy.
 - `instance`, `enabled`, `interval_minutes`, `anchor_at`: identyfikator instancji, włączenie i terminy. Kotwica ma pełną minutę i jawny offset lub Z.
-- `run_as`: dedykowane konto systemowe; Linux nie uruchamia kolektora jako root.
+- `run_as`: konto systemowe, domyślnie aktualny użytkownik; Linux nie uruchamia kolektora jako root.
 - `credential_path`: ścieżka zaszyfrowanego klucza systemd na Linux/Pi.
 - `status_reader`: konto Windows uprawnione do konfiguracji i odczytu statusu, ustalane przy zastosowaniu zadania.
 
-Windows domyślnie używa `%PROGRAMDATA%/GarminDatabase/collector/default/collector.json`. Linux: `/etc/garmin-database/collector.json`, z domyślnym stanem pod `/var/lib/garmin-database/collector/default/`. Ścieżki są niezależne od katalogu roboczego procesu. GUI może zapamiętać własną ścieżkę konfiguracji przez „Zapisz ustawienia”.
+Windows domyślnie używa `%LOCALAPPDATA%/GarminDatabase/collector.json`, obok globalnego `settings.json`. GUI pokazuje folder konfiguracji i ścieżkę kolektora tylko do odczytu; przy niestandardowym pliku ustawień umieszcza kolektor w tym samym folderze. Dawne `collector_config_path` nie zmienia lokalizacji GUI; stare pliki i zadania nie są automatycznie usuwane ani przenoszone. CLI może wskazać dowolny plik przez `--config`. Przy uruchamianiu pod innym kontem należy zawsze podać pełną ścieżkę operatora, aby nie wybrać AppData konta zadania. Linux CLI: `/etc/garmin-database/collector.json`, z domyślnym stanem pod `/var/lib/garmin-database/collector/default/`.
+
+W GUI połączenie i początek pobierania ustawia się raz, w „Dane lokalne i PostgreSQL”, i utrwala przez „Zapisz ustawienia”. Nowy plik kolektora dziedziczy te wartości; późniejsze zapisy cyklu nie nadpisują jawnych ustawień pliku. Dla kolektora na innej maszynie należy ustawić w jego JSON własne `database_dsn` i `download_from` (oraz właściwe lokalne ścieżki). Jawne obie wartości uniezależniają go od pliku ustawień GUI. Zmiana wspólnych wartości jest odczytywana przy następnym wykonaniu, bez zmiany terminów zadania.
 
 W `state_dir` znajdują się `status.json`, `collector.lock` i `logs/collector.log`. Plik statusu przechowuje m.in. ostatni wynik, terminy, ostatni sukces, bezpieczne liczniki, pauzę sesji, `not_before` i zastosowaną rewizję. Status/log można odczytać bez PostgreSQL. Log ma limit 5 MiB i pięć kopii rotacji. Nie zawiera pomiarów, tokenów, haseł, MFA, odpowiedzi dostawcy, pełnych wyjątków ani DSN.
 
@@ -95,7 +99,7 @@ garmin-db-collector --config /etc/garmin-database/collector.json run --scheduled
 
 1. Przygotuj PostgreSQL 16+ z automatycznym startem lub dostęp do zdalnego serwera. Zobacz [konfigurację PostgreSQL](13-postgresql-setup.md). Serwer nie jest częścią EXE.
 2. Zachowaj cały folder onedir `GarminDatabaseCollector` i sąsiedni folder GUI. Wybierz stabilną lokalizację dostępną do odczytu przez konto zadania.
-3. Utwórz dedykowane lokalne konto z hasłem. Hello/PIN głównego użytkownika nie wystarcza do nieinteraktywnego zadania. Konto otrzymuje dostęp do wskazanego folderu danych, własnego pgpass i prywatnej sesji. Nie używaj SYSTEM.
+3. Użyj domyślnie wybranego aktualnego konta Windows z hasłem albo przygotuj osobne lokalne konto z hasłem. Hello/PIN nie wystarcza do nieinteraktywnego zadania. Konto otrzymuje dostęp do wskazanego folderu danych, własnego pgpass i prywatnej sesji. Nie używaj SYSTEM. Osobne konto dostaje odczyt tylko plików konfiguracji, bez dostępu do folderu sesji GUI. Atomowy zapis konfiguracji zachowuje ACL Windows.
 4. W Ustawieniach aplikacji skonfiguruj konto, połączenie, folder i cykl. Zapisz konfigurację. Zastosuj harmonogram; Windows poprosi o potwierdzenie administracyjne i poświadczenia konta zadania. Hasło przechodzi wyłącznie przez pamięć/dialog systemowy, nie przez argumenty procesu ani plik konfiguracji.
 5. Wykonaj `login` w konsoli uruchomionej pod kontem kolektora, np. przez systemowe `runas`. E-mail, hasło Garmin i MFA wpisuje się interaktywnie. Nie podawaj ich w argumentach.
 6. Sprawdź `status --json`, log i kolejne zwykłe uruchomienie, także po wylogowaniu głównego użytkownika. W razie potrzeby włącz harmonogram po przygotowaniu sesji.
@@ -103,7 +107,7 @@ garmin-db-collector --config /etc/garmin-database/collector.json run --scheduled
 Przykład polecenia wewnątrz konsoli właściwego konta:
 
 ```powershell
-C:\Apps\GarminDatabaseCollector\GarminDatabaseCollector.exe --config C:\ProgramData\GarminDatabase\collector\default\collector.json login
+C:\Apps\GarminDatabaseCollector\GarminDatabaseCollector.exe --config C:\Users\operator\AppData\Local\GarminDatabase\collector.json login
 ```
 
 DPAPI wiąże sesję z kontem i komputerem. Logowanie w GUI głównego użytkownika nie odnawia sesji dedykowanego konta. Po przeniesieniu konta/maszyny potrzebne jest nowe logowanie. Nie kopiować ani automatycznie usuwać cudzej sesji, pgpass, ustawień, ZIP i eksportów.

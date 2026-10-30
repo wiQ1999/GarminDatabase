@@ -19,6 +19,7 @@ class Settings:
     mcp_parameters: list[str] = field(default_factory=list)
     mcp_enabled: bool = False
     collector_config_path: str = ""
+    download_from: str = "2024-01-01"
 
     def migrate(self, catalog):
         """Freeze the legacy 'all' selection once; docs/11-desktop-ui.md."""
@@ -41,6 +42,7 @@ class Settings:
         if not math.isfinite(self.delay) or self.delay < 0:
             raise ValueError("Nieprawidłowe opóźnienie")
         date.fromisoformat(self.history_from)
+        date.fromisoformat(self.download_from)
         if self.history_to:
             date.fromisoformat(self.history_to)
         if not self.data_dir or not self.export_dir:

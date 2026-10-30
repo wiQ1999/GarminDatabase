@@ -30,8 +30,11 @@ class CollectorPanel(QWidget):
         layout = QVBoxLayout(self)
         form = QFormLayout()
         self.path = QLineEdit(
-            host.settings.collector_config_path or host.services.collector_path()
+            host.services.collector_path(
+                host.services.settings_store.location(host.settings_path)
+            )
         )
+        self.path.setReadOnly(True)
         form.addRow("Konfiguracja kolektora", self.path)
         self.enabled = QCheckBox("Włącz cykliczne pobieranie")
         form.addRow(self.enabled)
@@ -46,16 +49,15 @@ class CollectorPanel(QWidget):
         self.anchor.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.anchor.setCalendarPopup(True)
         form.addRow("Początek harmonogramu (Warszawa)", self.anchor)
-        self.account = QLineEdit()
+        self.account = QLineEdit(host.services.current_account())
         form.addRow("Konto uruchamiające kolektor", self.account)
-        self.data_dir = QLineEdit(host.settings.data_dir)
-        self.dsn = QLineEdit(host.settings.database_dsn)
-        self.dsn.setPlaceholderText("Połączenie PostgreSQL bez hasła; puste: libpq")
-        form.addRow("Folder danych kolektora", self.data_dir)
-        form.addRow("PostgreSQL kolektora", self.dsn)
         layout.addLayout(form)
         note = QLabel(
-            "Kolektor ma własną sesję Garmin na koncie zadania. Pierwsze logowanie wykonaj przez CLI pod tym kontem. Terminy oznaczają stały odstęp czasu; po zmianie czasu lokalna godzina może się przesunąć."
+            "Połączenie PostgreSQL i początek pobierania pochodzą z zapisanych ustawień aplikacji. "
+            "Konto Windows wymaga hasła; PIN/Hello nie wystarcza do pracy po wylogowaniu. "
+            "Kolektor ma własną sesję Garmin: pierwsze logowanie wykonaj przez CLI pod kontem zadania. "
+            "Początek harmonogramu określa terminy uruchomień, a nie zakres danych. "
+            "Po zmianie czasu lokalna godzina terminu może się przesunąć."
         )
         note.setWordWrap(True)
         layout.addWidget(note)
@@ -93,19 +95,30 @@ class CollectorPanel(QWidget):
             self.message.setText("Wskaż plik konfiguracji kolektora")
             return
         manager = self.host.services.collector_manager(path)
+        missing = object()
 
         def current(result):
             if self.path.text() == path:
-                success(result)
+                if result is missing:
+                    self.message.setText(
+                        "Brak konfiguracji kolektora. Najpierw wybierz „Zapisz konfigurację”."
+                    )
+                else:
+                    success(result)
 
         def failed(message):
             if self.path.text() == path:
                 self.message.setText(message)
 
+        def execute(worker):
+            if key != "save" and not manager.files.config_path.is_file():
+                return missing
+            return operation(manager)
+
         self.message.setText("Wykonywanie operacji kolektora…")
         self.host.start_aux(
             self.buttons[key],
-            lambda worker: operation(manager),
+            execute,
             current,
             failed,
         )
@@ -118,8 +131,6 @@ class CollectorPanel(QWidget):
         self.interval.setValue(config.interval_minutes)
         self.enabled.setChecked(config.enabled)
         self.account.setText(config.run_as)
-        self.data_dir.setText(config.data_dir)
-        self.dsn.setText(config.database_dsn)
         self.anchor.setDateTime(
             QDateTime(datetime.fromisoformat(config.anchor_at.replace("Z", "+00:00")))
         )
@@ -135,15 +146,17 @@ class CollectorPanel(QWidget):
             .replace(tzinfo=timezone.utc)
             .isoformat(),
             run_as=self.account.text().strip(),
-            data_dir=self.data_dir.text(),
-            database_dsn=self.dsn.text(),
+        )
+        data_dir = self.host.settings.data_dir
+        settings_path = self.host.services.settings_store.location(
+            self.host.settings_path
         )
 
         def operation(manager):
             config = (
                 manager.files.load_config()
                 if manager.files.config_path.exists()
-                else manager.files.defaults(values["data_dir"], values["database_dsn"])
+                else manager.files.defaults(data_dir, None, settings_path=settings_path)
             )
             config = replace(config, **values)
             manager.files.save_config(config)

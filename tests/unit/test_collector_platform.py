@@ -1,6 +1,8 @@
 """Boundary behavior for platform APIs using synthetic credentials and handles."""
 
 import ctypes
+import os
+import subprocess
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -13,6 +15,27 @@ from garmin_database.adapters.outbound.scheduler import windows, windows_access
 from garmin_database.application.errors import LoginFailed, SessionRequired
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Native Windows file ACL preservation")
+def test_atomic_settings_save_preserves_explicit_windows_acl(tmp_path):
+    from garmin_database.adapters.outbound.filesystem.files import atomic_write
+
+    path = tmp_path / "settings.json"
+    atomic_write(path, b"original")
+    subprocess.run(
+        ["icacls.exe", str(path), "/inheritance:d"], check=True, capture_output=True
+    )
+
+    def acl():
+        return subprocess.run(
+            ["icacls.exe", str(path)], check=True, capture_output=True
+        ).stdout
+
+    before = acl()
+    atomic_write(path, b"updated")
+    assert acl() == before
+    assert path.read_bytes() == b"updated"
 
 
 @pytest.mark.parametrize("failure", [None, "lookup", "resolve", "policy", "grant"])
@@ -141,6 +164,26 @@ def test_auth_acl_excludes_status_reader(tmp_path, monkeypatch):
     run.return_value.returncode = 1
     with pytest.raises(PermissionError):
         windows_access.prepare_paths(config, tmp_path / "config.json")
+
+
+def test_shared_settings_acl_does_not_grant_gui_session_access(tmp_path, monkeypatch):
+    from garmin_database.application.collector_models import CollectorConfig
+
+    config = CollectorConfig(
+        str(tmp_path / "data"),
+        str(tmp_path / "state"),
+        str(tmp_path / "state/auth/session.bin"),
+        run_as="user",
+        status_reader="user",
+        settings_path=str(tmp_path / "settings.json"),
+    )
+    run = Mock(return_value=SimpleNamespace(returncode=0))
+    monkeypatch.setattr(windows_access.subprocess, "run", run)
+    windows_access.prepare_paths(config, tmp_path / "collector.json")
+    calls = [call.args[0] for call in run.call_args_list]
+    assert not any(command[1] == str(tmp_path) for command in calls)
+    state = next(c for c in calls if c[1] == config.state_dir)
+    assert "user:(OI)(CI)M" in state and "user:(OI)(CI)R" not in state
 
 
 @pytest.mark.parametrize(

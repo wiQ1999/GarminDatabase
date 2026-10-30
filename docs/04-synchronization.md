@@ -3,7 +3,7 @@
 ## Przebieg synchronizacji
 
 1. Ustal aktualną datę w `Europe/Warsaw`; maksymalny dzień importu to dzisiaj. Brak dodatkowego opóźnienia po północy.
-2. Domyślny początek historii: 2024-01-01. Użytkownik może podać węższy okres.
+2. Domyślny początek pobierania: 2024-01-01. GUI i lokalny kolektor korzystają ze wspólnego `download_from` w ustawieniach aplikacji; zakres eksportu jest niezależny. CLI może podać węższy okres przez `--from`.
 3. „Pobierz nowe dane” zaczyna od ostatniego dnia zarejestrowanego archiwum (włącznie), uwzględniając także wcześniejsze błędy i niekompletne importy. Przy pustej bazie zaczyna od początku zakresu. Znane nierozstrzygnięte HTTP 404 pozostają jawne i nie są ponawiane w tym trybie.
 4. „Pobierz wszystko” sprawdza cały zakres, również ponawiając nierozstrzygnięte dni. Nie wymusza ponownego dekodowania istniejących kompletnych FIT.
 5. Pobierz i zweryfikuj ZIP w pamięci. Zarejestruj pochodzenia FIT i deduplikuj je po SHA-256 w PostgreSQL. Nazwa ani pozycja wpisu w kolejnym ZIP nie jest identyfikatorem treści FIT.
@@ -19,7 +19,7 @@ Odczyty, eksport i MCP dopuszczają bieżący dzień Europe/Warsaw. Kompletnoś�
 - `partial` oznacza zachowanie części rekordów z jednoznacznym opisem ograniczeń; eksport musi sygnalizować niepełne dekodowanie.
 - `no_data_confirmed` wymaga udokumentowanej odpowiedzi potwierdzającej brak archiwum dla daty. 401, 403, 429, błędy serwera i nieznane 404 pozostają błędami, dopóki zachowanie endpointu nie zostanie zweryfikowane. Znane `not_found_unverified` są pomijane przy wznowieniu, nadal widoczne jako nierozstrzygnięte; nie stają się potwierdzonym brakiem danych.
 
-Sprawdzać cały zakres od 2024-01-01: nie kończyć wyszukiwania przy pierwszym dniu bez danych. Pierwsza data dostępnego archiwum i pierwszy czas odczytanego pomiaru to dwie różne informacje.
+Sprawdzać cały wybrany zakres od początku pobierania (domyślnie 2024-01-01): nie kończyć wyszukiwania przy pierwszym dniu bez danych. Pierwsza data dostępnego archiwum i pierwszy czas odczytanego pomiaru to dwie różne informacje.
 
 ## Błędy i wznowienie
 
