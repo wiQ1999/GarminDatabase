@@ -110,6 +110,31 @@ def test_missing_key_and_invalid_formats_do_not_fallback_to_plaintext(
         store.save("synthetic-token")
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Linux credential file permissions")
+def test_systemd_acl_mask_allows_service_access_in_private_directory(
+    tmp_path, monkeypatch
+):
+    directory = tmp_path / "credentials"
+    directory.mkdir(mode=0o700)
+    key = directory / linux_session.CREDENTIAL
+    key.write_bytes(b"x" * 32)
+    # A named-user ACL with read permission is reported by stat as group-read.
+    key.chmod(0o440)
+    monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(directory))
+    store = linux_session.SessionStore(tmp_path / "session.bin")
+    store.save("synthetic-token")
+    assert store.load() == "synthetic-token"
+    with pytest.raises(PermissionError):
+        linux_session.SessionStore(store.path, key_path=key).load()
+    key.chmod(0o444)
+    with pytest.raises(PermissionError):
+        store.load()
+    key.chmod(0o440)
+    directory.chmod(0o755)
+    with pytest.raises(PermissionError):
+        store.load()
+
+
 def test_systemd_key_is_passed_over_pipe_and_never_overwrites(tmp_path, monkeypatch):
     path = tmp_path / "secret.cred"
 

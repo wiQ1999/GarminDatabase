@@ -29,9 +29,17 @@ class SessionStore:
             raise RuntimeError(
                 "Uruchom polecenie z poświadczeniem systemd garmin-session-key"
             )
-        if path.stat().st_mode & (
-            stat.S_IRGRP | stat.S_IWGRP | stat.S_IWOTH | stat.S_IROTH
+        forbidden = stat.S_IWGRP | stat.S_IWOTH | stat.S_IROTH
+        if self.key_path is not None:
+            forbidden |= stat.S_IRGRP
+        # systemd grants the service UID read access with a named-user ACL.
+        # stat's group-read bit then represents the ACL mask, not group access.
+        # Trust this mask only inside the protected systemd credential directory.
+        elif path.parent.stat().st_mode & (
+            stat.S_IWGRP | stat.S_IWOTH | stat.S_IROTH | stat.S_IXOTH
         ):
+            raise PermissionError("Nieprawidłowa ochrona katalogu poświadczeń")
+        if path.stat().st_mode & forbidden:
             raise PermissionError("Nieprawidłowa ochrona poświadczenia sesji")
         key = path.read_bytes()
         if len(key) != 32:
