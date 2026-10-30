@@ -46,6 +46,7 @@ def powershell(script, payload):
     )
     if result.returncode:
         raise RuntimeError("Native Windows smoke operation failed")
+    return result.stdout
 
 
 def create_account(name, base):
@@ -135,6 +136,39 @@ def cleanup_task(instance):
                 "/etc/systemd/system", "garmin-database-" + instance + "." + suffix
             ).unlink(missing_ok=True)
         subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=30)
+
+
+def diagnostics(instance, state):
+    print(
+        "Native smoke outcome:",
+        state.outcome,
+        "started:",
+        state.started_at,
+        "slot:",
+        state.claimed_slot,
+    )
+    if os.name == "nt":
+        print(
+            powershell(
+                "$s=New-Object -ComObject 'Schedule.Service'; $s.Connect(); $t=$s.GetFolder('\\').GetTask($p.name); @{state=$t.State; result=[long]$t.LastTaskResult} | ConvertTo-Json",
+                {"name": "GarminDatabase-" + instance},
+            )
+        )
+    else:
+        result = subprocess.run(
+            [
+                "journalctl",
+                "--unit=garmin-database-" + instance + ".service",
+                "--no-pager",
+                "-n",
+                "40",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        # This job has synthetic credentials and cannot call the Garmin API.
+        print(result.stdout[-12000:])
 
 
 def main():
@@ -229,8 +263,17 @@ def main():
                     state = files.load_state(config)
                     if state.outcome == "auth_required":
                         break
+                    if state.finished_at and state.outcome not in {
+                        "running",
+                        "never_run",
+                    }:
+                        diagnostics(name, state)
+                        raise RuntimeError(
+                            "Native collector finished with " + state.outcome
+                        )
                     time.sleep(1)
                 else:
+                    diagnostics(name, state)
                     raise RuntimeError("Native scheduled collector did not complete")
                 assert (Path(config.state_dir) / "session-probe.ok").read_text() == "ok"
                 assert state.auth_required and state.summary["processed_days"] == 1
