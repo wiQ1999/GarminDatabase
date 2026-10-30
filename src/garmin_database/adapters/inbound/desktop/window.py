@@ -42,6 +42,7 @@ from garmin_database.adapters.inbound.desktop.chart import (
     ChartView,
     prepare_series,
 )
+from garmin_database.adapters.inbound.desktop.collector import CollectorPanel
 from garmin_database.adapters.inbound.desktop.icons import (
     application_icon,
     icon,
@@ -396,6 +397,8 @@ class Window(QMainWindow):
             self.settings_section(layout, "Logowanie do Garmin Connect")
         )
         self.build_sharing(self.settings_section(layout, "Udostępnianie danych"))
+        self.collector_panel = CollectorPanel(self)
+        self.settings_section(layout, "Automatyczne pobieranie").addWidget(self.collector_panel)
         layout.addStretch()
         footer = QHBoxLayout()
         self.settings_status = QLabel()
@@ -1143,6 +1146,7 @@ class Window(QMainWindow):
             export_parameters=self.sharing_keys(2),
             mcp_parameters=self.sharing_keys(3),
             mcp_enabled=self.mcp_enabled.isChecked(),
+            collector_config_path=self.collector_panel.path.text(),
         )
         previous, path = self.services, self.settings_path
 

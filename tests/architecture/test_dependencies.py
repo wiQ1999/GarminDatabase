@@ -58,3 +58,19 @@ def test_mcp_composition_has_no_gui_garmin_or_decoder_dependency(tmp_path):
         timeout=20,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_collector_management_has_no_gui_sdk_or_decoder_dependency(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            "import sys; from garmin_database.bootstrap.collector import create_manager; create_manager(); assert not any(n in sys.modules for n in ('PySide6','mcp','garminconnect','fitdecode','garmin_fit_sdk'))",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr

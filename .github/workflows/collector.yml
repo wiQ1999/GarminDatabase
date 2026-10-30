@@ -1,0 +1,92 @@
+name: Collector builds and tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'codex/**']
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python -m pip install -e ".[desktop,mcp,collector]"
+      - name: Start disposable PostgreSQL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $init = Get-ChildItem 'C:\Program Files\PostgreSQL\*\bin\initdb.exe' | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $init) { throw 'PostgreSQL 16+ binaries required on runner' }
+          $pgBin = $init.Directory.FullName
+          $pgData = Join-Path $env:RUNNER_TEMP 'garmin-collector-pg'
+          & $init.FullName -D $pgData -U postgres -A trust -E UTF8
+          if ($LASTEXITCODE) { throw 'initdb failed' }
+          & (Join-Path $pgBin 'pg_ctl.exe') -D $pgData -l (Join-Path $env:RUNNER_TEMP 'garmin-pg.log') -o '-h 127.0.0.1 -p 55432' -w start
+          if ($LASTEXITCODE) { throw 'PostgreSQL start failed' }
+          & (Join-Path $pgBin 'createdb.exe') -h 127.0.0.1 -p 55432 -U postgres garmin_tests
+          if ($LASTEXITCODE) { throw 'Test database creation failed' }
+          'GARMIN_TEST_DATABASE_DSN=host=127.0.0.1 port=55432 dbname=garmin_tests user=postgres' >> $env:GITHUB_ENV
+          "GARMIN_CI_PG_BIN=$pgBin" >> $env:GITHUB_ENV
+      - name: Tests and lint
+        run: |
+          python -m ruff check src scripts tests
+          python scripts/run_tests.py -q
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build all Windows programs
+        run: python scripts/build.py
+      - name: Smoke frozen programs
+        run: |
+          python scripts/smoke_collector.py dist/GarminDatabaseCollector/GarminDatabaseCollector.exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/smoke.py dist/GarminDatabase/GarminDatabase.exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/smoke_mcp.py --executable dist/GarminDatabaseMCP/GarminDatabaseMCP.exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-collector-build
+          path: |
+            dist/
+            test-results/results.xml
+          retention-days: 7
+      - name: Stop disposable PostgreSQL
+        if: always() && env.GARMIN_CI_PG_BIN != ''
+        shell: pwsh
+        run: |
+          & (Join-Path $env:GARMIN_CI_PG_BIN 'pg_ctl.exe') -D (Join-Path $env:RUNNER_TEMP 'garmin-collector-pg') -m fast -w stop
+
+  arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install only collector dependencies
+        run: python -m pip install -e '.[collector]' pytest==9.1.1 pyinstaller==6.22.3
+      - name: Verify no GUI or MCP dependencies
+        run: python -c "import importlib.util; assert importlib.util.find_spec('PySide6') is None; assert importlib.util.find_spec('mcp') is None"
+      - name: Collector contract tests
+        run: python -m pytest tests/unit/test_collector.py tests/unit/test_collector_storage.py tests/unit/test_collector_cli.py tests/unit/test_collector_schedulers.py tests/unit/test_collector_platform.py -q
+      - name: Build and smoke ARM64 collector
+        run: |
+          mkdir -p work
+          python scripts/build.py --only collector
+          python scripts/smoke_collector.py dist/GarminDatabaseCollector/GarminDatabaseCollector
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64-collector-build
+          path: dist/GarminDatabaseCollector/
+          retention-days: 7

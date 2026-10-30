@@ -21,6 +21,7 @@ def ssl_runtime_arguments():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--destination", default="dist")
+    parser.add_argument("--only", choices=["gui", "mcp", "collector"])
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     command = [
@@ -61,10 +62,10 @@ def main():
         *ssl_runtime_arguments(),
         str(root / "scripts/entrypoints/desktop.py"),
     ]
-    result = subprocess.call(command, cwd=root)
+    result = subprocess.call(command, cwd=root) if args.only in {None, "gui"} else 0
     if result:
         return result
-    if sys.platform == "win32":
+    if sys.platform == "win32" and args.only in {None, "gui"}:
         internal = Path(args.destination).resolve() / "GarminDatabase/_internal"
         for library in ("icuuc.dll", "icudt78.dll"):
             (internal / library).unlink(missing_ok=True)
@@ -106,7 +107,52 @@ def main():
         *ssl_runtime_arguments(),
         str(root / "scripts/entrypoints/mcp_stdio.py"),
     ]
-    return subprocess.call(mcp_command, cwd=root)
+    result = subprocess.call(mcp_command, cwd=root) if args.only in {None, "mcp"} else 0
+    if result:
+        return result
+    collector_command = [
+        sys.executable,
+        "-m",
+        "PyInstaller",
+        "--noconfirm",
+        "--onedir",
+        "--console",
+        "--name",
+        "GarminDatabaseCollector",
+        "--icon",
+        str(root / "src/garmin_database/resources/app-icon.ico"),
+        "--distpath",
+        str(Path(args.destination).resolve()),
+        "--specpath",
+        str(root / "build"),
+        "--collect-all",
+        "psycopg_binary",
+        "--collect-data",
+        "garmin_database",
+        "--collect-data",
+        "garmin_fit_sdk",
+        "--collect-data",
+        "fitdecode",
+        "--collect-data",
+        "tzdata",
+        "--copy-metadata",
+        "garminconnect",
+        "--copy-metadata",
+        "garmin-fit-sdk",
+        "--copy-metadata",
+        "fitdecode",
+        "--exclude-module",
+        "PySide6",
+        "--exclude-module",
+        "mcp",
+        *ssl_runtime_arguments(),
+        str(root / "scripts/entrypoints/collector.py"),
+    ]
+    return (
+        subprocess.call(collector_command, cwd=root)
+        if args.only in {None, "collector"}
+        else 0
+    )
 
 
 if __name__ == "__main__":

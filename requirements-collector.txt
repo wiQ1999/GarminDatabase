@@ -1,0 +1,4 @@
+-r requirements-probe.txt
+-r requirements-analysis.txt
+psycopg[binary]==3.2.13
+cryptography==50.0.2

@@ -18,6 +18,7 @@ class Settings:
     export_parameters: list[str] | None = None
     mcp_parameters: list[str] = field(default_factory=list)
     mcp_enabled: bool = False
+    collector_config_path: str = ""
 
     def migrate(self, catalog):
         """Freeze the legacy 'all' selection once; docs/11-desktop-ui.md."""

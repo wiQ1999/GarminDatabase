@@ -2,9 +2,21 @@ LOGIN_STAGES = {
     "connect": "łączenie z Garmin Connect",
     "mfa_wait": "oczekiwanie na kod MFA",
     "mfa_verify": "potwierdzanie kodu MFA i dostępu aplikacji do Garmin",
-    "session_save": "zabezpieczanie i zapis sesji Windows",
+    "session_save": "zabezpieczanie i zapis sesji Garmin",
     "ready": "sesja gotowa",
 }
+
+
+class BusyError(RuntimeError):
+    def __init__(self):
+        super().__init__("Inny proces zapisuje dane lub korzysta z sesji Garmin")
+
+
+class SessionStorageError(RuntimeError):
+    def __init__(self):
+        super().__init__(
+            "Nie można odczytać lub zabezpieczyć sesji Garmin na tym koncie"
+        )
 
 
 class LoginFailed(RuntimeError):

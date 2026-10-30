@@ -26,6 +26,9 @@ class SyncSummary:
     last_day: str | None = None
     last_day_result: str = ""
     halted: bool = False
+    halt_reason: str | None = None
+    http_status: int | None = None
+    retry_not_before: str | None = None
 
     @property
     def error_count(self):

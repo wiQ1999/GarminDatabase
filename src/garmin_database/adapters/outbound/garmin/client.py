@@ -4,6 +4,7 @@ import logging
 
 from garmin_database.application.errors import (
     SessionRequired,
+    SessionStorageError,
 )
 from garmin_database.domain.cancellation import Cancelled, check_stop
 
@@ -44,7 +45,7 @@ class GarminSource:
             self.store.save(api.client.dumps())
             self.api = api
             self.set_login_stage("ready", progress)
-        except (Cancelled, SessionRequired):
+        except (Cancelled, SessionRequired, SessionStorageError):
             raise
         except Exception as error:
             raise login_failure(self.login_stage, error) from error
@@ -60,6 +61,8 @@ class GarminSource:
             return self.store.load()
         except FileNotFoundError:
             raise SessionRequired() from None
+        except Exception:
+            raise SessionStorageError() from None
 
     def set_login_stage(self, stage, progress):
         self.login_stage = stage
@@ -83,5 +86,8 @@ class GarminSource:
         if self.api is None:
             self.login()
         payload = self.api.download_health_snapshot(day)
-        self.store.save(self.api.client.dumps())  # retain refreshed tokens
+        try:
+            self.store.save(self.api.client.dumps())  # retain refreshed tokens
+        except Exception:
+            raise SessionStorageError() from None
         return payload

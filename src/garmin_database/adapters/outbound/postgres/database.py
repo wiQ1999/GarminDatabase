@@ -10,7 +10,10 @@ import psycopg
 from psycopg import IsolationLevel
 
 from garmin_database.adapters.outbound.filesystem.files import writer_lock
+from garmin_database.application.errors import BusyError
 from garmin_database.domain.time import utc_now
+
+MIGRATIONS = ("001_initial.sql", "002_query_indexes.sql", "003_summaries.sql")
 
 
 class Row(tuple):
@@ -63,7 +66,7 @@ class Database:
         """Serialize writers across hosts; also protect the local ZIP directory."""
         if getattr(self._writer, "active", False):
             if not allow_nested:
-                raise RuntimeError("Trwa zapis danych PostgreSQL")
+                raise BusyError()
             yield
             return
         with writer_lock(self.root), self.connect() as lock:
@@ -75,7 +78,7 @@ class Database:
             if not lock.execute("SELECT pg_try_advisory_lock(%s)", (key,)).fetchone()[
                 0
             ]:
-                raise RuntimeError("Inny proces zapisuje dane PostgreSQL")
+                raise BusyError()
             self._writer.active = True
             try:
                 yield
@@ -83,28 +86,37 @@ class Database:
                 self._writer.active = False
                 lock.execute("SELECT pg_advisory_unlock(%s)", (key,))
 
+    def schema_ready(self):
+        with self.connect(readonly=True) as conn:
+            return len(self._check_schema(conn)) == 3
+
+    def _check_schema(self, conn):
+        exists = conn.execute("SELECT to_regclass('schema_migrations')").fetchone()[0]
+        migrations = (
+            dict(conn.execute("SELECT version,sql_sha256 FROM schema_migrations"))
+            if exists
+            else {}
+        )
+        if any(version not in {1, 2, 3} for version in migrations):
+            raise ValueError("Baza pochodzi z nowszej wersji aplikacji")
+        for version, filename in enumerate(MIGRATIONS, 1):
+            if version in migrations:
+                source = (Path(__file__).parents[3] / "resources" / filename).read_text(
+                    encoding="utf-8"
+                )
+                if sha256(source.encode()).hexdigest() != migrations[version]:
+                    raise ValueError("Niezgodna suma kontrolna schematu PostgreSQL")
+        return migrations
+
     def initialize(self):
         with self.writer_lock(), self.connect() as conn:
-            exists = conn.execute("SELECT to_regclass('schema_migrations')").fetchone()[
-                0
-            ]
-            migrations = (
-                dict(conn.execute("SELECT version,sql_sha256 FROM schema_migrations"))
-                if exists
-                else {}
-            )
-            if migrations and max(migrations) > 3:
-                raise ValueError("Baza pochodzi z nowszej wersji aplikacji")
-            for version, filename in enumerate(
-                ("001_initial.sql", "002_query_indexes.sql", "003_summaries.sql"), 1
-            ):
+            migrations = self._check_schema(conn)
+            for version, filename in enumerate(MIGRATIONS, 1):
                 sql = (Path(__file__).parents[3] / "resources" / filename).read_text(
                     encoding="utf-8"
                 )
                 digest = sha256(sql.encode()).hexdigest()
                 if version in migrations:
-                    if migrations[version] != digest:
-                        raise ValueError("Niezgodna suma kontrolna schematu PostgreSQL")
                     continue
                 conn.execute(sql, prepare=False)
                 conn.execute(

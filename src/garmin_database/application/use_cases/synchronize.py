@@ -1,11 +1,15 @@
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from io import BytesIO
 from zipfile import ZipFile
 
 from garmin_database.application.dto import SyncSummary
-from garmin_database.application.errors import LoginFailed, SessionRequired
+from garmin_database.application.errors import (
+    LoginFailed,
+    SessionRequired,
+    SessionStorageError,
+)
 from garmin_database.application.ports import (
     ArchiveImporter,
     ArchiveStore,
@@ -34,6 +38,8 @@ class Sync:
         self.delay = delay
         self.network = False
         self.refresh_all = False
+        self.halt_reason = None
+        self.retry_not_before = None
 
     def restore_manifest(self):
         self.repository.restore_days(self.archives.restore_manifest())
@@ -48,6 +54,8 @@ class Sync:
     def run_summary(
         self, start, end, stop, progress=lambda *a: None, local_only=False, force=False
     ):
+        self.halt_reason = None
+        self.retry_not_before = None
         requested = list(dates(start, end))
         summary = SyncSummary(start.isoformat(), end.isoformat(), len(requested))
         with self.repository.writer_lock():
@@ -113,6 +121,10 @@ class Sync:
             failed, status, halt = self.download_day(
                 text, stop, progress, report, ahead, next_day
             )
+            if halt:
+                summary.halt_reason = self.halt_reason
+                summary.http_status = status
+                summary.retry_not_before = self.retry_not_before
             self.record_download(summary, text, failed, status, halt, report)
             if halt:
                 summary.halted = index < len(requested)
@@ -170,12 +182,18 @@ class Sync:
             self.record_unresolved(summary, day, report)
         elif status is not None or halt or not self.archives.exists(day):
             summary.download_errors += failed
-            self.finish_day(summary, report, self.failed_download_outcome(status, halt))
+            self.finish_day(
+                summary,
+                report,
+                self.failed_download_outcome(status, halt, self.halt_reason),
+            )
         else:
             self.record_import(summary, failed, False, report)
 
     @staticmethod
-    def failed_download_outcome(status, halt):
+    def failed_download_outcome(status, halt, reason=None):
+        if reason == "session_error":
+            return "błąd odczytu lub zabezpieczenia sesji Garmin; import dnia nie został wykonany"
         if halt and status is None:
             return "błąd pobierania: brak sesji Garmin; zaloguj się w Ustawieniach; import dnia nie został wykonany"
         code = f" (HTTP {status})" if status is not None else ""
@@ -227,7 +245,29 @@ class Sync:
         error = self.receive_download(day, stop, report, ahead)
         if error is not None:
             status = error_status(error)
-            halt = isinstance(error, SessionRequired) or status in {401, 403, 429}
+            session_error = (
+                isinstance(error, SessionStorageError)
+                or isinstance(error, LoginFailed)
+                and error.code.endswith("/LOCAL_SESSION")
+            )
+            halt = (
+                isinstance(error, SessionRequired)
+                or session_error
+                or status in {401, 403, 429}
+            )
+            if halt:
+                self.halt_reason = {
+                    401: "auth_required",
+                    403: "access_denied",
+                    429: "rate_limited",
+                }.get(status, "auth_required")
+                if session_error:
+                    self.halt_reason = "session_error"
+                if status == 429:
+                    self.retry_not_before = (
+                        datetime.now(timezone.utc)
+                        + timedelta(seconds=retry_after(error, self.delay))
+                    ).isoformat()
             return 1, status, halt
         # Only validated, saved ZIPs reach this point. Register the next attempt
         # on the SQL owner's thread before allowing HTTP to overlap this import.
@@ -258,7 +298,9 @@ class Sync:
     @staticmethod
     def stop_retry(error, status, attempt):
         return (
-            isinstance(error, SessionRequired)
+            isinstance(error, (SessionRequired, SessionStorageError))
+            or isinstance(error, LoginFailed)
+            and error.code.endswith("/LOCAL_SESSION")
             or status in {401, 403, 429}
             or status is not None
             and status < 500
@@ -267,6 +309,10 @@ class Sync:
 
 
 def error_status(error):
+    if isinstance(error, (SessionRequired, SessionStorageError)):
+        return None
+    if isinstance(error, LoginFailed) and error.code.endswith("/LOCAL_SESSION"):
+        return None
     seen = set()
     while error is not None and id(error) not in seen:
         seen.add(id(error))
@@ -296,7 +342,7 @@ def validate_zip(payload):
 
 def download_error_message(error, status):
     """Explain failures without exposing upstream responses or credentials."""
-    if isinstance(error, (SessionRequired, LoginFailed)):
+    if isinstance(error, (SessionRequired, LoginFailed, SessionStorageError)):
         return str(error)
     explanations = {
         401: "Sesja Garmin wygasła lub została odrzucona. Zaloguj się w Ustawieniach. Pobieranie zatrzymano.",

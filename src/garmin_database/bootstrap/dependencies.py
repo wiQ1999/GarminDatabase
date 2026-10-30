@@ -61,13 +61,23 @@ class Services:
 
     def prepare(self, settings):
         db = Database(settings.data_dir, settings.database_dsn)
-        with db.writer_lock():
+        if not db.schema_ready():
             db.initialize()
         self.db = db
         self.queries = Queries(db)
 
     def reconfigure(self, settings):
         return Services(settings)
+
+    def collector_path(self):
+        from garmin_database.adapters.outbound.filesystem.collector_files import (
+            default_config_path,
+        )
+        return str(default_config_path())
+
+    def collector_manager(self, path=None):
+        from garmin_database.bootstrap.collector import create_manager
+        return create_manager(path)
 
     def status(self):
         return self.db.status()
@@ -109,7 +119,8 @@ class Services:
         open_location(url)
 
     def login(self, email, password, mfa, stop, progress):
-        return Login(self.source_factory).run(email, password, mfa, stop, progress)
+        with self.session_factory().lock():
+            return Login(self.source_factory).run(email, password, mfa, stop, progress)
 
     def parameters(self):
         return self.queries.parameters()
@@ -137,14 +148,10 @@ class Services:
         )
         sync.refresh_all = refresh_all
         run = sync.run_summary if detailed else sync.run
-        return run(
-            start,
-            end,
-            stop,
-            progress,
-            local_only,
-            force,
-        )
+        if local_only:
+            return run(start, end, stop, progress, local_only, force)
+        with self.session_factory().lock():
+            return run(start, end, stop, progress, local_only, force)
 
     def export(self, settings, settings_path=None):
         return create_exporter(self.db, settings, settings_path)
