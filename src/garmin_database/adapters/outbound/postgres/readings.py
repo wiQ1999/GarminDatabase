@@ -10,11 +10,9 @@ import psycopg
 
 from garmin_database.adapters.outbound.postgres.queries import Queries
 from garmin_database.adapters.outbound.postgres.summaries import Summaries
+from garmin_database.application.mcp_metrics import MCP_PARAMETERS
 from garmin_database.application.ports import ReadFailure
 from garmin_database.application.read_models import select_parameters
-from garmin_database.domain.aggregation import (
-    MEAN_PARAMETERS,
-)
 from garmin_database.domain.values import dumps
 
 
@@ -35,7 +33,7 @@ class DataSnapshot:
     def select(self, settings, channel, requested):
         allowed = getattr(settings, channel + "_parameters") or []
         if channel == "mcp":
-            allowed = set(allowed) & MEAN_PARAMETERS
+            allowed = set(allowed) & MCP_PARAMETERS
         return select_parameters(self.catalog, allowed, requested)
 
     def daily(self, parameter, start, end, stop=None, *, publish_cache=False):

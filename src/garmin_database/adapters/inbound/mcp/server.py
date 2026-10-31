@@ -65,7 +65,27 @@ class HistoryInput(DailyInput):
     period: Literal["day", "month"] = "month"
 
 
+class SourceHistoryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    date_from: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")]
+    date_to: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")]
+    parameter: Annotated[
+        str,
+        Field(
+            max_length=200,
+            description="Źródłowa metryka z garmin_catalog, np. wynik snu lub nocne HRV",
+        ),
+    ]
+    cursor: Annotated[str | None, Field(max_length=4096)] = None
+    limit: Annotated[int, Field(ge=1, le=500)] = 200
+
+
 TOOLS = {
+    "get_source_history": (
+        SourceHistoryInput,
+        "source_history",
+        "Historia źródłowych obserwacji Garmin: wyniki snu, nocne HRV, tętno spoczynkowe, liczniki i kategorie. Bez uśredniania lub sumowania. Jedna jawnie włączona metryka; kontynuuj cursor. Kody faz snu nie oznaczają czasu trwania faz.",
+    ),
     "get_samples": (
         SamplesInput,
         "samples",

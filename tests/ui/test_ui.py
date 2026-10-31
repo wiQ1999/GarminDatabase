@@ -94,7 +94,7 @@ def test_sharing_policy_is_independent_and_survives_restart(qtbot, tmp_path):
     w.select_sharing(2, False)
     w.sharing_table.item(heart, 3).setCheckState(Qt.CheckState.Checked)
     w.mcp_enabled.setChecked(True)
-    assert not w.sharing_table.item(other, 3).flags() & Qt.ItemFlag.ItemIsEnabled
+    assert w.sharing_table.item(other, 3).flags() & Qt.ItemFlag.ItemIsEnabled
     w.save_settings()
     ready(qtbot, w)
     saved = Settings.load(tmp_path / "settings.json")

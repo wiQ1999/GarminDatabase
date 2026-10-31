@@ -56,10 +56,10 @@ from garmin_database.adapters.inbound.desktop.overview import OverviewPoller
 from garmin_database.adapters.inbound.desktop.parameter_help import parameter_help
 from garmin_database.adapters.inbound.mcp.client_config import client_config
 from garmin_database.application.dto import ExportResult, SyncSummary
+from garmin_database.application.mcp_metrics import MCP_PARAMETERS
 from garmin_database.application.ports import DesktopServices
 from garmin_database.application.sync_messages import sync_heading, sync_summary_text
 from garmin_database.domain.aggregation import (
-    MEAN_PARAMETERS,
     has_chart_summary,
     summary_method,
 )
@@ -619,7 +619,7 @@ class Window(QMainWindow):
     def sharing_checkbox(self, param, channel):
         item = QTableWidgetItem()
         item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
-        supported = channel == "export" or param["key"] in MEAN_PARAMETERS
+        supported = channel == "export" or param["key"] in MCP_PARAMETERS
         if not supported:
             item.setFlags(Qt.ItemFlag.NoItemFlags)
             item.setToolTip(

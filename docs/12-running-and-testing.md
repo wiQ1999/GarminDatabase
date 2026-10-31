@@ -145,13 +145,16 @@ W źródłach odpowiednikiem jest `.venv/Scripts/python.exe scripts/entrypoints/
 
 | Narzędzie | Argumenty | Wynik |
 | --- | --- | --- |
-| `garmin_catalog` | opcjonalny `cursor`; katalog v1 mieści pięć metryk w jednej odpowiedzi | Włączone metryki, etykiety, jednostki, dostępny zakres rozpoznanych czasów, precyzja, limity i objaśnienie pomiaru ze źródłami Garmin |
+| `garmin_catalog` | opcjonalny `cursor`; kontynuuj do `next_cursor=null` | Włączone metryki, etykiety, jednostki, dostępny zakres rozpoznanych czasów, precyzja, limity i objaśnienie pomiaru ze źródłami Garmin |
 | `get_daily` | `date_from`, `date_to`, wymagane `metrics`, opcjonalny `cursor` | Dzienne średnie, min/max, liczniki jakości i pierwszy/ostatni czas; do 92 dni na stronę; objaśnienie każdej metryki |
 | `get_period_stats` | `date_from`, `date_to`, wymagane `metrics` | Jeden wiersz całego okresu na metrykę, średnia ważona próbkami, min/max, liczby próbek i dni; objaśnienie każdej metryki |
+| `get_source_history` | `date_from`, `date_to`, `parameter`, `cursor`, `limit` | Historia źródłowa bez uśredniania, także wyniki snu i nocnego HRV; wspólna polityka i stronicowanie |
 | `get_samples` | `day`, `parameter`, opcjonalne `cursor`, `limit` (1–500, domyślnie 200) | Szczegółowe wartości bez zaokrągleń, czas, ważność FIT, dzień żądania, podstawa czasu i kwalifikacja do średniej; stronicowanie do 16 KiB |
 | `get_history` | daty i `metrics`, `period`: `day` lub `month` (domyślnie), `cursor` | Historia dzienna albo miesiące ważone liczbą poprawnych próbek; strony miesięczne do końca roku |
 
-Wymagany jest wybór 1–5 różnych kluczy z katalogu: `monitoring.heart_rate`, `hrv_value.value`, `respiration_rate.respiration_rate`, `spo2_data.reading_spo2`, `stress_level.stress_level_value`, jeśli są obecne i włączone. Są to średnie próbek dni, bez zgadywania znaczenia nocnego HRV czy tętna spoczynkowego. Zakres katalogu nie gwarantuje ciągłości ani pełnego pokrycia doby.
+Dla średnich wybierz 1–5 różnych kluczy z katalogu. Pięć metryk próbek zachowuje dotychczasowy algorytm. Pozostałe jawnie wspierane pola są źródłowymi obserwacjami; `get_source_history` wymaga jednego `parameter` i zakresu dat, z opcjonalnym `cursor` i `limit` (1–500). Nie oblicza średniej z ocen, liczników ani kodów kategorii. `get_samples` odczytuje każdą obsługiwaną metrykę w jednym dniu. Katalog podaje `method`, `representation`, `value_labels` i `operations`. Zakres katalogu nie gwarantuje ciągłości; nieznany czas pozostaje null, a dzień żądania jest osobnym polem.
+
+Jawna lista `application/mcp_metrics.py` obejmuje 43 klucze: pięć średnich, oba pola spoczynkowego tętna, siedem pól HRV status summary, fazy snu i 14 pól oceny snu, dwa odchylenia temperatury skóry, tryb/pewność SpO2 oraz dziesięć liczników i kategorii monitoringu. Sam opis ani fallback nie odblokowują nowej metryki. Nie są udostępniane prywatne interpretacje zakłóceń snu ani niejednoznaczna temperatura `nightly_value`. Użytkownik musi osobno zaznaczyć nowe pola i zapisać politykę MCP; aktualizacja aplikacji niczego nie włącza automatycznie.
 
 Przykładowe argumenty metod odczytu:
 

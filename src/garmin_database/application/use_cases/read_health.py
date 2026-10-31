@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import Event
 from zoneinfo import ZoneInfo
 
+from garmin_database.application.mcp_metrics import MCP_PARAMETERS
 from garmin_database.application.parameter_descriptions import parameter_description
 from garmin_database.application.ports import ReadFailure
 from garmin_database.application.read_models import (
@@ -168,6 +169,15 @@ def sample_row(row, parameter):
     ]
 
 
+def observation_coverage(coverage):
+    return dict(
+        decode_status=coverage["decode_status"],
+        gaps=compress_days(coverage["missing_days"], "missing_archive")
+        + compress_days(coverage["unimported_or_partial_days"], "partial_decode")
+        + compress_days(coverage.get("ongoing_days", []), "current_day"),
+    )
+
+
 class MCPData:
     def __init__(
         self,
@@ -264,26 +274,30 @@ class MCPData:
             )
         return result
 
-    def select(self, snapshot, settings, metrics):
+    def select(self, snapshot, settings, metrics, *, means_only=False):
         if not valid_parameter_list(metrics) or not 1 <= len(metrics) <= 5:
             raise AccessError("Wybierz od 1 do 5 różnych metryk z garmin_catalog.")
-        return snapshot.select(settings, "mcp", metrics)
+        selected = snapshot.select(settings, "mcp", metrics)
+        if means_only and any(p["key"] not in MEAN_PARAMETERS for p in selected):
+            raise AccessError(
+                "Ta metryka jest wartością źródłową. Użyj get_source_history lub get_samples zgodnie z katalogiem."
+            )
+        return selected
 
     def catalog(self, cursor=None, stop=None):
         with self.snapshot(stop) as (settings, snap, budget, identity):
-            if cursor is not None:
-                self.decode_cursor(cursor, ["catalog", identity])
+            offset = self.decode_cursor(cursor, ["catalog", identity]) if cursor else 0
             cache_key = dumps(identity)
             if self.catalog_cache is None or self.catalog_cache[0] != cache_key:
                 items = [
                     self.catalog_item(p, snap, budget)
                     for p in snap.catalog
-                    if p["key"] in set(settings.mcp_parameters) & MEAN_PARAMETERS
+                    if p["key"] in set(settings.mcp_parameters) & MCP_PARAMETERS
                 ]
                 self.catalog_cache = cache_key, items
             result = self.envelope(snap)
             result.update(
-                metrics=self.catalog_cache[1],
+                metrics=[],
                 limits=dict(
                     daily_page_days=PAGE_DAYS,
                     metrics=5,
@@ -292,10 +306,20 @@ class MCPData:
                 ),
                 gaps_detail="get_daily",
             )
-            if not self.fits(result):
-                raise AccessError(
-                    "Katalog przekracza limit odpowiedzi. Zmniejsz wybór w Ustawieniach."
+            for index, item in enumerate(self.catalog_cache[1][offset:], offset):
+                result.update(
+                    truncated=True,
+                    next_cursor=self.encode_cursor(
+                        dict(query=["catalog", identity], next=index)
+                    ),
                 )
+                result["metrics"].append(item)
+                if not self.fits(result):
+                    result["metrics"].pop()
+                    if not result["metrics"]:
+                        raise AccessError("Opis metryki przekracza limit odpowiedzi.")
+                    return result
+            result.update(truncated=False, next_cursor=None)
             return result
 
     def catalog_item(self, parameter, snapshot, budget):
@@ -312,16 +336,22 @@ class MCPData:
             label=parameter["label"],
             unit=parameter["unit"],
             description=parameter_description(parameter),
-            method="sample_mean",
-            precision=PRECISION[parameter["key"]],
+            method="sample_mean"
+            if parameter["key"] in MEAN_PARAMETERS
+            else "source_observations",
+            precision=PRECISION.get(parameter["key"]),
+            representation=parameter["representation"],
+            value_labels=parameter.get("enum", {}),
             **{"from": limits[0], "to": limits[1]},
-            operations=["get_samples", "get_daily", "get_history", "get_period_stats"],
+            operations=["get_samples", "get_daily", "get_history", "get_period_stats"]
+            if parameter["key"] in MEAN_PARAMETERS
+            else ["get_samples", "get_source_history"],
         )
 
     def daily(self, date_from, date_to, metrics, cursor=None, stop=None):
         start, end = date_range(date_from, date_to)
         with self.snapshot(stop) as (settings, snap, budget, identity):
-            parameters = self.select(snap, settings, metrics)
+            parameters = self.select(snap, settings, metrics, means_only=True)
             query = ["daily", identity, date_from, date_to, metrics]
             begin = (
                 date.fromisoformat(self.decode_cursor(cursor, query))
@@ -388,7 +418,7 @@ class MCPData:
     def period(self, date_from, date_to, metrics, stop=None):
         start, end = date_range(date_from, date_to)
         with self.snapshot(stop) as (settings, snap, budget, identity):
-            parameters = self.select(snap, settings, metrics)
+            parameters = self.select(snap, settings, metrics, means_only=True)
             tables, gaps = [], []
             # Each reducer consumes one 92-day chunk at a time, on the same snapshot.
             for parameter in parameters:
@@ -434,12 +464,24 @@ class MCPData:
             return result
 
     def samples(self, day, parameter, cursor=None, limit=200, stop=None):
-        start, end = date_range(day, day)
+        return self.observations(
+            day, day, parameter, cursor, limit, stop, kind="samples"
+        )
+
+    def source_history(
+        self, date_from, date_to, parameter, cursor=None, limit=200, stop=None
+    ):
+        return self.observations(
+            date_from, date_to, parameter, cursor, limit, stop, kind="source_history"
+        )
+
+    def observations(self, date_from, date_to, parameter, cursor, limit, stop, *, kind):
+        start, end = date_range(date_from, date_to)
         if type(limit) is not int or not 1 <= limit <= 500:
             raise AccessError("Wybierz od 1 do 500 obserwacji na stronę.")
         with self.snapshot(stop) as (settings, snap, budget, identity):
             selected = self.select(snap, settings, [parameter])[0]
-            query = ["samples", identity, day, parameter, limit]
+            query = [kind, identity, date_from, date_to, parameter, limit]
             offset = self.decode_cursor(cursor, query) if cursor else 0
             result = self.envelope(snap, start, end)
             result.update(
@@ -457,7 +499,7 @@ class MCPData:
                     "included_in_mean",
                 ],
                 data=[],
-                coverage=snap.coverage(start, end),
+                coverage=observation_coverage(snap.coverage(start, end)),
             )
             with closing(snap.rows(selected, start, end)) as rows:
                 for index, row in enumerate(rows):
@@ -478,6 +520,8 @@ class MCPData:
                             raise AccessError("Obserwacja przekracza limit odpowiedzi.")
                         return result
             result.update(next_cursor=None, truncated=False)
+            if not self.fits(result):
+                raise AccessError("Metadane przekraczają limit; skróć zakres dat.")
             return result
 
     def history(
@@ -489,7 +533,7 @@ class MCPData:
             raise AccessError("Wybierz okres day albo month.")
         start, end = date_range(date_from, date_to)
         with self.snapshot(stop) as (settings, snap, budget, identity):
-            parameters = self.select(snap, settings, metrics)
+            parameters = self.select(snap, settings, metrics, means_only=True)
             query = ["history", identity, date_from, date_to, metrics, period]
             begin = (
                 date.fromisoformat(self.decode_cursor(cursor, query))

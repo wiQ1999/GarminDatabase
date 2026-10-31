@@ -94,6 +94,58 @@ def test_monthly_history_equals_weighted_period_and_daily_alias(source):
 
 
 @pytest.mark.integration
+def test_source_sleep_history_preserves_untimed_values_and_rejects_averaging(source):
+    db, settings, path, service = source
+    key = "sleep_assessment.overall_sleep_score"
+    for day, score in [("2024-11-09", 78), ("2024-11-10", 85)]:
+        Importer(db).archive(
+            archive(db.root, day, fit_bytes(346, [(6, 1, 2)], [(score,)]))
+        )
+    settings.mcp_parameters = [key]
+    settings.save(path)
+    item = service.catalog()["metrics"][0]
+    assert item["method"] == "source_observations"
+    assert item["operations"] == ["get_samples", "get_source_history"]
+    page = service.source_history("2024-11-09", "2024-11-10", key, limit=1)
+    following = service.source_history(
+        "2024-11-09", "2024-11-10", key, page["next_cursor"], limit=1
+    )
+    rows = page["data"] + following["data"]
+    assert [r[1] for r in rows] == [78, 85]
+    assert all(r[0] is None and r[-1] is None for r in rows)
+    assert [r[3] for r in rows] == ["2024-11-09", "2024-11-10"]
+    with pytest.raises(AccessError, match="get_source_history"):
+        service.period("2024-11-09", "2024-11-10", [key])
+
+
+@pytest.mark.integration
+def test_catalog_paginates_reviewed_metrics_without_implicit_sharing(source):
+    db, settings, path, _ = source
+    from garmin_database.application.mcp_metrics import MCP_PARAMETERS
+
+    for day, field in enumerate([2, 3, 6, 7, 8, 9], 10):
+        Importer(db).archive(
+            archive(db.root, f"2024-11-{day}", fit_bytes(346, [(field, 1, 2)], [(75,)]))
+        )
+    settings.mcp_parameters = sorted(MCP_PARAMETERS)
+    settings.save(path)
+    service = create_service(path, max_bytes=4200)
+    keys, cursor = [], None
+    while True:
+        result = service.catalog(cursor)
+        assert len(json.dumps(result, ensure_ascii=False).encode()) < 4200
+        keys.extend(item["parameter"] for item in result["metrics"])
+        cursor = result["next_cursor"]
+        if cursor is None:
+            break
+    expected = {p["key"] for p in Queries(db).parameters()} & MCP_PARAMETERS
+    assert len(keys) == len(set(keys)) and set(keys) == expected
+    settings.mcp_parameters = [KEY]
+    settings.save(path)
+    assert [m["parameter"] for m in service.catalog()["metrics"]] == [KEY]
+
+
+@pytest.mark.integration
 def test_all_five_metrics_include_shared_descriptions_within_protocol_budget(source):
     db, settings, path, service = source
     samples = [
@@ -597,6 +649,7 @@ def test_real_stdio_client_all_tools(tmp_path, source):
                     "get_period_stats",
                     "get_samples",
                     "get_history",
+                    "get_source_history",
                 }
                 result = await session.call_tool("garmin_catalog", {})
                 assert (

@@ -109,7 +109,7 @@ async def smoke(executable, result_dir):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 tools = await session.list_tools()
-                assert len(tools.tools) == 5
+                assert len(tools.tools) == 6
                 catalog = await session.call_tool("garmin_catalog", {})
                 assert not catalog.isError, catalog.content
                 evaluation_count = await evaluate(session, key)
@@ -137,7 +137,7 @@ async def smoke(executable, result_dir):
     )
     report = dict(
         status="passed",
-        tools=5,
+        tools=6,
         evaluations=evaluation_count,
         synthetic=True,
         packaged=bool(executable),

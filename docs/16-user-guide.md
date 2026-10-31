@@ -59,7 +59,7 @@ Instalacja przygotowuje zaszyfrowany klucz, usługę jednorazową i timer; nie w
 
 W Ustawieniach włącz MCP, zaznacz udostępniane parametry i zapisz ustawienia. „Kopiuj konfigurację MCP” tworzy konfigurację klienta z właściwą ścieżką programu oraz `settings.json`. Wklej ją do klienta MCP. Klient sam uruchamia proces `GarminDatabaseMCP.exe` przez stdio; nie uruchamiaj serwera HTTP. Linux: `garmin-db-mcp --settings-file /etc/garmin-database/settings.json`.
 
-MCP ma dostęp tylko do odczytu. Agent rozpoczyna od `garmin_catalog`, a następnie wybiera narzędzie wskazane w katalogu. Wyłączenie udostępniania działa także dla już uruchomionego MCP.
+MCP ma dostęp tylko do odczytu. `get_samples` pokazuje szczegóły dnia, `get_history` średnie dzienne/miesięczne, `get_period_stats` podsumowanie zakresu, a `get_source_history` gotowe wyniki snu, nocnego HRV i inne wartości źródłowe. Nie sumuj skumulowanych liczników i nie traktuj ocen snu jako czasu faz. Agent rozpoczyna od `garmin_catalog`, a następnie wybiera narzędzie wskazane w katalogu. Wyłączenie udostępniania działa także dla już uruchomionego MCP.
 
 ## Polecenia
 
