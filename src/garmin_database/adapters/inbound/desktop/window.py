@@ -43,6 +43,9 @@ from garmin_database.adapters.inbound.desktop.chart import (
     prepare_series,
 )
 from garmin_database.adapters.inbound.desktop.collector import CollectorPanel
+from garmin_database.adapters.inbound.desktop.collector_status import (
+    CollectorStatusPanel,
+)
 from garmin_database.adapters.inbound.desktop.icons import (
     application_icon,
     icon,
@@ -162,7 +165,7 @@ class Window(QMainWindow):
         heading.addWidget(brand)
         nav.addLayout(heading)
         self.navigation = QListWidget()
-        self.navigation.addItems(["Start", "Dane", "Eksport", "Ustawienia"])
+        self.navigation.addItems(["Start", "Dane", "Eksport", "Ustawienia", "Kolektor"])
         self.navigation.setFixedWidth(185)
         nav.addWidget(self.navigation)
         nav.addWidget(QLabel("Archiwum dobrostanu\nDane z Garmin Connect"))
@@ -174,6 +177,13 @@ class Window(QMainWindow):
         self.build_data()
         self.build_export()
         self.build_settings()
+        collector_layout = self.page(
+            "Kolektor",
+            "Automatyczne pobieranie • stan i dziennik aktualizowane razem ze stanem bazy.",
+        )
+        self.collector_status = CollectorStatusPanel(self)
+        collector_layout.addWidget(self.collector_status)
+        self.collector_status.idle.connect(self.close_if_idle)
         self.navigation.setCurrentRow(0)
         self.overview = OverviewPoller(
             services,
@@ -188,6 +198,8 @@ class Window(QMainWindow):
         self.overview.busy_changed.connect(self.status_indicator.set_loading)
         self.overview.busy_changed.connect(self.update_action_states)
         self.overview.idle.connect(self.close_if_idle)
+        self.overview.timer.timeout.connect(self.collector_status.poll)
+        QTimer.singleShot(0, self.collector_status.poll)
         QTimer.singleShot(0, self.refresh)
 
     def page_changed(self, index):
@@ -1206,6 +1218,7 @@ class Window(QMainWindow):
             else:
                 self.populate_parameters(preserve=False)
             self.overview.configure(services, candidate)
+            self.collector_status.generation += 1
             self.refresh_note.setText(
                 f"Automatyczne odświeżanie co {candidate.refresh_seconds} s"
             )
@@ -1273,6 +1286,7 @@ class Window(QMainWindow):
             return
         self.closing = True
         self.overview.shutdown()
+        self.collector_status.shutdown()
         self.progress_timer.stop()
         self.query_pending = False
         self.query_serial += 1
@@ -1283,6 +1297,7 @@ class Window(QMainWindow):
             self.query_worker is not None
             or self.aux_worker is not None
             or self.overview.busy
+            or self.collector_status.busy
         ):
             self.status.setText("Zamykanie: zatrzymywanie odczytów w tle…")
             self.update_action_states()

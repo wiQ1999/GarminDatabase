@@ -50,7 +50,7 @@ def test_defaults_share_configuration_directory_and_current_account(qtbot, tmp_p
 
 def test_missing_config_shows_actionable_message(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
-    for action in ("load", "status", "logs", "apply"):
+    for action in ("load", "apply"):
         w.collector_panel.buttons[action].click()
         ready(qtbot, w)
         assert "Zapisz konfigurację" in w.collector_panel.message.text()
@@ -131,13 +131,50 @@ def test_status_is_human_readable_and_busy_does_not_enter_gui_journal(qtbot, tmp
     w = window(qtbot, tmp_path)
     panel = w.collector_panel
     before = w.details.toPlainText()
-    panel._status(
-        {
-            "schedule": {"installed": True, "enabled": True, "revision_matches": False},
-            "state": {"outcome": "auth_required", "auth_required": True},
-            "next_run": "2026-10-30T12:00:00+00:00",
-        }
+    from types import SimpleNamespace
+
+    panel = w.collector_status
+    panel.render(
+        (
+            SimpleNamespace(run_as="synthetic"),
+            {
+                "schedule": {
+                    "installed": True,
+                    "enabled": True,
+                    "revision_matches": False,
+                },
+                "state": {"outcome": "auth_required", "auth_required": True},
+                "next_run": "2026-10-30T12:00:00+00:00",
+            },
+            "synthetic log",
+        )
     )
     assert "zmiany niezastosowane" in panel.message.text()
     assert "logowanie Garmin" in panel.message.text()
     assert w.details.toPlainText() == before
+
+
+def test_collector_has_separate_page_and_shares_poll_clock(
+    qtbot, tmp_path, monkeypatch
+):
+    w = window(qtbot, tmp_path)
+    assert w.navigation.item(4).text() == "Kolektor"
+    assert set(w.collector_panel.buttons) == {"load", "save", "apply"}
+    assert "nie jest skonfigurowany" in w.collector_status.message.text()
+    w.refresh_seconds.setValue(45)
+    w.save_settings()
+    ready(qtbot, w)
+    assert w.overview.timer.interval() == 45_000
+    calls = []
+    original = w.services.collector_manager
+    monkeypatch.setattr(
+        w.services,
+        "collector_manager",
+        lambda path: (calls.append(path), original(path))[1],
+    )
+    w.overview.timer.timeout.emit()
+    ready(qtbot, w)
+    assert len(calls) == 1
+    w.hide()
+    w.overview.timer.timeout.emit()
+    assert len(calls) == 1

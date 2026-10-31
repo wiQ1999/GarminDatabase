@@ -2,7 +2,6 @@
 
 from dataclasses import replace
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 
 from PySide6.QtCore import QDateTime, QTimeZone
 from PySide6.QtWidgets import (
@@ -13,13 +12,11 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QSpinBox,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from garmin_database.adapters.inbound.desktop.busy import BusyButton
-from garmin_database.application.collector_messages import OUTCOME_LABELS
 
 
 class CollectorPanel(QWidget):
@@ -67,8 +64,6 @@ class CollectorPanel(QWidget):
             ("load", "Wczytaj", self.load),
             ("save", "Zapisz konfigurację", self.save),
             ("apply", "Zastosuj harmonogram", self.apply),
-            ("status", "Sprawdź stan", self.status),
-            ("logs", "Pokaż log", self.logs),
         ]:
             trigger = BusyButton(text)
             trigger.clicked.connect(slot)
@@ -80,12 +75,6 @@ class CollectorPanel(QWidget):
         )
         self.message.setWordWrap(True)
         layout.addWidget(self.message)
-        self.log_view = QTextEdit()
-        self.log_view.setReadOnly(True)
-        self.log_view.setMaximumHeight(160)
-        self.log_view.document().setMaximumBlockCount(500)
-        self.log_view.hide()
-        layout.addWidget(self.log_view)
 
     def _run(self, key, operation, success):
         if self.host.aux_worker is not None or self.host.closing:
@@ -191,47 +180,4 @@ class CollectorPanel(QWidget):
             "apply",
             lambda manager: manager.apply(manager.files.load_config()),
             lambda _: self.message.setText("Harmonogram zastosowany"),
-        )
-
-    def status(self):
-        self._run("status", lambda manager: manager.status(), self._status)
-
-    def _status(self, result):
-        task, state = result["schedule"], result["state"]
-        registration = (
-            "aktywny"
-            if task["enabled"]
-            else "wyłączony"
-            if task["installed"]
-            else "niezarejestrowany"
-        )
-        if task["installed"] and not task["revision_matches"]:
-            registration += "; zmiany niezastosowane"
-        when = result["next_run"]
-        if when:
-            when = (
-                datetime.fromisoformat(when)
-                .astimezone(ZoneInfo("Europe/Warsaw"))
-                .strftime("%Y-%m-%d %H:%M %z")
-            )
-        session = (
-            "wymaga logowania na koncie kolektora"
-            if state["auth_required"]
-            else "sprawdź wynik ostatniej synchronizacji"
-        )
-        outcome = OUTCOME_LABELS.get(state["outcome"], "nieznany stan")
-        self.message.setText(
-            f"Harmonogram: {registration}. Następny termin: {when or 'brak'}. Ostatni wynik: {outcome}. Sesja kolektora: {session}."
-        )
-
-    def logs(self):
-        def show(text):
-            self.log_view.setPlainText(text)
-            self.log_view.show()
-            self.message.setText("Log kolektora")
-
-        self._run(
-            "logs",
-            lambda manager: manager.files.logs(manager.files.load_config()),
-            show,
         )

@@ -73,6 +73,7 @@ def ready(qtbot, w):
         lambda: (
             w.overview.initialized
             and not w.overview.busy
+            and not w.collector_status.busy
             and w.aux_worker is None
             and w.query_worker is None
             and not w.query_pending
