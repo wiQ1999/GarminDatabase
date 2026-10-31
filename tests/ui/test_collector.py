@@ -176,3 +176,29 @@ def test_collector_has_separate_page_and_shares_poll_clock(
     w.hide()
     w.overview.timer.timeout.emit()
     assert len(calls) == 1
+
+
+def test_denied_task_still_shows_local_outcome_and_log(qtbot, tmp_path):
+    w = window(qtbot, tmp_path)
+    panel = w.collector_status
+    config = CollectorFiles(tmp_path / "settings.json").defaults(tmp_path)
+    panel.render(
+        (
+            config,
+            {
+                "schedule": {
+                    "installed": None,
+                    "enabled": False,
+                    "revision_matches": False,
+                    "error": "access_denied",
+                },
+                "state": {"outcome": "auth_required"},
+                "next_run": None,
+            },
+            "synthetic readable log",
+        )
+    )
+    assert "brak dostępu" in panel.message.text()
+    assert "niezarejestrowany" not in panel.message.text()
+    assert "logowanie Garmin" in panel.message.text()
+    assert panel.log_view.toPlainText() == "synthetic readable log"

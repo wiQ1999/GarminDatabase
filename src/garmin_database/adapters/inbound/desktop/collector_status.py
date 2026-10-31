@@ -119,7 +119,9 @@ class CollectorStatusPanel(QWidget):
             panel._loaded(config)
         task, state = result["schedule"], result["state"]
         registration = "niezarejestrowany"
-        if task["installed"]:
+        if task.get("error") == "access_denied":
+            registration = "brak dostępu do istniejącego zadania; zainstaluj / zaktualizuj kolektor, aby naprawić uprawnienia"
+        elif task["installed"]:
             registration = "aktywny" if task["enabled"] else "wyłączony"
             if not task["revision_matches"]:
                 registration += "; zmiany niezastosowane"

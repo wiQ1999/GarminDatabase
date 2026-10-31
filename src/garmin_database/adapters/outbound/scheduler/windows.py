@@ -158,6 +158,7 @@ class WindowsScheduler:
             text=True,
             capture_output=True,
             check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         return result
 
@@ -167,8 +168,11 @@ class WindowsScheduler:
         script = """$ErrorActionPreference='Stop'; try {
 $p=ConvertFrom-Json ([Console]::In.ReadToEnd());
 $s=New-Object -ComObject 'Schedule.Service'; $s.Connect();
-$null=$s.GetFolder('\\').RegisterTask($p.name,$p.xml,6,$p.user,$p.password,1,$null);
-exit 0 } catch { exit 1 }"""
+$reader=if ($p.reader) { ([Security.Principal.NTAccount]$p.reader).Translate([Security.Principal.SecurityIdentifier]).Value } else { [Security.Principal.WindowsIdentity]::GetCurrent().User.Value };
+$user=([Security.Principal.NTAccount]$p.user).Translate([Security.Principal.SecurityIdentifier]).Value;
+$sddl='D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGX;;;'+$user+')(A;;GR;;;'+$reader+')';
+$null=$s.GetFolder('\\').RegisterTask($p.name,$p.xml,6,$p.user,$p.password,1,$sddl);
+exit 0 } catch { if ($_.Exception.GetBaseException().HResult -eq -2147024891) { exit 4 }; exit 1 }"""
         try:
             self.grant_batch(config.run_as)
             result = self._powershell(
@@ -178,24 +182,39 @@ exit 0 } catch { exit 1 }"""
                     "xml": xml,
                     "user": config.run_as,
                     "password": password,
+                    "reader": config.status_reader,
                 },
             )
         finally:
             password = None
+        if result.returncode == 4:
+            raise PermissionError("Brak uprawnień do zmiany zadania Windows")
         if result.returncode:
             raise RuntimeError("Nie udało się zarejestrować zadania Windows")
 
     def status(self, config):
         script = """$ErrorActionPreference='Stop'; try {
 $p=ConvertFrom-Json ([Console]::In.ReadToEnd()); $s=New-Object -ComObject 'Schedule.Service'; $s.Connect();
-try { $t=$s.GetFolder('\\').GetTask($p.name) } catch { exit 3 }
-@{ installed=$true; enabled=[bool]$t.Enabled; revision_matches=$t.Xml.Contains($p.revision) } | ConvertTo-Json -Compress;
+try { $t=$s.GetFolder('\\').GetTask($p.name) } catch {
+$code=$_.Exception.GetBaseException().HResult;
+if ($code -in @(-2147024894,-2147024893)) { exit 3 };
+if ($code -eq -2147024891) { exit 4 }; throw }
+@{ installed=$true; enabled=[bool]$t.Enabled; revision_matches=$t.Xml.Contains($p.revision);
+task_name=$t.Name; account=$t.Definition.Principal.UserId; logon_type=[int]$t.Definition.Principal.LogonType;
+last_result=[long]$t.LastTaskResult; running=($t.State -eq 4) } | ConvertTo-Json -Compress;
 exit 0 } catch { exit 1 }"""
         result = self._powershell(
             script, {"name": self.name(config), "revision": config.revision}
         )
         if result.returncode == 3:
             return {"installed": False, "enabled": False, "revision_matches": False}
+        if result.returncode == 4:
+            return {
+                "installed": None,
+                "enabled": False,
+                "revision_matches": False,
+                "error": "access_denied",
+            }
         if result.returncode:
             raise RuntimeError("Nie można odczytać zadania Windows")
         return json.loads(result.stdout)

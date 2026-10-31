@@ -73,6 +73,8 @@ def test_windows_password_only_in_registration_pipe(setup):
     args, kwargs = run.call_args
     assert "synthetic-secret" not in repr(args)
     assert json.loads(kwargs["input"])["password"] == "synthetic-secret"
+    assert "RegisterTask" in args[0][-1] and "$sddl" in args[0][-1]
+    assert kwargs["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
     run.return_value.returncode = 1
     with pytest.raises(RuntimeError, match="zarejestrować"):
         scheduler.apply(config)
@@ -106,6 +108,19 @@ def test_windows_status_does_not_request_credentials(setup, returncode, expected
     else:
         assert scheduler.status(config)["installed"] is expected
     prompt.assert_not_called()
+
+
+def test_denied_task_is_not_reported_as_absent_and_status_runs_without_console(setup):
+    files, config = setup
+    run = Mock(return_value=SimpleNamespace(returncode=4))
+    scheduler = WindowsScheduler(["collector.exe"], files.config_path, run=run)
+    status = scheduler.status(config)
+    assert status["installed"] is None and status["error"] == "access_denied"
+    assert run.call_args.kwargs["creationflags"] == getattr(
+        subprocess, "CREATE_NO_WINDOW", 0
+    )
+    script = run.call_args.args[0][-1]
+    assert "-2147024891" in script and "-2147024894" in script
 
 
 @pytest.mark.skipif(os.name == "nt", reason="systemd is a Linux deployment adapter")

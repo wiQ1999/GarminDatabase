@@ -60,6 +60,8 @@ Aplikacja, MCP i kolektor używają jednego `settings.json`. Parametry połącze
 
 Sekcja `collector` zawiera: `enabled`, `interval_minutes` (minimum 15), `anchor_at` (pełna minuta UTC), `run_as`, `instance`, `state_dir`, `session_path`, `credential_path` (Linux) i `status_reader` (Windows). Stan i sesja nie należą do pliku ustawień. Zapisy ustawień globalnych zachowują nowszą sekcję kolektora; zapisy kolektora zachowują ustawienia globalne. Zapis jest atomowy z blokadą pliku i zachowaniem ACL.
 
+Odczyt Harmonogramu Zadań nie otwiera konsoli PowerShell. Odmowa dostępu do zadania jest odrębnym stanem od braku zadania; lokalny wynik i dziennik kolektora nadal są dostępne. Instalacja/aktualizacja nadaje operatorowi prawo odczytu definicji zadania, także gdy utworzono je z podwyższonymi uprawnieniami. Nazwa `GarminDatabase-default` oznacza domyślną instancję, a nie konto Windows.
+
 Windows: `%LOCALAPPDATA%/GarminDatabase/settings.json`; Linux: `/etc/garmin-database/settings.json`. GUI otwiera folder przyciskiem „Otwórz folder konfiguracji”. Pole `refresh_seconds` (5–3600, domyślnie 15) steruje częstotliwością odświeżania statusów, nie pobierania z Garmin. Początek harmonogramu wyznacza terminy, a `download_from` zakres danych.
 
 Starsze samodzielne pliki kolektora są nadal czytelne przez CLI. Pierwszy zapis formularza może przenieść ustawienia sąsiedniego `collector.json` do wspólnej konfiguracji, bez usuwania oryginału. Następnie należy zastosować harmonogram, aby zadanie wskazywało nowy plik. Stare niestandardowe ścieżki nie są automatycznie usuwane.
