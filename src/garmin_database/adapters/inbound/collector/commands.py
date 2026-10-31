@@ -23,6 +23,11 @@ def parser():
     install.add_argument("--account", help="Istniejące konto systemowe kolektora")
     install.add_argument("--interval", type=int, help="Cykl w minutach, minimum 15")
     install.add_argument(
+        "--logon",
+        choices=["interactive", "password"],
+        help="Windows: bieżące konto bez hasła albo praca po wylogowaniu",
+    )
+    install.add_argument(
         "--enable", action="store_true", help="Włącz przyszłe uruchomienia"
     )
     run = subs.add_parser("run")
@@ -59,8 +64,7 @@ def main(argv=None, *, files_factory, manager_factory, session_factory, synchron
             except FileNotFoundError:
                 config = files.defaults()
             changes = {}
-            if args.account is not None:
-                changes["run_as"] = args.account
+            config = files.for_account(config, args.account, args.logon)
             if args.interval is not None:
                 changes["interval_minutes"] = args.interval
             if args.enable:

@@ -22,16 +22,17 @@ class CollectorConfig:
     run_as: str = ""
     credential_path: str = ""
     status_reader: str = ""
-    schema_version: int = 1
+    schema_version: int = 2
     settings_path: str = ""
     download_from: str | None = "2024-01-01"
+    windows_logon: str = "password"
 
     @property
     def schedule(self):
         return Schedule(self.interval_minutes, self.anchor_at)
 
     def validate(self):
-        if type(self.schema_version) is not int or self.schema_version != 1:
+        if type(self.schema_version) is not int or self.schema_version not in (1, 2):
             raise ValueError("Nieobsługiwana wersja konfiguracji kolektora")
         if type(self.enabled) is not bool:
             raise ValueError("Nieprawidłowe włączenie kolektora")
@@ -39,18 +40,22 @@ class CollectorConfig:
             r"[a-z][a-z0-9_-]{0,39}", self.instance
         ):
             raise ValueError("Nieprawidłowy identyfikator kolektora")
+        if self.windows_logon not in ("interactive", "password"):
+            raise ValueError("Nieprawidłowy tryb konta Windows")
+        self._validate_paths()
+        self._validate_shared_settings()
+        self._validate_accounts()
+        self.schedule
+
+    def _validate_paths(self):
         for path in (self.data_dir, self.state_dir, self.session_path):
-            if (
-                not isinstance(path, str)
-                or not Path(path).is_absolute()
-                or Path(path).parent == Path(path)
-                or any(c in path for c in "\r\n\x00")
-            ):
-                raise ValueError("Ścieżki kolektora muszą być bezwzględne")
+            _validate_absolute_path(path)
         if not isinstance(self.credential_path, str) or (
             self.credential_path and not Path(self.credential_path).is_absolute()
         ):
             raise ValueError("Ścieżka poświadczenia musi być bezwzględna")
+
+    def _validate_shared_settings(self):
         if self.database_dsn is not None and not isinstance(self.database_dsn, str):
             raise ValueError("Nieprawidłowe połączenie PostgreSQL")
         if self.settings_path and not Path(self.settings_path).is_absolute():
@@ -62,19 +67,25 @@ class CollectorConfig:
             from datetime import date
 
             date.fromisoformat(self.download_from)
-        if not isinstance(self.run_as, str) or any(
-            c in self.run_as for c in '\r\n\x00"'
-        ):
-            raise ValueError("Nieprawidłowe konto kolektora")
-        if not isinstance(self.status_reader, str) or any(
-            c in self.status_reader for c in '\r\n\x00"'
-        ):
-            raise ValueError("Nieprawidłowy odbiorca statusu kolektora")
-        self.schedule
+
+    def _validate_accounts(self):
+        for value in (self.run_as, self.status_reader):
+            if not isinstance(value, str) or any(c in value for c in '\r\n\x00"'):
+                raise ValueError("Nieprawidłowe konto kolektora")
 
     @property
     def revision(self):
         return sha256(dumps(asdict(self), sort_keys=True).encode()).hexdigest()
+
+
+def _validate_absolute_path(path):
+    if (
+        not isinstance(path, str)
+        or not Path(path).is_absolute()
+        or Path(path).parent == Path(path)
+        or any(c in path for c in "\r\n\x00")
+    ):
+        raise ValueError("Ścieżki kolektora muszą być bezwzględne")
 
 
 @dataclass

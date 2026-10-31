@@ -148,6 +148,16 @@ def main():
         *ssl_runtime_arguments(),
         str(root / "scripts/entrypoints/collector.py"),
     ]
+    if sys.platform == "win32":
+        collector_command = [
+            sys.executable,
+            "-m",
+            "PyInstaller",
+            "--noconfirm",
+            "--distpath",
+            str(Path(args.destination).resolve()),
+            str(root / "scripts/collector_windows.spec"),
+        ]
     return (
         subprocess.call(collector_command, cwd=root)
         if args.only in {None, "collector"}

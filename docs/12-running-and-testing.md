@@ -119,7 +119,9 @@ Odbiór danych rzeczywistych jest oddzielny od testów syntetycznych. Nie zastę
 
 ## Lokalny MCP — konfiguracja i uruchomienie
 
-Budowanie tworzy trzy sąsiednie foldery: `GarminDatabase/` z okienkowym EXE, `GarminDatabaseMCP/` z serwerem stdio i `GarminDatabaseCollector/` z kolektorem. Zachowaj foldery wraz z ich `_internal`. `build_windows.ps1 -Destination ...` buduje wszystkie we wskazanym miejscu. `build.py --only collector` działa w środowisku bez Qt/MCP. Nie zatrzymuj wcześniejszej aplikacji użytkownika w celu nadpisania plików.
+Budowanie tworzy trzy sąsiednie foldery: `GarminDatabase/` z okienkowym EXE, `GarminDatabaseMCP/` z serwerem stdio i `GarminDatabaseCollector/` z kolektorem. Windows ma w ostatnim folderze konsolowy `GarminDatabaseCollector.exe` oraz bezokienkowy `GarminDatabaseCollectorTask.exe` dla harmonogramu. Współdzielą `_internal`, nie wymagają Qt/MCP. Oba pakuje `scripts/collector_windows.spec`; smoke sprawdza także podsystem GUI w nagłówku PE zadania i jego uruchomienie bez zapisu danych. Zachowaj całe foldery. `build_windows.ps1 -Destination ...` buduje wszystkie we wskazanym miejscu. `build.py --only collector` działa w środowisku bez Qt/MCP. Nie zatrzymuj wcześniejszej aplikacji użytkownika w celu nadpisania plików.
+
+`python scripts/smoke_windows_task_access.py` sprawdza natywnie nowe zadanie, aktualizację poprawnego własnego zadania oraz zachowanie starego ACL podczas aktualizacji. Korzysta tylko z własnych wyłączonych zadań i danych syntetycznych, bez SQL, sesji i Garmin. Bez podniesienia uprawnień stary ACL ma dać jednoznaczny błąd wymaganej naprawy; na runnerze administratora sprawdzana jest jawna naprawa deskryptora. Test sprząta własne zadania i jest wykonywany w CI Windows.
 
 1. Przygotuj bazę przez aplikację. MCP nie pobiera, nie importuje i nie migruje danych; nie wymaga logowania Garmin.
 2. W Ustawieniach włącz „Zezwalaj na odczyt przez lokalny MCP”, wybierz metryki w kolumnie MCP i zapisz ustawienia.

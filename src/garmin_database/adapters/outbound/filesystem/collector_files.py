@@ -6,6 +6,7 @@ import logging
 import os
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
+from hashlib import sha256
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -45,7 +46,7 @@ class CollectorFiles:
             if os.name == "nt"
             else Path("/var/lib/garmin-database/collector/default")
         )
-        return CollectorConfig(
+        config = CollectorConfig(
             data_dir=str(Path(data_dir).resolve()) if data_dir else str(state / "data"),
             state_dir=str(state),
             session_path=str(state / "auth/session.bin"),
@@ -55,6 +56,52 @@ class CollectorFiles:
             settings_path=str(Path(settings_path).resolve()) if settings_path else "",
             download_from=None if settings_path else "2024-01-01",
         )
+        return (
+            self.for_account(config, windows_logon="interactive")
+            if os.name == "nt"
+            else config
+        )
+
+    def for_account(self, config, account=None, windows_logon=None):
+        if account is None:
+            account = (
+                current_account() if windows_logon == "interactive" else config.run_as
+            )
+        changed = account.casefold() != config.run_as.casefold()
+        windows_logon = windows_logon or self._account_mode(config, account, changed)
+        if windows_logon == "interactive" and (
+            os.name != "nt" or account.casefold() != current_account().casefold()
+        ):
+            raise ValueError("Tryb bez hasła wymaga bieżącego konta Windows")
+        updates = dict(run_as=account, windows_logon=windows_logon, schema_version=2)
+        if os.name == "nt":
+            updates.update(
+                self._windows_profile(config, account, windows_logon, changed)
+            )
+        result = replace(config, **updates)
+        result.validate()
+        return result
+
+    def _account_mode(self, config, account, changed):
+        if changed and os.name == "nt":
+            return (
+                "interactive"
+                if account.casefold() == current_account().casefold()
+                else "password"
+            )
+        return config.windows_logon
+
+    def _windows_profile(self, config, account, mode, changed):
+        state = Path(config.state_dir)
+        if changed or config.windows_logon != mode:
+            key = sha256(f"{account.casefold()}:{mode}".encode()).hexdigest()[:16]
+            state = self.config_path.parent / "collectors" / key / "state"
+        session = Path(config.session_path)
+        if mode == "interactive":
+            session = application_dir() / "auth/session.bin"
+        elif changed or config.windows_logon != mode:
+            session = state / "auth/session.bin"
+        return dict(state_dir=str(state), session_path=str(session))
 
     def resolve_settings(self, config):
         """Resolve shared values once per run; explicit standalone overrides win."""

@@ -11,24 +11,24 @@
 
 ## Windows — kolektor
 
-1. W Ustawieniach → Automatyczne pobieranie wybierz konto, cykl i początek harmonogramu. Domyślnie jest to aktualne konto Windows. Konto musi już istnieć i mieć hasło; PIN/Hello nie wystarcza.
-2. Kliknij „Zainstaluj / zaktualizuj kolektor”. Przycisk zapisuje formularz, przygotowuje uprawnienia i rejestruje zadanie. Potwierdź UAC oraz hasło konta Windows. Nie wpisuj tutaj hasła Garmin.
-3. Dla aktualnego konta Windows w formularzu logowania Garmin wybierz „Kolektor — aktualne konto Windows” i zaloguj się. Sesja kolektora jest niezależna od sesji aplikacji. Dla innego konta uruchom terminal przez `runas /user:KOMPUTER\konto powershell.exe`, a w nim polecenie `login` poniżej. Konto potrzebuje własnego pgpass i dostępu do paczki.
-4. Włącz „Włącz cykliczne pobieranie” i ponownie zainstaluj/zaktualizuj kolektor. Zakładka „Kolektor” pokazuje stan, terminy i log. Przycisk instalacji nie wykonuje pobrania; automat czeka na następny termin.
+1. W Ustawieniach → Automatyczne pobieranie wybierz „Bieżące konto — bez hasła Windows”, cykl i początek harmonogramu. Konto jest wskazane automatycznie. Działa także przy blokadzie ekranu, gdy użytkownik pozostaje zalogowany; GUI może być zamknięte.
+2. Używana jest istniejąca sesja Garmin aplikacji. Jeśli jej brak, zaloguj Garmin jak przy ręcznym pobieraniu.
+3. Zaznacz „Włącz cykliczne pobieranie” i kliknij „Zainstaluj / zaktualizuj kolektor”. Nie podajesz hasła Windows ani nie tworzysz osobnego konta. Naprawa uprawnień starszego zadania może jednorazowo wymagać potwierdzenia UAC.
+4. Zakładka „Kolektor” pokazuje stan, następny termin i log. Instalacja nie wykonuje pobrania natychmiast. Nazwa zadania `GarminDatabase-default` oznacza domyślną instancję; ponowna instalacja aktualizuje tę samą instancję.
 
-Równoważna instalacja z terminala (wstaw własne ścieżki i konto):
+Równoważna instalacja z terminala (wstaw własne ścieżki):
 
 ```powershell
 $collector = 'C:\Apps\GarminDatabaseCollector\GarminDatabaseCollector.exe'
 $config = "$env:LOCALAPPDATA\GarminDatabase\settings.json"
-& $collector --config $config install --account 'KOMPUTER\konto' --interval 120
-& $collector --config $config login
-& $collector --config $config schedule enable
+& $collector --config $config install --logon interactive --interval 120 --enable
 & $collector --config $config status --json
 & $collector --config $config logs
 ```
 
-`login` wykonuj jako konto zadania, wskazując pełną ścieżkę wspólnego pliku operatora. `install` tworzy brakującą sekcję kolektora, zachowuje pozostałe ustawienia i przygotowuje harmonogram, także gdy istniejący plik aplikacji ma własną nazwę podaną przez `--config`. Zmiana konta wymaga przygotowania jego sesji i dostępu do bazy. Formularz Garmin w aplikacji odrzuca logowanie kolektora skonfigurowanego dla innego konta, zanim użyje poświadczeń; brak konfiguracji wymaga jej wcześniejszego zapisania.
+`install` tworzy brakującą sekcję kolektora, zachowuje pozostałe ustawienia i przygotowuje harmonogram, także dla własnej nazwy pliku podanej przez `--config`. Przy instalacji samego kolektora bez sesji GUI wykonaj również `login` na bieżącym koncie.
+
+Praca po wylogowaniu jest opcjonalna: wybierz drugi tryb i istniejące konto z hasłem albo użyj `install --logon password --account 'KOMPUTER\konto'`. Konto potrzebuje własnego pgpass, dostępu do paczki i osobnej sesji Garmin. Dla bieżącego konta wybierz sesję kolektora w formularzu Garmin. Dla innego konta uruchom `runas /user:KOMPUTER\konto powershell.exe` i w jego terminalu wykonaj `$collector --config $config login`. Hasła wpisuj wyłącznie w lokalnych monitach. PIN/Hello nie zastępuje hasła tego trybu. Zmiana konta lub trybu zachowuje poprzednie pliki sesji.
 
 ## Linux / Raspberry Pi OS
 

@@ -55,6 +55,21 @@ def main():
                 print(result.stdout[-4000:])
                 print(result.stderr[-4000:])
                 return 1
+        if os.name == "nt":
+            task = binary.with_name("GarminDatabaseCollectorTask.exe")
+            assert task.is_file()
+            # Verify the PE subsystem, not merely the absence of stdout.
+            import struct
+
+            data = task.read_bytes()
+            pe = struct.unpack_from("<I", data, 0x3C)[0]
+            assert struct.unpack_from("<H", data, pe + 24 + 68)[0] == 2
+            result = subprocess.run(
+                [str(task), "--config", str(path), "run", "--scheduled"],
+                capture_output=True,
+                timeout=30,
+            )
+            assert result.returncode == 0
         assert not (base / "data").exists() and not (base / "state").exists()
     print("Collector smoke OK: offline status, disabled run, no data writes")
     return 0

@@ -28,6 +28,7 @@ def setup(tmp_path):
         state_dir=str(tmp_path / "state"),
         session_path=str(tmp_path / "auth/session.bin"),
         run_as="garmin",
+        windows_logon="password",
         enabled=True,
     )
     files.save_config(config)

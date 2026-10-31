@@ -7,6 +7,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from math import gcd
 
+from garmin_database.adapters.outbound.filesystem.collector_files import current_account
+
 from .windows_access import grant_batch_logon
 
 NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"
@@ -125,7 +127,11 @@ class WindowsScheduler:
         add(trigger, "Enabled", "true")
         principal = ET.SubElement(add(root, "Principals"), "Principal", id="Collector")
         add(principal, "UserId", config.run_as)
-        add(principal, "LogonType", "Password")
+        add(
+            principal,
+            "LogonType",
+            "InteractiveToken" if config.windows_logon == "interactive" else "Password",
+        )
         add(principal, "RunLevel", "LeastPrivilege")
         settings = add(root, "Settings")
         for key, value in {
@@ -164,17 +170,39 @@ class WindowsScheduler:
 
     def apply(self, config):
         xml = self.render(config)
-        password = self.prompt(config.run_as)
+        interactive = config.windows_logon == "interactive"
+        if interactive and config.run_as.casefold() != current_account().casefold():
+            raise ValueError("Tryb bez hasła wymaga bieżącego konta Windows")
+        password = None if interactive else self.prompt(config.run_as)
         script = """$ErrorActionPreference='Stop'; try {
 $p=ConvertFrom-Json ([Console]::In.ReadToEnd());
 $s=New-Object -ComObject 'Schedule.Service'; $s.Connect();
 $reader=if ($p.reader) { ([Security.Principal.NTAccount]$p.reader).Translate([Security.Principal.SecurityIdentifier]).Value } else { [Security.Principal.WindowsIdentity]::GetCurrent().User.Value };
 $user=([Security.Principal.NTAccount]$p.user).Translate([Security.Principal.SecurityIdentifier]).Value;
-$sddl='D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGX;;;'+$user+')(A;;GR;;;'+$reader+')';
-$null=$s.GetFolder('\\').RegisterTask($p.name,$p.xml,6,$p.user,$p.password,1,$sddl);
+$rights=if ($p.logon -eq 3) { 'GA' } else { 'GRGX' };
+$sddl='D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;'+$rights+';;;'+$user+')(A;;GR;;;'+$reader+')';
+function HasRights($descriptor,$sid,$required) {
+ $sd=New-Object Security.AccessControl.RawSecurityDescriptor($descriptor);
+ $mask=0;
+ foreach($ace in $sd.DiscretionaryAcl) {
+  if($ace.SecurityIdentifier.Value -eq $sid -and $ace.AceQualifier -eq 'AccessAllowed') { $mask=$mask -bor $ace.AccessMask }
+ }
+ return (($mask -band $required) -eq $required -or ($mask -band 268435456) -ne 0)
+}
+function MatchesRights($descriptor) {
+ $required=if($p.logon -eq 3) {2032127} else {1179817};
+ return ((HasRights $descriptor $user $required) -and (HasRights $descriptor $reader 1179785))
+}
+$f=$s.GetFolder('\\');
+$t=$f.RegisterTask($p.name,$p.xml,6,$p.user,$p.password,$p.logon,$sddl);
+# Updating a definition does not replace an existing task's descriptor.
+if(-not (MatchesRights ($t.GetSecurityDescriptor(4)))) { $t.SetSecurityDescriptor($sddl,0) }
+if(-not (MatchesRights ($t.GetSecurityDescriptor(4)))) { exit 4 }
+$null=$f.GetTask($p.name).Xml;
 exit 0 } catch { if ($_.Exception.GetBaseException().HResult -eq -2147024891) { exit 4 }; exit 1 }"""
         try:
-            self.grant_batch(config.run_as)
+            if not interactive:
+                self.grant_batch(config.run_as)
             result = self._powershell(
                 script,
                 {
@@ -183,6 +211,7 @@ exit 0 } catch { if ($_.Exception.GetBaseException().HResult -eq -2147024891) { 
                     "user": config.run_as,
                     "password": password,
                     "reader": config.status_reader,
+                    "logon": 3 if interactive else 1,
                 },
             )
         finally:

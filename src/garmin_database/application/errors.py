@@ -67,3 +67,11 @@ class CollectorLoginUnavailable(RuntimeError):
         super().__init__(
             messages.get(reason, "Sprawdź konfigurację logowania kolektora.")
         )
+
+
+class CollectorInstallIncomplete(RuntimeError):
+    def __init__(self):
+        super().__init__(
+            "Rejestracja kolektora nie jest kompletna: aplikacja nie może odczytać aktualnego zadania. "
+            "Sprawdź uprawnienia harmonogramu."
+        )

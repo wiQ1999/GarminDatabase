@@ -1,5 +1,6 @@
 """Automation settings stay responsive and do not silently register tasks."""
 
+import os
 import threading
 
 import pytest
@@ -19,6 +20,7 @@ def test_save_collector_config_is_separate_from_apply_and_gui_preferences(
     path = tmp_path / "settings.json"
     assert panel.interval.minimum() == 15 and panel.interval.value() == 120
     panel.enabled.setChecked(True)
+    panel.windows_logon.setCurrentIndex(panel.windows_logon.findData("password"))
     panel.account.setText("garmin")
     panel.buttons["save"].click()
     ready(qtbot, w)
@@ -202,3 +204,32 @@ def test_denied_task_still_shows_local_outcome_and_log(qtbot, tmp_path):
     assert "niezarejestrowany" not in panel.message.text()
     assert "logowanie Garmin" in panel.message.text()
     assert panel.log_view.toPlainText() == "synthetic readable log"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows interactive account")
+def test_interactive_mode_selects_current_account_and_explains_locked_desktop(
+    qtbot, tmp_path, monkeypatch
+):
+    w = window(qtbot, tmp_path)
+    panel = w.collector_panel
+    assert panel.windows_logon.currentData() == "interactive"
+    assert panel.account.isReadOnly()
+    assert "zablokowanym ekranie" in panel.note.text()
+    panel.windows_logon.setCurrentIndex(panel.windows_logon.findData("password"))
+    assert not panel.account.isReadOnly()
+    panel.account.setText("SYNTHETIC\\other")
+    panel.windows_logon.setCurrentIndex(panel.windows_logon.findData("interactive"))
+    assert panel.account.text() == w.services.current_account()
+    panel.buttons["save"].click()
+    ready(qtbot, w)
+    assert (
+        CollectorFiles(tmp_path / "settings.json").load_config().windows_logon
+        == "interactive"
+    )
+    manager = w.services.collector_manager(panel.path.text())
+    monkeypatch.setattr(manager, "install", lambda config: None)
+    monkeypatch.setattr(w.services, "collector_manager", lambda path: manager)
+    panel.buttons["apply"].click()
+    ready(qtbot, w)
+    assert "następny termin" in panel.message.text()
+    assert "Przygotuj jego sesję" not in panel.message.text()

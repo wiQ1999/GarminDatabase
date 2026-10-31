@@ -1,11 +1,13 @@
 """Local automation controls; all disk and OS work goes through the host worker."""
 
+import os
 from dataclasses import replace
 from datetime import datetime, timezone
 
 from PySide6.QtCore import QDateTime, QTimeZone
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDateTimeEdit,
     QFormLayout,
     QHBoxLayout,
@@ -47,18 +49,19 @@ class CollectorPanel(QWidget):
         self.anchor.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.anchor.setCalendarPopup(True)
         form.addRow("Początek harmonogramu (Warszawa)", self.anchor)
+        self.windows_logon = QComboBox()
+        self.windows_logon.addItem("Bieżące konto — bez hasła Windows", "interactive")
+        self.windows_logon.addItem("Także po wylogowaniu — hasło Windows", "password")
+        if os.name != "nt":
+            self.windows_logon.setCurrentIndex(1)
+            self.windows_logon.setEnabled(False)
+        form.addRow("Tryb uruchamiania", self.windows_logon)
         self.account = QLineEdit(host.services.current_account())
         form.addRow("Konto uruchamiające kolektor", self.account)
         layout.addLayout(form)
-        note = QLabel(
-            "Połączenie PostgreSQL i początek pobierania pochodzą z zapisanych ustawień aplikacji. "
-            "Konto Windows wymaga hasła; PIN/Hello nie wystarcza do pracy po wylogowaniu. "
-            "Dla aktualnego konta przygotuj sesję kolektora na stronie Garmin. Dla innego konta użyj CLI login pod kontem zadania. "
-            "Początek harmonogramu określa terminy uruchomień, a nie zakres danych. "
-            "Po zmianie czasu lokalna godzina terminu może się przesunąć."
-        )
-        note.setWordWrap(True)
-        layout.addWidget(note)
+        self.note = QLabel()
+        self.note.setWordWrap(True)
+        layout.addWidget(self.note)
         actions = QHBoxLayout()
         self.buttons = {}
         for key, text, slot in [
@@ -80,6 +83,27 @@ class CollectorPanel(QWidget):
         self.enabled.toggled.connect(self.mark_edited)
         self.account.textEdited.connect(self.mark_edited)
         self.anchor.dateTimeChanged.connect(self.mark_edited)
+        self.windows_logon.currentIndexChanged.connect(self._mode_changed)
+        self.windows_logon.currentIndexChanged.connect(self.mark_edited)
+        self._mode_changed()
+
+    def _mode_changed(self, *args):
+        interactive = self.windows_logon.currentData() == "interactive"
+        self.account.setReadOnly(interactive)
+        if interactive:
+            self.account.setText(self.host.services.current_account())
+        explanation = (
+            "Działa na bieżącym koncie po zalogowaniu, również przy zablokowanym ekranie. "
+            "Nie wymaga hasła Windows i korzysta z sesji Garmin aplikacji. "
+            if interactive
+            else "Działa również po wylogowaniu. Rejestracja wymaga hasła konta Windows, nie PIN/Hello. "
+            "Sesję Garmin przygotuj osobno dla konta zadania; inne konto wymaga CLI login. "
+        )
+        self.note.setText(
+            explanation
+            + "Połączenie i początek pobierania pochodzą z zapisanych ustawień aplikacji. "
+            "Początek harmonogramu wyznacza terminy, nie zakres danych."
+        )
 
     def mark_edited(self, *args):
         self.edited = True
@@ -130,6 +154,9 @@ class CollectorPanel(QWidget):
         self.config = config
         self.interval.setValue(config.interval_minutes)
         self.enabled.setChecked(config.enabled)
+        self.windows_logon.setCurrentIndex(
+            self.windows_logon.findData(config.windows_logon)
+        )
         self.account.setText(config.run_as)
         self.anchor.setDateTime(
             QDateTime(datetime.fromisoformat(config.anchor_at.replace("Z", "+00:00")))
@@ -145,8 +172,9 @@ class CollectorPanel(QWidget):
             .toPython()
             .replace(tzinfo=timezone.utc)
             .isoformat(),
-            run_as=self.account.text().strip(),
         )
+        account = self.account.text().strip()
+        mode = self.windows_logon.currentData()
         data_dir = self.host.settings.data_dir
         settings_path = self.host.services.settings_store.location(
             self.host.settings_path
@@ -171,7 +199,7 @@ class CollectorPanel(QWidget):
                     config = manager.files.defaults(
                         data_dir, None, settings_path=settings_path
                     )
-            config = replace(config, **values)
+            config = manager.files.for_account(replace(config, **values), account, mode)
             manager.files.save_config(config)
             if install:
                 manager.install(manager.files.load_config())
@@ -180,7 +208,7 @@ class CollectorPanel(QWidget):
         def saved(config):
             self.config = config
             self.message.setText(
-                "Kolektor zainstalowany. Przygotuj jego sesję Garmin i sprawdź zakładkę Kolektor."
+                "Kolektor zainstalowany. Sprawdź następny termin i stan sesji w zakładce Kolektor."
                 if install
                 else "Konfiguracja zapisana. Zainstaluj / zaktualizuj kolektor, aby zastosować harmonogram."
             )

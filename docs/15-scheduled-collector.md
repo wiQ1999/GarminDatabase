@@ -1,6 +1,6 @@
 # Kolektor cykliczny
 
-Kolektor aktualizuje PostgreSQL danymi z dotychczasowego eksportu dobrostanu Garmin Connect. Działa jako jednorazowy proces bez Qt: Windows Task Scheduler lub systemd uruchamia go niezależnie od GUI i zalogowania użytkownika. PostgreSQL może działać na tej samej maszynie albo na innym hoście.
+Kolektor aktualizuje PostgreSQL danymi z dotychczasowego eksportu dobrostanu Garmin Connect. Działa jako jednorazowy proces bez Qt, uruchamiany przez Windows Task Scheduler lub systemd niezależnie od GUI. W domyślnym trybie Windows użytkownik pozostaje zalogowany; blokada ekranu jest dozwolona. PostgreSQL może działać na tej samej maszynie albo na innym hoście.
 
 ## Kontrakt działania
 
@@ -46,7 +46,14 @@ Blokady obejmują lokalną instancję kolektora, plik sesji i dotychczasowy writ
 
 ## Harmonogram systemowy
 
-Windows używa TimeTrigger z powtarzaniem, bez BootTrigger/LogonTrigger, z `IgnoreNew`, wyłączonym `StartWhenAvailable`, bez wybudzania maszyny i bez limitu 72 godzin na długi import. Proces działa pod wskazanym kontem z logowaniem Password i najmniejszymi uprawnieniami. Domyślnie wybrane jest aktualne konto Windows; można wskazać osobne konto. PIN/Hello nie zastępuje hasła wymaganego do pracy po wylogowaniu. S4U nie zastępuje logowania Password ze względu na ograniczenia dostępu do sieci i zaszyfrowanych plików.
+Windows używa TimeTrigger z powtarzaniem, bez BootTrigger/LogonTrigger, z `IgnoreNew`, wyłączonym `StartWhenAvailable`, bez wybudzania maszyny i bez limitu 72 godzin na długi import. Proces ma najmniejsze uprawnienia. Dostępne są dwa tryby:
+
+- `windows_logon: "interactive"` — domyślny dla nowych konfiguracji Windows. Bieżące konto, bez hasła Windows i bez prawa logowania wsadowego. Działa po zalogowaniu, również przy blokadzie ekranu; zakończenie sesji użytkownika uniemożliwia kolejne uruchomienia. Korzysta z szyfrowanej sesji Garmin aplikacji i wspólnej blokady pliku, bez kopiowania tokenów. Samo GUI może być zamknięte.
+- `windows_logon: "password"` — praca także po wylogowaniu. Konto może być bieżące albo osobne; rejestracja wymaga jego rzeczywistego hasła Windows. PIN/Hello nie wystarcza. Sesja Garmin jest prywatna dla tego profilu kolektora. S4U nie zastępuje tego trybu z powodu ograniczeń dostępu do sieci i zaszyfrowanych plików.
+
+Harmonogram uruchamia `GarminDatabaseCollectorTask.exe`, plik bez konsoli w folderze kolektora. `GarminDatabaseCollector.exe` pozostaje konsolowym CLI do logowania i ręcznych poleceń. Źródła Windows używają `pythonw.exe` dla zadania. Zwykła instalacja bieżącego konta nie podnosi uprawnień. Nadpisanie starszego zadania należącego do administratorów może jednorazowo wymagać UAC; nie wymaga hasła konta zadania w trybie `interactive`.
+
+Semantyka trybów: [Microsoft TASK_LOGON_TYPE](https://learn.microsoft.com/en-us/windows/win32/api/taskschd/ne-taskschd-task_logon_type).
 
 Linux używa `Type=oneshot`, `Persistent=false`, braku dodatkowych ponowień systemowych i minutowego wywołania kontrolnego. Taki wyzwalacz pozwala obsługiwać dowolny interwał, również 17 lub 90 minut, bez skracania go przy północy. Poza właściwym terminem proces od razu kończy pracę. Windows stosuje podobną kontrolę dla interwałów przekraczających natywny limit powtarzania zadania wynoszący 31 dni.
 
@@ -58,9 +65,11 @@ Wyłączenie harmonogramu zatrzymuje przyszłe uruchomienia. Rozpoczęta operacj
 
 Aplikacja, MCP i kolektor używają jednego `settings.json`. Parametry połączenia `database_dsn`, początku pobierania `download_from` oraz `data_dir` są wspólne, bez kopii w sekcji `collector`. Dla osobnego serwera kolektora przygotuj lokalny `settings.json` z jego połączeniem i ścieżkami. Hasło PostgreSQL pozostaje w pgpass, poza JSON.
 
-Sekcja `collector` zawiera: `enabled`, `interval_minutes` (minimum 15), `anchor_at` (pełna minuta UTC), `run_as`, `instance`, `state_dir`, `session_path`, `credential_path` (Linux) i `status_reader` (Windows). Stan i sesja nie należą do pliku ustawień. Zapisy ustawień globalnych zachowują nowszą sekcję kolektora; zapisy kolektora zachowują ustawienia globalne. Zapis jest atomowy z blokadą pliku i zachowaniem ACL.
+Sekcja `collector` zawiera: `enabled`, `interval_minutes` (minimum 15), `anchor_at` (pełna minuta UTC), `run_as`, `windows_logon`, `instance`, `state_dir`, `session_path`, `credential_path` (Linux) i `status_reader` (Windows). Wersja konfiguracji 2 dodaje wybór trybu; pliki wersji 1 pozostają czytelne i zachowują `password` oraz dotychczasowe ścieżki. Zmiana konta lub trybu przez UI/CLI wybiera osobny katalog stanu, zachowując stare pliki. Stan i sesja nie należą do pliku ustawień. Zapisy ustawień globalnych zachowują nowszą sekcję kolektora; zapisy kolektora zachowują ustawienia globalne. Zapis jest atomowy z blokadą pliku i zachowaniem ACL.
 
 Odczyt Harmonogramu Zadań nie otwiera konsoli PowerShell. Odmowa dostępu do zadania jest odrębnym stanem od braku zadania; lokalny wynik i dziennik kolektora nadal są dostępne. Instalacja/aktualizacja nadaje operatorowi prawo odczytu definicji zadania, także gdy utworzono je z podwyższonymi uprawnieniami. Nazwa `GarminDatabase-default` oznacza domyślną instancję, a nie konto Windows.
+
+Aktualizacja istniejącego zadania wymaga osobnego sprawdzenia jego deskryptora: `RegisterTask` zachowuje dotychczasowe uprawnienia. Instalator porównuje skuteczne wpisy użytkownika i operatora, w razie potrzeby wywołuje `SetSecurityDescriptor`, odczytuje wynik ponownie i potwierdza dostęp do definicji. Po zakończeniu pomocnika UAC zwykły proces aplikacji musi potwierdzić obecność oraz zgodność zadania; sam kod wyjścia pomocnika nie oznacza udanej instalacji. Dokumentacja interfejsu: [IRegisteredTask.SetSecurityDescriptor](https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-iregisteredtask-setsecuritydescriptor).
 
 Windows: `%LOCALAPPDATA%/GarminDatabase/settings.json`; Linux: `/etc/garmin-database/settings.json`. GUI otwiera folder przyciskiem „Otwórz folder konfiguracji”. Pole `refresh_seconds` (5–3600, domyślnie 15) steruje częstotliwością odświeżania statusów, nie pobierania z Garmin. Początek harmonogramu wyznacza terminy, a `download_from` zakres danych.
 
@@ -68,7 +77,7 @@ Starsze samodzielne pliki kolektora są nadal czytelne przez CLI. Pierwszy zapis
 
 W `state_dir` znajdują się `status.json`, `collector.lock` i `logs/collector.log`. Plik statusu przechowuje m.in. ostatni wynik, terminy, ostatni sukces, bezpieczne liczniki, pauzę sesji, `not_before` i zastosowaną rewizję. Status/log można odczytać bez PostgreSQL. Log ma limit 5 MiB i pięć kopii rotacji. Nie zawiera pomiarów, tokenów, haseł, MFA, odpowiedzi dostawcy, pełnych wyjątków ani DSN.
 
-„Zapisz konfigurację” zapisuje bez rejestracji. „Zainstaluj / zaktualizuj kolektor” zapisuje formularz i stosuje zadanie w jednej operacji. CLI `install` przygotowuje brakującą konfigurację i klucz Linux oraz stosuje harmonogram. Po zapisie wybierz „Zainstaluj / zaktualizuj kolektor” albo `schedule apply`. Rejestracja wymaga uprawnień systemowych. Błąd rejestracji nie jest prezentowany jako sukces; status porównuje zapisany plik z rzeczywistą definicją zadania. Zwykłe GUI działa bez podniesionych uprawnień, a rejestracja Windows ma osobny pomocnik UAC. Pomocnik przyznaje wyłącznie kontu zadania wymagane `SeBatchLogonRight` przez LSA, bez zastępowania listy pozostałych uprawnień i bez członkostwa w Administratorach. Wyłączenie zadania nie odbiera kontu tego prawa. Nadrzędna zasada odmowy logowania wsadowego musi zostać rozstrzygnięta przez administratora systemu.
+„Zapisz konfigurację” zapisuje bez rejestracji. „Zainstaluj / zaktualizuj kolektor” zapisuje formularz i stosuje zadanie w jednej operacji. CLI `install` przygotowuje brakującą konfigurację i klucz Linux oraz stosuje harmonogram. Po zapisie wybierz przycisk instalacji albo `schedule apply`. Błąd rejestracji nie jest prezentowany jako sukces; status porównuje plik z rzeczywistą definicją zadania. GUI działa bez podniesionych uprawnień. Bieżące konto `interactive` nie zmienia praw systemowych; UAC pojawia się tylko przy naprawie braku dostępu do istniejącego zadania. Dla `password` pomocnik UAC przyznaje wyłącznie kontu zadania wymagane `SeBatchLogonRight` przez LSA, bez zastępowania listy pozostałych uprawnień i bez dodawania konta do Administratorów. Wyłączenie zadania nie odbiera tego prawa. Nadrzędna zasada odmowy logowania wsadowego wymaga rozstrzygnięcia przez administratora.
 
 ## CLI
 
@@ -94,10 +103,10 @@ garmin-db-collector --config /etc/garmin-database/settings.json run --scheduled
 
 1. Przygotuj PostgreSQL 16+ z automatycznym startem lub dostęp do zdalnego serwera. Zobacz [konfigurację PostgreSQL](13-postgresql-setup.md). Serwer nie jest częścią EXE.
 2. Zachowaj cały folder onedir `GarminDatabaseCollector` i sąsiedni folder GUI. Wybierz stabilną lokalizację dostępną do odczytu przez konto zadania.
-3. Użyj domyślnie wybranego aktualnego konta Windows z hasłem albo przygotuj osobne lokalne konto z hasłem. Hello/PIN nie wystarcza do nieinteraktywnego zadania. Konto otrzymuje dostęp do wskazanego folderu danych, własnego pgpass i prywatnej sesji. Nie używaj SYSTEM. Osobne konto dostaje odczyt tylko plików konfiguracji, bez dostępu do folderu sesji GUI. Atomowy zapis konfiguracji zachowuje ACL Windows.
-4. W Ustawieniach aplikacji skonfiguruj konto, połączenie, folder i cykl. Zapisz konfigurację. Zastosuj harmonogram; Windows poprosi o potwierdzenie administracyjne i poświadczenia konta zadania. Hasło przechodzi wyłącznie przez pamięć/dialog systemowy, nie przez argumenty procesu ani plik konfiguracji.
-5. Dla aktualnego konta wybierz sesję kolektora w formularzu logowania Garmin w Ustawieniach. Dla innego konta wykonaj `login` w konsoli uruchomionej pod kontem kolektora, np. przez systemowe `runas`. E-mail, hasło Garmin i MFA wpisuje się interaktywnie. Nie podawaj ich w argumentach.
-6. Sprawdź `status --json`, log i kolejne zwykłe uruchomienie, także po wylogowaniu głównego użytkownika. W razie potrzeby włącz harmonogram po przygotowaniu sesji.
+3. Domyślnie użyj „Bieżące konto — bez hasła Windows”. Dla pracy po wylogowaniu wybierz drugi tryb i konto z hasłem; może być osobne. Nie używaj SYSTEM. Osobne konto dostaje odczyt tylko pliku konfiguracji, bez dostępu do folderu sesji GUI. Atomowy zapis zachowuje ACL Windows.
+4. Ustaw połączenie, katalog danych i początek pobierania w ogólnych ustawieniach aplikacji, a tryb i cykl w sekcji automatu. Włącz pobieranie i kliknij „Zainstaluj / zaktualizuj kolektor”. W trybie bieżącego konta nie ma monitu hasła Windows. W trybie po wylogowaniu hasło przechodzi wyłącznie przez pamięć/dialog systemowy, nie przez argumenty ani plik.
+5. Bieżące konto korzysta z sesji Garmin aplikacji. W trybie `password` przygotuj prywatną sesję: dla aktualnego konta przez formularz Garmin z celem „Kolektor”, a dla innego konta przez `login` w jego konsoli, np. przez systemowe `runas`. E-mail, hasło Garmin i MFA wpisuj interaktywnie.
+6. Sprawdź zakładkę Kolektor lub `status --json`, log i następny termin. Samo zainstalowanie nie wykonuje pobrania. Odbiór po wylogowaniu dotyczy wyłącznie trybu `password`.
 
 Przykład polecenia wewnątrz konsoli właściwego konta:
 

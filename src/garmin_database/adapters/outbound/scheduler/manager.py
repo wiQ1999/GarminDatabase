@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from garmin_database.adapters.outbound.collector_runtime import CollectorRuntime
-from garmin_database.application.errors import BusyError
+from garmin_database.application.errors import BusyError, CollectorInstallIncomplete
 
 
-def collector_command():
+def collector_command(*, windowless=False):
     if getattr(sys, "frozen", False):
         binary = Path(sys.executable)
         if binary.stem != "GarminDatabaseCollector":
@@ -23,9 +23,14 @@ def collector_command():
                     else "GarminDatabaseCollector"
                 )
             )
+        if windowless and os.name == "nt":
+            binary = binary.with_name("GarminDatabaseCollectorTask.exe")
         return [str(binary)]
+    interpreter = os.path.abspath(sys.executable)
+    if windowless and os.name == "nt":
+        interpreter = str(Path(interpreter).with_name("pythonw.exe"))
     return [
-        os.path.abspath(sys.executable),
+        interpreter,
         "-m",
         "garmin_database.bootstrap.collector",
     ]
@@ -39,7 +44,9 @@ class ScheduleManager:
             if os.name == "nt":
                 from .windows import WindowsScheduler
 
-                scheduler = WindowsScheduler(collector_command(), files.config_path)
+                scheduler = WindowsScheduler(
+                    collector_command(windowless=True), files.config_path
+                )
             else:
                 from .systemd import SystemdScheduler
 
@@ -73,31 +80,63 @@ class ScheduleManager:
 
     def apply(self, config):
         config.validate()
-        if os.name == "nt" and self.manage_access:
-            import ctypes
-            import getpass
+        if os.name == "nt" and self.manage_access and self._prepare_windows(config):
+            return
+        try:
+            self.scheduler.apply(config)
+        except PermissionError:
+            if not self._elevate_on_denial(config):
+                raise
+            return
+        self._record_applied(config)
 
-            from .windows_access import elevate, prepare_paths
+    def _elevate(self, config):
+        from .windows_access import elevate
 
-            if not config.status_reader:
-                config.status_reader = (
-                    os.environ.get("USERDOMAIN", ".") + "\\" + getpass.getuser()
-                )
-                self.files.save_config(config)
+        elevate(
+            [
+                *collector_command(),
+                "--config",
+                str(self.files.config_path),
+                "schedule",
+                "apply",
+            ]
+        )
+        status = self.scheduler.status(config)
+        if status["installed"] is not True or not status["revision_matches"]:
+            raise CollectorInstallIncomplete()
 
-            if not ctypes.windll.shell32.IsUserAnAdmin():
-                elevate(
-                    [
-                        *collector_command(),
-                        "--config",
-                        str(self.files.config_path),
-                        "schedule",
-                        "apply",
-                    ]
-                )
-                return
-            prepare_paths(config, self.files.config_path)
-        self.scheduler.apply(config)
+    def _elevate_on_denial(self, config):
+        if os.name != "nt" or not self.manage_access:
+            return False
+        import ctypes
+
+        if ctypes.windll.shell32.IsUserAnAdmin():
+            return False
+        self._elevate(config)
+        return True
+
+    def _prepare_windows(self, config):
+        if config.windows_logon != "password":
+            return False
+        import ctypes
+
+        from garmin_database.adapters.outbound.filesystem.collector_files import (
+            current_account,
+        )
+
+        from .windows_access import prepare_paths
+
+        if not config.status_reader:
+            config.status_reader = current_account()
+            self.files.save_config(config)
+        if not ctypes.windll.shell32.IsUserAnAdmin():
+            self._elevate(config)
+            return True
+        prepare_paths(config, self.files.config_path)
+        return False
+
+    def _record_applied(self, config):
         with self.files.lock(config):
             state = self.files.load_state(config)
             state.applied_revision = config.revision

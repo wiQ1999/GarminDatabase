@@ -255,6 +255,7 @@ def main():
                     state_dir=str(base / "state"),
                     session_path=str(base / "state/auth/session.bin"),
                     run_as=account,
+                    windows_logon="password",
                     instance=name,
                     status_reader=(
                         os.environ.get("USERDOMAIN", ".") + "\\" + getpass.getuser()

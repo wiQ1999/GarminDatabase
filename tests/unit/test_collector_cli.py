@@ -124,3 +124,21 @@ def test_install_preserves_existing_global_file_with_custom_name(cli, tmp_path):
     assert saved.database_dsn == "host=existing"
     assert saved.download_from == "2025-02-03" and saved.refresh_seconds == 45
     assert saved.collector["interval_minutes"] == 30
+
+
+@pytest.mark.skipif(__import__("os").name != "nt", reason="Windows interactive mode")
+def test_install_can_switch_to_current_account_without_password(cli):
+    from garmin_database.adapters.outbound.filesystem.collector_files import (
+        current_account,
+    )
+
+    config = cli.files.load_config()
+    cli.files.save_config(
+        replace(config, run_as="SYNTHETIC\\other", windows_logon="password")
+    )
+    assert cli.invoke(["install", "--logon", "interactive"]) == 0
+    configured = cli.files.load_config()
+    assert (
+        configured.run_as == current_account()
+        and configured.windows_logon == "interactive"
+    )

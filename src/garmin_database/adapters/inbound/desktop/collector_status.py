@@ -43,6 +43,7 @@ class CollectorStatusPanel(QWidget):
         self.values = {}
         for key, label in [
             ("account", "Konto systemowe"),
+            ("logon", "Tryb uruchamiania"),
             ("next", "Następny termin"),
             ("started", "Ostatnie rozpoczęcie"),
             ("finished", "Ostatnie zakończenie"),
@@ -50,6 +51,7 @@ class CollectorStatusPanel(QWidget):
             ("pause", "Oczekiwanie do"),
         ]:
             self.values[key] = QLabel("brak")
+            self.values[key].setWordWrap(True)
             form.addRow(label, self.values[key])
         layout.addLayout(form)
         self.refresh_button = BusyButton("Odśwież stan i log")
@@ -127,7 +129,24 @@ class CollectorStatusPanel(QWidget):
                 registration += "; zmiany niezastosowane"
         outcome = OUTCOME_LABELS.get(state["outcome"], "nieznany stan")
         self.message.setText(f"Harmonogram: {registration}. Ostatni wynik: {outcome}.")
-        self.values["account"].setText(config.run_as)
+        self.values["account"].setText(task.get("account") or config.run_as)
+        logon = task.get(
+            "logon_type", 3 if config.windows_logon == "interactive" else 1
+        )
+        self.values["logon"].setText(
+            "Po zalogowaniu, bez hasła Windows"
+            if logon == 3
+            else "Także po wylogowaniu"
+        )
+        if result.get("session_present") is False:
+            instruction = (
+                "zaloguj Garmin w aplikacji"
+                if config.windows_logon == "interactive"
+                else "przygotuj sesję Garmin konta zadania"
+            )
+            self.message.setText(
+                self.message.text() + " Brak sesji: " + instruction + "."
+            )
         for key, value in [
             ("next", result["next_run"]),
             ("started", state.get("started_at")),

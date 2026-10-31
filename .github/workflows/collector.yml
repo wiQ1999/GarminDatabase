@@ -49,6 +49,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python scripts/smoke_collector.py dist/GarminDatabaseCollector/GarminDatabaseCollector.exe
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/smoke_windows_task_access.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python scripts/smoke_scheduler.py dist/GarminDatabaseCollector/GarminDatabaseCollector.exe
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Tests and lint

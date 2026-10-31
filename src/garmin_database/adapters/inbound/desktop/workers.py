@@ -4,6 +4,7 @@ from PySide6.QtCore import QThread, Signal
 
 from garmin_database.application.errors import (
     BusyError,
+    CollectorInstallIncomplete,
     CollectorLoginUnavailable,
     LoginFailed,
     SessionRequired,
@@ -66,6 +67,7 @@ class Worker(QThread):
                         SessionStorageError,
                         LoginFailed,
                         BusyError,
+                        CollectorInstallIncomplete,
                         CollectorLoginUnavailable,
                     ),
                 )
