@@ -107,7 +107,7 @@ python -m garmin_database.bootstrap.cli reprocess --data-dir data --from 2026-09
 python -m garmin_database.bootstrap.cli export --data-dir data --parameters monitoring.heart_rate --from 2026-09-01 --to 2026-09-30 --recent-days 30 --summary-period day --output exports
 ```
 
-CLI i UI czytają ten sam `database_dsn`, `GARMIN_DATABASE_DSN` i konfigurację libpq. Opcjonalne `--settings-file` wskazuje osobne ustawienia. Dotychczasowy `garmin-db sync` używa sesji GUI Windows. Do sieciowego pobierania na Linux/Pi służy `garmin-db-collector` z oddzielną konfiguracją i sesją, opisany w [instrukcji kolektora](15-scheduled-collector.md).
+CLI i UI czytają ten sam `database_dsn`, `GARMIN_DATABASE_DSN` i konfigurację libpq. Opcjonalne `--settings-file` wskazuje osobne ustawienia. Dotychczasowy `garmin-db sync` używa sesji GUI Windows. Do sieciowego pobierania na Linux/Pi służy `garmin-db-collector` ze wspólnym settings.json i prywatną sesją, opisany w [instrukcji kolektora](15-scheduled-collector.md).
 
 ## Wznowienie i utrzymanie
 
@@ -172,6 +172,8 @@ Kolumny dzienne to `day`, `mean`, `minimum`, `maximum`, `valid_count`, `invalid_
 
 ### Limity, kompletność i błędy
 
+Szczegóły stosują przesunięcie strony w SQL po rozstrzygnięciu pierwszeństwa fizycznych pól przed komponentami bitowymi. Pomiary z czasem i pola bez czasu są wybierane osobnymi gałęziami `UNION ALL`; zachowują wspólną kolejność i snapshot. Nie łączyć zakresu czasu z pochodzeniem pól bez czasu przez jeden `OR`, który może wymusić skan całej historii przy każdej stronie.
+
 Wynik narzędzia ma najwyżej 16 KiB wraz z blokami treści i metadanymi. Nie jest to obietnica stałej liczby tokenów dowolnego modelu. Odczyt ma budżet 60 s i reaguje na anulowanie, również przez anulowanie zapytania sterownika i `statement_timeout`. Nie zwraca częściowej średniej jako pełnej. Dane i kompletność jednej odpowiedzi odnoszą się do tej samej `data_revision`, także podczas importu.
 
 `get_daily` może zmniejszyć stronę poniżej 92 dni, aby zmieścić wynik. Podaje żądany i faktyczny zakres, `truncated` oraz `next_cursor`; kontynuacja powtarza pierwotne daty i metryki z kursorem. Strony przesuwają się również przez puste dni. Zmiana bazy, rewizji, polityki lub restart procesu unieważnia kursor i wymaga rozpoczęcia zapytania od nowa.
@@ -187,6 +189,6 @@ Nieznana/wyłączona metryka, zły zakres, uszkodzone ustawienia, brak obsługiw
 .venv/Scripts/python.exe scripts/smoke_mcp.py --executable dist/GarminDatabaseMCP/GarminDatabaseMCP.exe
 ```
 
-Skrypt wymaga `GARMIN_TEST_DATABASE_DSN`, tworzy i sprząta osobny schemat PostgreSQL oraz zapisuje syntetyczne pliki i ustawienia w `test-results/mcp-smoke`, uruchamia rzeczywisty proces klientem SDK i sprawdza inicjalizację, trzy narzędzia, limit rozmiaru, średnią dwuletniego okresu oraz odcięcie dostępu bez restartu. Weryfikuje również 10 pytań z `tests/mcp_evaluation.xml`: średnie, rozpiętość, liczniki, brak danych, rok przestępny, lokalny czas i stronicowanie. Raport zawiera wyłącznie status i liczniki. Dodatkowo wykonaj `scripts/smoke_windows.ps1` dla GUI. Sandbox Windows może blokować wewnętrzne `socketpair` pętli asyncio; w tym środowisku testy protokołu wymagają uruchomienia z uprawnieniami pozwalającymi na utworzenie tej pętli. Nie oznacza to otwierania serwera HTTP.
+Skrypt wymaga `GARMIN_TEST_DATABASE_DSN`, tworzy i sprząta osobny schemat PostgreSQL oraz zapisuje syntetyczne pliki i ustawienia w `test-results/mcp-smoke`, uruchamia rzeczywisty proces klientem SDK i sprawdza inicjalizację, sześć narzędzi, limit rozmiaru, średnią dwuletniego okresu oraz odcięcie dostępu bez restartu. Weryfikuje również 10 pytań z `tests/mcp_evaluation.xml`: średnie, rozpiętość, liczniki, brak danych, rok przestępny, lokalny czas i stronicowanie. Raport zawiera wyłącznie status i liczniki. Dodatkowo wykonaj `scripts/smoke_windows.ps1` dla GUI. Sandbox Windows może blokować wewnętrzne `socketpair` pętli asyncio; w tym środowisku testy protokołu wymagają uruchomienia z uprawnieniami pozwalającymi na utworzenie tej pętli. Nie oznacza to otwierania serwera HTTP.
 
 Proces MCP używa istniejących strumieni stdin/stdout z UTF-8. Nie należy tworzyć dodatkowych `TextIOWrapper` na współdzielonych buforach; standardowe wyjście służy wyłącznie protokołowi.

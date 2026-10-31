@@ -127,6 +127,49 @@ def decode_value(row, metadata):
     return convert(value)
 
 
+def component_value(value, rule):
+    """Decode packed bits only after SQL applies physical-field precedence."""
+    if isinstance(value, list):
+        if not all(isinstance(v, int) for v in value):
+            return None
+        value = sum(v << (8 * i) for i, v in enumerate(value))
+    if isinstance(value, (int, float)):
+        packed = (int(value) >> rule["shift"]) & ((1 << rule["bits"]) - 1)
+        return packed / rule["scale"] - rule["offset"]
+    return value
+
+
+def reading_row(row, origin, rules, requested):
+    instant = (
+        datetime.fromtimestamp(row["time_unix_ms"] / 1000, timezone.utc).isoformat()
+        if row["time_unix_ms"] is not None
+        else None
+    )
+    value = decode_value(row, dict(row))
+    if (
+        row["resolved_catalog_id"] in rules
+        and row["resolved_catalog_id"] not in requested
+    ):
+        value = component_value(value, rules[row["resolved_catalog_id"]])
+    return dict(
+        time=instant,
+        value=value,
+        source=origin[1],
+        validity=row["validity"],
+        requested_day=origin[0],
+        time_basis=row["time_basis"],
+    )
+
+
+def component_precedence(component_ids, requested):
+    if not component_ids:
+        return "", []
+    predicate = """ AND NOT (f.resolved_catalog_id=ANY(%s) AND EXISTS(
+        SELECT 1 FROM fit_fields physical WHERE physical.message_id=f.message_id
+        AND physical.resolved_catalog_id=ANY(%s)))"""
+    return predicate, [list(component_ids), list(requested)]
+
+
 class Queries:
     def __init__(self, db):
         self.db = db
@@ -218,7 +261,7 @@ class Queries:
             "decode_status": "partial" if pending else "complete",
         }
 
-    def rows(self, parameter, start, end, conn=None):
+    def rows(self, parameter, start, end, conn=None, *, offset=0):
         """Stream one series. Archive selection never multiplies FIT measurements."""
         own = conn is None
         c = conn or self.db.connect(readonly=True)
@@ -240,23 +283,43 @@ class Queries:
             requested = set(ids)
             ids = list(set(ids) | set(rules))
             placeholders = ",".join("%s" for _ in ids)
+            component_filter, component_args = component_precedence(
+                set(rules) - requested, requested
+            )
+            arguments = [
+                *ids,
+                *component_args,
+                begin,
+                finish,
+                *ids,
+                *component_args,
+                start.isoformat(),
+                end.isoformat(),
+                offset,
+            ]
             # Untimed summaries are preserved with a separately labelled requested
             # day; it is never emitted as a fabricated measurement timestamp.
-            sql = f"""SELECT f.*,m.time_unix_ms,m.time_basis,m.message_index,x.fit_file_id,c.scale,c."offset",c.time_role
+            projection = f"""SELECT f.*,m.time_unix_ms,m.time_basis,m.message_index,x.fit_file_id,c.scale,c."offset",c.time_role
                 FROM fit_fields f JOIN fit_messages m ON m.id=f.message_id
                 JOIN file_decodes x ON x.id=m.file_decode_id AND x.is_active=1
                 JOIN field_catalog c ON c.id=f.resolved_catalog_id
                 WHERE f.resolved_catalog_id IN ({placeholders})
-                AND ((m.time_unix_ms>=%s AND m.time_unix_ms<%s) OR (m.time_unix_ms IS NULL AND EXISTS(
+                {component_filter} AND """
+            # Separate timestamp ranges from untimed provenance. An OR between
+            # them makes PostgreSQL scan historical fields on every MCP page.
+            sql = (
+                projection
+                + "m.time_unix_ms>=%s AND m.time_unix_ms<%s UNION ALL "
+                + projection
+                + """(m.time_unix_ms IS NULL AND EXISTS(
                     SELECT 1 FROM archive_entries e JOIN archives a ON a.id=e.archive_id
-                    WHERE e.fit_file_id=x.fit_file_id AND a.day BETWEEN %s AND %s)))
-                ORDER BY m.time_unix_ms,x.fit_file_id,m.message_index,f.field_definition_id"""
+                    WHERE e.fit_file_id=x.fit_file_id AND a.day BETWEEN %s AND %s))
+                ORDER BY time_unix_ms,fit_file_id,message_index,field_definition_id OFFSET %s"""
+            )
             origins = {}
             stream = c.cursor(name="garmin_series_" + uuid4().hex)
             stream.itersize = 1000
-            for row in stream.execute(
-                sql, (*ids, begin, finish, start.isoformat(), end.isoformat())
-            ):
+            for row in stream.execute(sql, arguments):
                 fid = row["fit_file_id"]
                 if fid not in origins:
                     origin = c.execute(
@@ -264,52 +327,7 @@ class Queries:
                         (fid, start.isoformat(), end.isoformat()),
                     ).fetchone()
                     origins[fid] = (origin[0], origin[1] + "/" + origin[2])
-                day, source = origins[fid]
-                instant = (
-                    datetime.fromtimestamp(
-                        row["time_unix_ms"] / 1000, timezone.utc
-                    ).isoformat()
-                    if row["time_unix_ms"] is not None
-                    else None
-                )
-                value = decode_value(row, dict(row))
-                if (
-                    row["resolved_catalog_id"] in rules
-                    and row["resolved_catalog_id"] not in requested
-                ):
-                    rule = rules[row["resolved_catalog_id"]]
-                    # Components are decoded from preserved packed bits. A physical
-                    # destination field takes precedence when present in this message.
-                    if c.execute(
-                        "SELECT 1 FROM fit_fields WHERE message_id=%s AND resolved_catalog_id IN ("
-                        + ",".join("%s" for _ in requested)
-                        + ")",
-                        (row["message_id"], *requested),
-                    ).fetchone():
-                        continue
-                    if isinstance(value, list):
-                        value = (
-                            sum(
-                                v << (8 * i)
-                                for i, v in enumerate(value)
-                                if isinstance(v, int)
-                            )
-                            if all(isinstance(v, int) for v in value)
-                            else None
-                        )
-                    if isinstance(value, (int, float)):
-                        packed = (int(value) >> rule["shift"]) & (
-                            (1 << rule["bits"]) - 1
-                        )
-                        value = packed / rule["scale"] - rule["offset"]
-                yield dict(
-                    time=instant,
-                    value=value,
-                    source=source,
-                    validity=row["validity"],
-                    requested_day=day,
-                    time_basis=row["time_basis"],
-                )
+                yield reading_row(row, origins[fid], rules, requested)
         finally:
             if stream is not None:
                 stream.close()

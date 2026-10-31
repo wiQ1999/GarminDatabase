@@ -73,7 +73,7 @@ Zapamiętywać ostatnie ustawienia. Każdy eksport tworzy unikatowy folder `Garm
 
 ## Ustawienia, sesja i lokalizacje
 
-Ustawienia mają trzy oddzielne sekcje: „Dane lokalne i PostgreSQL”, „Logowanie do Garmin Connect” i „Udostępnianie danych”. Przycisk „Wybierz…” jest na prawym końcu wiersza folderu danych. Przewijana zawartość nie zasłania dolnego przycisku „Zapisz ustawienia” ani komunikatu o zapisie. Zapis konfiguracji nie nadpisuje informacji o stanie logowania.
+Ustawienia mają cztery strony: „Ogólne”, „Automatyczne pobieranie”, „Garmin” i „Udostępnianie”. Przycisk „Wybierz…” jest na prawym końcu wiersza folderu danych. Przewijana zawartość nie zasłania przycisków folderu konfiguracji, „Zapisz ustawienia” ani komunikatu o zapisie. Zapis konfiguracji nie nadpisuje informacji o stanie logowania.
 
 Sprawdzenie połączenia i zapis ustawień, zapis preferencji i przygotowanie eksportu, przygotowanie konfiguracji MCP oraz otwieranie folderu lub przeglądarki działają poza wątkiem okna. Przycisk rozpoczętej czynności pokazuje animację do wyniku lub błędu. Wybór folderu korzysta z nieblokująco otwieranego dialogu Qt, dzięki czemu timery i animacje nadal działają. Krótkie działania, takie jak nawigacja i zaznaczanie parametrów, reagują od razu. Animacje przycisków i wykresu nie wykonują cykli, gdy ich element jest ukryty.
 

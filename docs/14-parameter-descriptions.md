@@ -2,7 +2,7 @@
 
 ## Zakres i pochodzenie
 
-Aplikacja przechowuje lokalne polskie parafrazy publicznych materiałów Garmin, z odnośnikami do producenta. Definicje są wspólne dla panelu pod wykresem i `description` w katalogu oraz obu metodach odczytu MCP. Rejestr jest w `src/garmin_database/application/parameter_descriptions.py`; nie wymaga sieci ani dodatkowego odczytu bazy podczas wyboru parametru.
+Aplikacja przechowuje lokalne polskie parafrazy publicznych materiałów Garmin, z odnośnikami do producenta. Definicje są wspólne dla panelu pod wykresem i `description` w katalogu oraz metodach odczytu MCP. Rejestr jest w `src/garmin_database/application/parameter_descriptions.py`; nie wymaga sieci ani dodatkowego odczytu bazy podczas wyboru parametru.
 
 Wersja opisu: **1**, sprawdzenie źródeł: **2026-10-25**. Definicje techniczne sprawdzono w publicznym profilu FIT SDK **21.218.0**, zgodnym z przypiętą zależnością projektu; odnośnik do repozytorium Garmin prowadzi do bieżącego publicznego profilu. Teksty nie zastępują instrukcji konkretnego modelu. Plik FIT nie zawsze identyfikuje sprzęt, który dostarczył pojedynczy odczyt, dlatego opis funkcji nie potwierdza rodzaju czujnika każdej próbki.
 
@@ -24,7 +24,7 @@ Nie stosuje się ważenia czasem ani uzupełniania luk. Przed porównaniem nale�
 
 ## Struktura odpowiedzi MCP
 
-Dostępne są trzy narzędzia: `garmin_catalog`, `get_daily`, `get_period_stats`. Pełne argumenty, kolumny, stronicowanie i limity opisuje [kontrakt MCP](12-running-and-testing.md#narzędzia-mcp-v1). Katalog obejmuje wyłącznie obecne i włączone pięć obsługiwanych metryk; szerszy katalog UI/eksportu i przypisanie do kategorii nie rozszerzają dostępu MCP.
+Dostępne są `garmin_catalog`, `get_samples`, `get_daily`, `get_history`, `get_period_stats` i `get_source_history`. Pełne argumenty, kolumny, stronicowanie i limity opisuje [kontrakt MCP](12-running-and-testing.md#narzędzia-mcp-v1). Katalog obejmuje wyłącznie obecne, jawnie włączone klucze z listy 43 obsługiwanych parametrów. Pięć metryk ma średnie próbek; opisane wyniki źródłowe snu, HRV, tętna spoczynkowego, temperatury i monitoringu udostępnia się bez dodatkowego uśredniania. Sam opis, szerszy katalog UI/eksportu i przypisanie do kategorii nie rozszerzają listy MCP.
 
 Wynik MCP zawiera krótki `content` oraz właściwe dane w `structuredContent`. Wspólna koperta ma `schema_version`, `calendar_timezone`, `timestamp_timezone`, `data_revision`, `policy_revision`, `truncated` i `next_cursor`. Metody odczytu dodają `requested_from`, `requested_to`, faktyczne `from`/`to`, `gaps`, `gaps_format` i `decode_status`.
 

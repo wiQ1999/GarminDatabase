@@ -35,3 +35,5 @@ htmlcov/
 
 # Lokalne analizy, raporty, opisy incydentów i archiwum dokumentacji
 /local-notes/
+
+/verification/

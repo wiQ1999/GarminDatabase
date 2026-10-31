@@ -162,3 +162,5 @@ Odbiór instalacji docelowej obejmuje rzeczywiste logowanie Garmin, działanie p
 - [Windows: typy logowania zadania](https://learn.microsoft.com/en-us/windows/win32/api/taskschd/ne-taskschd-task_logon_type).
 - [systemd.timer](https://www.freedesktop.org/software/systemd/man/latest/systemd.timer.html).
 - [systemd.exec: poświadczenia procesu](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html).
+
+Atomowy zapis Windows zachowuje ACL przez [ReplaceFileW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilew). Przejściowe blokady 32, 33 i 1175 są ponawiane przez maksymalnie 0,77 s; inne błędy pozostają błędami zapisu. Nie ma fallbacku zmieniającego uprawnienia. Starsza sąsiednia konfiguracja jest odczytywana także przed pierwszym zapisem, aby zachować widoczne konto i cykl; dopiero zapis przenosi ją do sekcji `collector`.

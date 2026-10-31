@@ -81,7 +81,18 @@ class CollectorFiles:
         else:
             settings = Settings.load(self.config_path)
             if settings.collector is None:
-                raise FileNotFoundError("Brak konfiguracji kolektora")
+                legacy = self.config_path.with_name("collector.json")
+                if legacy == self.config_path or not legacy.is_file():
+                    raise FileNotFoundError("Brak konfiguracji kolektora")
+                config = replace(
+                    CollectorFiles(legacy).load_config(),
+                    data_dir=settings.data_dir,
+                    database_dsn=None,
+                    download_from=None,
+                    settings_path=str(self.config_path),
+                )
+                config.validate()
+                return config
             config = CollectorConfig(
                 **{
                     **settings.collector,

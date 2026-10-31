@@ -70,3 +70,5 @@ MCP ma dostęp tylko do odczytu. `get_samples` pokazuje szczegóły dnia, `get_h
 | `GarminDatabaseMCP.exe` / `garmin-db-mcp` | `--settings-file ŚCIEŻKA`; protokół stdio obsługuje klient MCP |
 
 Globalne `--config ŚCIEŻKA` kolektora podawaj przed poleceniem. `run` wykonuje ręczne pobranie; `run --scheduled` respektuje termin i włączenie harmonogramu. `schedule disable` zatrzymuje przyszłe uruchomienia. Kody kolektora: `0` sukces/pominięcie, `2` problemy/pauza, `1` błąd konfiguracji lub polecenia. Hasła Garmin, MFA i bazy nie należą do argumentów ani JSON.
+
+Porównywanie danych z zapisanym HTML Garmin: [zasady i polecenie weryfikacji](02-source-validation.md#porównanie-garmin-connect-bazy-wykresu-i-mcp). Dane aplikacji pochodzą z FIT; średnia próbek nie zawsze odpowiada statystyce widocznej w Garmin Connect.

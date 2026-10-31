@@ -56,8 +56,8 @@ class DataSnapshot:
     def coverage(self, start, end):
         return Queries(self.db).coverage(start, end, self.conn)
 
-    def rows(self, parameter, start, end):
-        return Queries(self.db).rows(parameter, start, end, self.conn)
+    def rows(self, parameter, start, end, *, offset=0):
+        return Queries(self.db).rows(parameter, start, end, self.conn, offset=offset)
 
     def availability(self, parameter):
         marks = ",".join("%s" for _ in parameter["ids"])

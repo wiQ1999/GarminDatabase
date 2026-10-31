@@ -29,3 +29,18 @@ def test_shared_document_preserves_both_editors_and_has_single_connection(tmp_pa
 def test_refresh_rejects_invalid_intervals(value):
     with pytest.raises(ValueError):
         Settings(refresh_seconds=value).validate()
+
+
+def test_legacy_collector_is_visible_before_first_save_without_mutation(tmp_path):
+    path = tmp_path / "settings.json"
+    Settings(data_dir=str(tmp_path / "data")).save(path)
+    legacy = CollectorFiles(tmp_path / "collector.json")
+    legacy.save_config(replace(legacy.defaults(tmp_path / "data"), run_as="old-user"))
+    before = path.read_bytes(), legacy.config_path.read_bytes()
+    files = CollectorFiles(path)
+    config = files.load_config()
+    assert config.run_as == "old-user" and config.settings_path == str(path)
+    assert before == (path.read_bytes(), legacy.config_path.read_bytes())
+    files.save_config(config)
+    assert Settings.load(path).collector["run_as"] == "old-user"
+    assert legacy.config_path.read_bytes() == before[1]

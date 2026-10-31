@@ -53,7 +53,7 @@ class CollectorPanel(QWidget):
         note = QLabel(
             "Połączenie PostgreSQL i początek pobierania pochodzą z zapisanych ustawień aplikacji. "
             "Konto Windows wymaga hasła; PIN/Hello nie wystarcza do pracy po wylogowaniu. "
-            "Kolektor ma własną sesję Garmin: pierwsze logowanie wykonaj przez CLI pod kontem zadania. "
+            "Dla aktualnego konta przygotuj sesję kolektora na stronie Garmin. Dla innego konta użyj CLI login pod kontem zadania. "
             "Początek harmonogramu określa terminy uruchomień, a nie zakres danych. "
             "Po zmianie czasu lokalna godzina terminu może się przesunąć."
         )
@@ -72,7 +72,7 @@ class CollectorPanel(QWidget):
             self.buttons[key] = trigger
         layout.addLayout(actions)
         self.message = QLabel(
-            "Konfiguracja automatyzacji jest niezależna od preferencji aplikacji. Zapisz ją, a następnie zastosuj harmonogram."
+            "Zapisz konfigurację bez instalacji albo zainstaluj kolektor jednym przyciskiem."
         )
         self.message.setWordWrap(True)
         layout.addWidget(self.message)

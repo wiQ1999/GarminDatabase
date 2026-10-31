@@ -501,11 +501,9 @@ class MCPData:
                 data=[],
                 coverage=observation_coverage(snap.coverage(start, end)),
             )
-            with closing(snap.rows(selected, start, end)) as rows:
-                for index, row in enumerate(rows):
+            with closing(snap.rows(selected, start, end, offset=offset)) as rows:
+                for row in rows:
                     budget.check()
-                    if index < offset:
-                        continue
                     result["next_cursor"] = self.encode_cursor(
                         dict(query=query, next=offset + len(result["data"]))
                     )

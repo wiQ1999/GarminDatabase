@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -61,12 +62,30 @@ def replace_file(source, target):
         wintypes.LPVOID,
     ]
     replace.restype = wintypes.BOOL
-    if not replace(
-        str(Path(target).resolve()), str(Path(source).resolve()), None, 0, None, None
-    ):
-        raise OSError(
-            ctypes.get_last_error(), "Nie można atomowo zapisać pliku Windows"
-        )
+    arguments = (
+        str(Path(target).resolve()),
+        str(Path(source).resolve()),
+        None,
+        0,
+        None,
+        None,
+    )
+    retry_replace(lambda: replace(*arguments), ctypes.get_last_error)
+
+
+def retry_replace(operation, error_code):
+    # These errors leave both names intact (ReplaceFileW contract). Never switch
+    # to a replacement API which would discard the original security descriptor.
+    code = 0
+    for delay in (0, 0.02, 0.05, 0.1, 0.2, 0.4):
+        if delay:
+            time.sleep(delay)
+        if operation():
+            return
+        code = error_code()
+        if code not in {32, 33, 1175}:
+            break
+    raise OSError(code, "Nie można atomowo zapisać pliku Windows")
 
 
 def atomic_json(path, value):

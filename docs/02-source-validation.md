@@ -31,3 +31,19 @@ Jeżeli FIT się różnią, sprawdza się definicje, typy, wartości, jednostki,
 Pomocniczy `scripts/probe_wellness.py` porównuje dwa lokalne ZIP (`--reference`, `--candidate`) albo pobiera jedną próbkę po lokalnym logowaniu. Nie zastępuje zwykłego procesu pobierania/importu w aplikacji. `scripts/analyze_fit_inventory.py` i `scripts/render_fit_inventory_docs.py` służą analizom metadanych; ich wyniki są lokalnymi raportami poza `docs/`, a nie kontraktem aplikacji.
 
 Źródła formatu: [protokół FIT](https://developer.garmin.com/fit/protocol/) i [oficjalny SDK Python](https://github.com/garmin/fit-python-sdk). Implementacja klienta: [python-garminconnect](https://github.com/cyberjunky/python-garminconnect). Lokalne wyniki prób i skanów przechowuje się w ignorowanych folderach.
+
+## Porównanie Garmin Connect, bazy, wykresu i MCP
+
+Porównanie ma trzy niezależne poziomy:
+
+1. Oryginalny FIT: identyfikuj go po SHA-256, odkoduj niezależnie oficjalnym SDK Garmin i porównaj multizbiór wartości oraz czasów z aktywnym dekodowaniem SQL. Nowy sieciowy ZIP pozostaje w pamięci. Różnica między dwoma dekoderami wymaga diagnozy przed zmianą interpretacji.
+2. Kanały aplikacji: porównaj odczyt SQL z danymi przekazywanymi do wykresu oraz MCP, łącznie ze wszystkimi stronami, ważnością i nieznanym czasem. Nie zmieniaj globalnej polityki udostępniania na potrzeby testu; użyj tymczasowej konfiguracji kontrolowanego procesu MCP.
+3. Garmin Connect: porównuj tę samą metrykę, zakres, strefę czasową i definicję statystyki. Źródłowa średnia nocna HRV nie jest średnią pięciominutowych próbek doby. Statystyki snu/czuwania nie są pełną dobą. Faza snu w pojedynczym rekordzie FIT nie jest czasem trwania fazy. Rozbieżności punktów prezentacji nie stanowią same w sobie dowodu uszkodzenia importu.
+
+`scripts/verify_garmin_html.py` analizuje zapisane lokalnie HTML bez uruchamiania JavaScript. Obsługuje liczbowe etykiety punktów HRV, stresu i faz snu oraz wybrane źródłowe karty snu/HRV/tętna spoczynkowego. Raportuje dokładne dopasowania i diagnostykę przesunięcia czasu, bez automatycznej korekty. Kartę porównuje z ostatnią ważną obserwacją źródłową w danym dniu. Sama nazwa pliku nie dowodzi, jaki zakres pokazuje zapisany DOM; przed interpretacją wyniku sprawdź widok i wybraną datę.
+
+```powershell
+python scripts/verify_garmin_html.py --input verification --settings-file ŚCIEŻKA_DO_SETTINGS_JSON --report local-notes/garmin-verification.json
+```
+
+Geometria SVG, ogólne etykiety „Series” albo statystyka o innym znaczeniu nie wystarczają do dowodu dokładnej zgodności. Raport jawnie zachowuje takie ograniczenia i rozbieżności; nie traktuj pominiętego widoku jako testu zaliczonego. HTML, raporty i wyniki niezależnego SDK pozostają poza Git. Raport narzędzia zawiera liczniki i metadane, bez wartości pomiarów, sesji, DSN i treści wyjątków.

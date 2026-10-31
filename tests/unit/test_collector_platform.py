@@ -233,3 +233,42 @@ def test_runtime_linux_clock_and_missing_boot_record(monkeypatch):
     )
     with pytest.raises(RuntimeError):
         runtime.boot_at()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows sharing and ACL semantics")
+def test_atomic_replace_retries_a_real_temporary_delete_lock(tmp_path):
+    import ctypes
+    import threading
+    import time
+    from ctypes import wintypes
+
+    from garmin_database.adapters.outbound.filesystem.files import atomic_write
+
+    path = tmp_path / "synthetic-settings.json"
+    path.write_bytes(b"old")
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.CreateFileW(str(path), 0x80000000, 3, None, 3, 0, None)
+    assert handle != ctypes.c_void_p(-1).value
+
+    def release():
+        time.sleep(0.1)
+        kernel.CloseHandle(handle)
+
+    thread = threading.Thread(target=release)
+    thread.start()
+    try:
+        atomic_write(path, b"new")
+    finally:
+        thread.join()
+    assert path.read_bytes() == b"new"

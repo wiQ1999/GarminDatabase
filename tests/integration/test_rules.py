@@ -192,6 +192,26 @@ def test_components_and_subfield_scale(tmp_path):
 
 
 @pytest.mark.integration
+def test_row_pagination_applies_after_physical_component_precedence(tmp_path):
+    db = Database(tmp_path)
+    db.initialize()
+    raw = fit_bytes(
+        55,
+        [(253, 4, 134), (3, 4, 134), (5, 1, 2), (24, 1, 2), (28, 1, 2)],
+        [(1100000000, 100, 6, 70, 8), (1100000060, 120, 6, 70, 9)],
+    )
+    assert Importer(db).archive(archive(tmp_path, payload=raw)) == 0
+    query = Queries(db)
+    parameter = next(
+        p for p in query.parameters() if p["key"] == "monitoring.intensity"
+    )
+    begin, end = date(2024, 1, 1), date(2025, 1, 1)
+    rows = list(query.rows(parameter, begin, end))
+    assert [row["value"] for row in rows] == [0.8, 0.9]
+    assert list(query.rows(parameter, begin, end, offset=1)) == rows[1:]
+
+
+@pytest.mark.integration
 @pytest.mark.parametrize("status", [401, 403, 404, 429])
 def test_sync_http_failures(tmp_path, status):
     class Source:
