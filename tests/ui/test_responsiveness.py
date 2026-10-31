@@ -125,6 +125,10 @@ def test_slow_main_actions_have_live_spinners(qtbot, tmp_path, monkeypatch, acti
             3,
         )
     w.navigation.setCurrentRow(page)
+    if action == "config":
+        w.settings_tabs.setCurrentIndex(3)
+    elif action == "browser":
+        w.settings_tabs.setCurrentIndex(2)
     try:
         before = time.monotonic()
         launch()

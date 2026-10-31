@@ -31,8 +31,13 @@ class CollectorStatusPanel(QWidget):
         self.generation = 0
         self.stopped = False
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(18)
         self.message = QLabel("Odczytywanie stanu kolektora…")
         self.message.setWordWrap(True)
+        self.message.setStyleSheet(
+            "background:#191e27;padding:20px;border-radius:10px;font-size:16px;"
+        )
         layout.addWidget(self.message)
         form = QFormLayout()
         self.values = {}
@@ -50,6 +55,7 @@ class CollectorStatusPanel(QWidget):
         self.refresh_button = BusyButton("Odśwież stan i log")
         self.refresh_button.clicked.connect(self.poll)
         layout.addWidget(self.refresh_button)
+        layout.addWidget(QLabel("Dziennik kolektora"))
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.document().setMaximumBlockCount(500)
@@ -108,6 +114,9 @@ class CollectorStatusPanel(QWidget):
                 value.setText("brak")
             return
         config, result, log = result
+        panel = self.host.collector_panel
+        if panel.config is None and not panel.edited:
+            panel._loaded(config)
         task, state = result["schedule"], result["state"]
         registration = "niezarejestrowany"
         if task["installed"]:

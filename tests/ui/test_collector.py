@@ -131,12 +131,10 @@ def test_status_is_human_readable_and_busy_does_not_enter_gui_journal(qtbot, tmp
     w = window(qtbot, tmp_path)
     panel = w.collector_panel
     before = w.details.toPlainText()
-    from types import SimpleNamespace
-
     panel = w.collector_status
     panel.render(
         (
-            SimpleNamespace(run_as="synthetic"),
+            CollectorFiles(tmp_path / "settings.json").defaults(tmp_path),
             {
                 "schedule": {
                     "installed": True,

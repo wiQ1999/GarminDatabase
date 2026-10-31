@@ -24,6 +24,7 @@ class CollectorPanel(QWidget):
         super().__init__(host)
         self.host = host
         self.config = None
+        self.edited = False
         layout = QVBoxLayout(self)
         form = QFormLayout()
         self.path = QLineEdit(
@@ -75,6 +76,13 @@ class CollectorPanel(QWidget):
         )
         self.message.setWordWrap(True)
         layout.addWidget(self.message)
+        self.interval.valueChanged.connect(self.mark_edited)
+        self.enabled.toggled.connect(self.mark_edited)
+        self.account.textEdited.connect(self.mark_edited)
+        self.anchor.dateTimeChanged.connect(self.mark_edited)
+
+    def mark_edited(self, *args):
+        self.edited = True
 
     def _run(self, key, operation, success):
         if self.host.aux_worker is not None or self.host.closing:

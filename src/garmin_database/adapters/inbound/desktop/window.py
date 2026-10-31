@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QTextBrowser,
     QTextEdit,
     QVBoxLayout,
@@ -70,23 +71,37 @@ from .workers import Worker
 STYLE = """
 QWidget { background:#10141c; color:#e9eef5; font-family:'Segoe UI'; font-size:14px; }
 QMainWindow { background:#10141c; }
-QPushButton { background:#252d3a; border:1px solid #354154; border-radius:6px; padding:10px 16px; }
+QLabel,QCheckBox { background:transparent; }
+QPushButton { background:#252d3a; border:1px solid #303947; border-radius:7px; padding:8px 14px; }
 QPushButton:hover { background:#34445a; }
 QPushButton:disabled { color:#778393; }
 QPushButton[loading=true] { padding-right:34px; }
 QPushButton[primary=true] { background:#1678c9; border-color:#268ddf; }
-QLineEdit,QDateEdit,QSpinBox,QComboBox { background:#1c2330; border:1px solid #354154; border-radius:5px; padding:7px; }
+QLineEdit,QDateEdit,QDateTimeEdit,QSpinBox,QComboBox { background:#1c2330; border:1px solid #303947; border-radius:6px; padding:7px; selection-background-color:#164e7c; }
+QLineEdit:focus,QDateEdit:focus,QDateTimeEdit:focus,QSpinBox:focus,QComboBox:focus { border-color:#4fa4f3; }
 QDateEdit:disabled { color:#778393; }
 QCheckBox:disabled { color:#778393; }
 QComboBox QAbstractItemView::item:disabled { color:#778393; }
-QListWidget,QTextEdit { background:#191e27; border:1px solid #303947; border-radius:6px; }
+QListWidget,QTextEdit,QTextBrowser,QTableWidget { background:#191e27; border:1px solid #252d3a; border-radius:8px; }
+QListWidget#navigation { background:transparent; border:0; outline:0; }
+QListWidget#navigation::item { padding:13px 14px; margin:3px 0; border-radius:7px; color:#a3afbf; }
+QListWidget#navigation::item:selected { background:#164e7c; color:#e9eef5; }
+QListWidget#navigation::item:hover { background:#252d3a; }
 QListWidget::item { padding:10px; }
 QListWidget::item:selected { background:#164e7c; }
 QProgressBar { border:1px solid #303947; border-radius:5px; text-align:center; min-height:22px; }
 QProgressBar::chunk { background:#268ddf; }
 QToolTip { background:#252d3a; color:white; border:1px solid #4fa4f3; }
-QGroupBox { border:1px solid #303947; border-radius:8px; margin-top:12px; padding:16px; }
+QGroupBox { border:0; background:#191e27; border-radius:10px; margin-top:18px; padding:22px 18px 18px; }
 QGroupBox::title { subcontrol-origin:margin; left:14px; padding:0 6px; color:#e9eef5; font-weight:600; }
+QTabWidget::pane { border:0; padding-top:14px; }
+QTabBar::tab { color:#a3afbf; background:transparent; padding:11px 15px; border-bottom:2px solid transparent; }
+QTabBar::tab:selected { color:#e9eef5; border-bottom-color:#4fa4f3; }
+QHeaderView::section { background:#252d3a; color:#a3afbf; border:0; padding:9px; }
+QTableWidget { gridline-color:#252d3a; alternate-background-color:#1c2330; }
+QScrollBar:vertical { background:transparent; width:8px; }
+QScrollBar::handle:vertical { background:#354154; border-radius:4px; min-height:30px; }
+QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical { height:0; }
 """
 
 
@@ -153,6 +168,7 @@ class Window(QMainWindow):
         self.setCentralWidget(root)
         row = QHBoxLayout(root)
         row.setContentsMargins(18, 18, 18, 18)
+        row.setSpacing(24)
         nav = QVBoxLayout()
         heading = QHBoxLayout()
         heading.setSpacing(8)
@@ -165,6 +181,7 @@ class Window(QMainWindow):
         heading.addWidget(brand)
         nav.addLayout(heading)
         self.navigation = QListWidget()
+        self.navigation.setObjectName("navigation")
         self.navigation.addItems(["Start", "Dane", "Eksport", "Ustawienia", "Kolektor"])
         self.navigation.setFixedWidth(185)
         nav.addWidget(self.navigation)
@@ -211,6 +228,7 @@ class Window(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(18, 8, 8, 8)
+        layout.setSpacing(16)
         label = QLabel(title)
         label.setStyleSheet("font-size:28px;font-weight:600;")
         layout.addWidget(label)
@@ -230,7 +248,7 @@ class Window(QMainWindow):
         self.status.setText("Odczytywanie stanu archiwum…")
         self.status.setWordWrap(True)
         self.status.setStyleSheet(
-            "background:#191e27;padding:22px;border-radius:8px;font-size:16px;"
+            "background:#191e27;padding:22px;border-radius:10px;font-size:14px;"
         )
         layout.addWidget(self.status)
         state_header = QHBoxLayout()
@@ -263,7 +281,7 @@ class Window(QMainWindow):
         layout.addWidget(self.stage)
         self.stop_button = button("Zatrzymaj", self.stop_work)
         self.stop_button.setEnabled(False)
-        layout.addWidget(self.stop_button)
+        layout.addWidget(self.stop_button, 0, Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(QLabel("Dziennik operacji"))
         self.details = QTextEdit()
         self.details.setReadOnly(True)
@@ -286,6 +304,7 @@ class Window(QMainWindow):
         self.parameter_list.setMaximumWidth(340)
         row.addWidget(self.parameter_list)
         right = QVBoxLayout()
+        right.setSpacing(8)
         controls = QHBoxLayout()
         self.range = QComboBox()
         self.range.setItemDelegate(QStyledItemDelegate(self.range))
@@ -310,10 +329,12 @@ class Window(QMainWindow):
         self.trend.setEnabled(False)
         right.addWidget(self.trend)
         self.chart_title = QLabel("Wybierz parametr")
+        self.chart_title.setStyleSheet("font-size:18px;font-weight:600;")
         right.addWidget(self.chart_title)
         self.chart = Chart()
         self.chart.setMinimumHeight(240)
         self.chart_view = ChartView(self.chart)
+        self.chart_view.setMinimumHeight(240)
         right.addWidget(self.chart_view, 1)
         self.chart_message = QLabel()
         self.chart_message.setWordWrap(True)
@@ -321,7 +342,7 @@ class Window(QMainWindow):
         self.parameter_help = QTextBrowser()
         self.parameter_help.setAccessibleName("Wyjaśnienie parametru Garmin")
         self.parameter_help.setMinimumHeight(100)
-        self.parameter_help.setMaximumHeight(150)
+        self.parameter_help.setMaximumHeight(120)
         self.parameter_help.setOpenLinks(False)
         self.parameter_help.setOpenExternalLinks(False)
         self.parameter_help.anchorClicked.connect(
@@ -399,30 +420,37 @@ class Window(QMainWindow):
         outer = self.page(
             "Ustawienia", "Dane lokalne, udostępnianie i połączenie z Garmin."
         )
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setSpacing(16)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(content)
-        scroll.setStyleSheet("QScrollArea { border:0; }")
-        outer.addWidget(scroll)
+        self.settings_tabs = QTabWidget()
+        outer.addWidget(self.settings_tabs, 1)
+        sections = []
+        for title in ("Ogólne", "Automatyczne pobieranie", "Garmin", "Udostępnianie"):
+            content = QWidget()
+            section = QVBoxLayout(content)
+            section.setContentsMargins(0, 0, 8, 0)
+            section.setSpacing(20)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(content)
+            scroll.setStyleSheet("QScrollArea { border:0; }")
+            self.settings_tabs.addTab(scroll, title)
+            sections.append(section)
+        self.build_storage_settings(
+            self.settings_section(sections[0], "Dane lokalne i PostgreSQL")
+        )
+        self.collector_panel = CollectorPanel(self)
+        self.settings_section(sections[1], "Automatyczne pobieranie").addWidget(
+            self.collector_panel
+        )
+        self.build_login_settings(
+            self.settings_section(sections[2], "Logowanie do Garmin Connect")
+        )
+        self.build_sharing(self.settings_section(sections[3], "Udostępnianie danych"))
+        for section in sections:
+            section.addStretch()
         self.open_config_button = button(
             "Otwórz folder konfiguracji", self.open_config_folder
         )
-        outer.addWidget(self.open_config_button)
-        self.build_storage_settings(
-            self.settings_section(layout, "Dane lokalne i PostgreSQL")
-        )
-        self.build_login_settings(
-            self.settings_section(layout, "Logowanie do Garmin Connect")
-        )
-        self.build_sharing(self.settings_section(layout, "Udostępnianie danych"))
-        self.collector_panel = CollectorPanel(self)
-        self.settings_section(layout, "Automatyczne pobieranie").addWidget(
-            self.collector_panel
-        )
-        layout.addStretch()
+        outer.addWidget(self.open_config_button, 0, Qt.AlignmentFlag.AlignLeft)
         footer = QHBoxLayout()
         self.settings_status = QLabel()
         self.settings_status.setWordWrap(True)
@@ -524,6 +552,10 @@ class Window(QMainWindow):
             ["Parametr", "Jednostka", "Eksport", "MCP", "Podsumowanie"]
         )
         self.sharing_table.setMinimumHeight(210)
+        self.sharing_table.setAlternatingRowColors(True)
+        self.sharing_table.setShowGrid(False)
+        self.sharing_table.verticalHeader().hide()
+        self.sharing_table.verticalHeader().setDefaultSectionSize(36)
         self.sharing_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
         )

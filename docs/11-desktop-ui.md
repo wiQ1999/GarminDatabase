@@ -145,3 +145,7 @@ PostgreSQL może działać przy kolektorze lub na innym hoście. Windows DPAPI p
 Ustawienia przechowują wyłącznie konfigurację i zastosowanie harmonogramu. Zakładka „Kolektor” pokazuje rejestrację zadania, zgodność konfiguracji, ostatni wynik, konto, następny termin, rozpoczęcie, zakończenie, ostatni sukces, pauzę oraz log. Automatyczny odczyt korzysta z tego samego zegara `refresh_seconds` co stan bazy, ale z niezależnego workera — awaria SQL nie blokuje diagnostyki automatu. Jeden odczyt naraz, pomijanie ukrytego okna, odrzucanie starej generacji i zamknięcie przez sygnały. Przycisk „Odśwież stan i log” wykonuje dodatkowy odczyt; nie uruchamia pobierania.
 
 Instalacja zapisuje formularz i rejestruje harmonogram jednym przyciskiem. Wspólny formularz logowania ma wybór sesji: aplikacji albo kolektora aktualnego konta Windows. Dla innego konta kolektora używa się CLI pod tym kontem, bez kopiowania sesji. [Krótka instrukcja użytkownika](16-user-guide.md).
+
+## Układ i nawigacja
+
+Paleta pozostaje ciemna z niebieskim akcentem. Nawigacja oddziela Start, Dane, Eksport, Ustawienia i Kolektor. Ustawienia mają cztery krótkie strony: Ogólne, Automatyczne pobieranie, Garmin i Udostępnianie. Przyciski folderu konfiguracji i zapisu są stale widoczne pod formularzem. Panele mają większe odstępy, spokojniejsze obramowania i wyraźne stany fokusu. Tabela udostępniania używa naprzemiennych wierszy bez siatki. Zapisany formularz kolektora wczytuje się przy pierwszym odczycie statusu tylko wtedy, gdy użytkownik nie rozpoczął edycji.

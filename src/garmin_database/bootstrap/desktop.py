@@ -66,6 +66,7 @@ def smoke_snapshot(window, picture, app):
     def snapshot():
         idle = (
             not window.overview.busy
+            and not window.collector_status.busy
             and window.query_worker is None
             and not window.query_pending
         )
@@ -80,6 +81,14 @@ def smoke_snapshot(window, picture, app):
                 {"overview_ready": True, "background_idle": True},
             )
             window.grab().save(picture)
+            window.navigation.setCurrentRow(3)
+            for index in range(window.settings_tabs.count()):
+                window.settings_tabs.setCurrentIndex(index)
+                app.processEvents()
+                window.grab().save(str(Path(picture).with_name(f"settings-{index}.png")))
+            window.navigation.setCurrentRow(4)
+            app.processEvents()
+            window.grab().save(str(Path(picture).with_name("collector.png")))
             window.close()
         elif (idle and window.overview.initialized) or time.monotonic() >= deadline:
             fail()
