@@ -20,6 +20,8 @@ class Settings:
     mcp_enabled: bool = False
     collector_config_path: str = ""
     download_from: str = "2024-01-01"
+    refresh_seconds: int = 15
+    collector: dict | None = None
 
     def migrate(self, catalog):
         """Freeze the legacy 'all' selection once; docs/11-desktop-ui.md."""
@@ -37,6 +39,13 @@ class Settings:
         if not isinstance(self.recent_days, int) or self.recent_days < 1:
             raise ValueError("Okres szczegółowy musi być dodatnią liczbą dni")
         self.validate_sharing()
+        if (
+            type(self.refresh_seconds) is not int
+            or not 5 <= self.refresh_seconds <= 3600
+        ):
+            raise ValueError("Odświeżanie wymaga od 5 do 3600 sekund")
+        if self.collector is not None and not isinstance(self.collector, dict):
+            raise ValueError("Nieprawidłowa sekcja kolektora")
         if self.summary_period not in {"day", "month"}:
             raise ValueError("Nieprawidłowy okres podsumowań")
         if not math.isfinite(self.delay) or self.delay < 0:

@@ -56,20 +56,13 @@ Wyłączenie harmonogramu zatrzymuje przyszłe uruchomienia. Rozpoczęta operacj
 
 ## Konfiguracja, stan i logi
 
-Konfiguracja kolektora jest oddzielna od preferencji GUI. Schemat JSON ma wersję 1. `init` tworzy konfigurację wyłączoną, z interwałem 120 minut. Ustawienia obejmują:
+Aplikacja, MCP i kolektor używają jednego `settings.json`. Parametry połączenia `database_dsn`, początku pobierania `download_from` oraz `data_dir` są wspólne, bez kopii w sekcji `collector`. Dla osobnego serwera kolektora przygotuj lokalny `settings.json` z jego połączeniem i ścieżkami. Hasło PostgreSQL pozostaje w pgpass, poza JSON.
 
-- `data_dir`, `state_dir`, `session_path`: bezwzględne ścieżki; używać wydzielonych katalogów aplikacji.
-- `settings_path`: bezwzględna ścieżka wspólnych ustawień aplikacji, zapisywana przez GUI.
-- `database_dsn`: `null` w konfiguracji utworzonej przez GUI oznacza odczyt z `settings_path` przy każdym uruchomieniu. Jawny tekst nadpisuje wartość aplikacji; puste `""` wybiera GARMIN_DATABASE_DSN, następnie libpq. Hasło przez pgpass/PGPASSFILE albo środowisko konta zadania, nigdy w DSN.
-- `download_from`: `null` oznacza odczyt globalnego początku pobierania z `settings_path`; jawna data ISO nadpisuje tę wartość. Starsze samodzielne pliki bez tego pola zachowują 2024-01-01. Brak wskazanych wspólnych ustawień jest błędem, bez cichego użycia domyślnej bazy.
-- `instance`, `enabled`, `interval_minutes`, `anchor_at`: identyfikator instancji, włączenie i terminy. Kotwica ma pełną minutę i jawny offset lub Z.
-- `run_as`: konto systemowe, domyślnie aktualny użytkownik; Linux nie uruchamia kolektora jako root.
-- `credential_path`: ścieżka zaszyfrowanego klucza systemd na Linux/Pi.
-- `status_reader`: konto Windows uprawnione do konfiguracji i odczytu statusu, ustalane przy zastosowaniu zadania.
+Sekcja `collector` zawiera: `enabled`, `interval_minutes` (minimum 15), `anchor_at` (pełna minuta UTC), `run_as`, `instance`, `state_dir`, `session_path`, `credential_path` (Linux) i `status_reader` (Windows). Stan i sesja nie należą do pliku ustawień. Zapisy ustawień globalnych zachowują nowszą sekcję kolektora; zapisy kolektora zachowują ustawienia globalne. Zapis jest atomowy z blokadą pliku i zachowaniem ACL.
 
-Windows domyślnie używa `%LOCALAPPDATA%/GarminDatabase/collector.json`, obok globalnego `settings.json`. GUI pokazuje folder konfiguracji i ścieżkę kolektora tylko do odczytu; przy niestandardowym pliku ustawień umieszcza kolektor w tym samym folderze. Dawne `collector_config_path` nie zmienia lokalizacji GUI; stare pliki i zadania nie są automatycznie usuwane ani przenoszone. CLI może wskazać dowolny plik przez `--config`. Przy uruchamianiu pod innym kontem należy zawsze podać pełną ścieżkę operatora, aby nie wybrać AppData konta zadania. Linux CLI: `/etc/garmin-database/collector.json`, z domyślnym stanem pod `/var/lib/garmin-database/collector/default/`.
+Windows: `%LOCALAPPDATA%/GarminDatabase/settings.json`; Linux: `/etc/garmin-database/settings.json`. GUI otwiera folder przyciskiem „Otwórz folder konfiguracji”. Pole `refresh_seconds` (5–3600, domyślnie 15) steruje częstotliwością odświeżania statusów, nie pobierania z Garmin. Początek harmonogramu wyznacza terminy, a `download_from` zakres danych.
 
-W GUI połączenie i początek pobierania ustawia się raz, w „Dane lokalne i PostgreSQL”, i utrwala przez „Zapisz ustawienia”. Nowy plik kolektora dziedziczy te wartości; późniejsze zapisy cyklu nie nadpisują jawnych ustawień pliku. Dla kolektora na innej maszynie należy ustawić w jego JSON własne `database_dsn` i `download_from` (oraz właściwe lokalne ścieżki). Jawne obie wartości uniezależniają go od pliku ustawień GUI. Zmiana wspólnych wartości jest odczytywana przy następnym wykonaniu, bez zmiany terminów zadania.
+Starsze samodzielne pliki kolektora są nadal czytelne przez CLI. Pierwszy zapis formularza może przenieść ustawienia sąsiedniego `collector.json` do wspólnej konfiguracji, bez usuwania oryginału. Następnie należy zastosować harmonogram, aby zadanie wskazywało nowy plik. Stare niestandardowe ścieżki nie są automatycznie usuwane.
 
 W `state_dir` znajdują się `status.json`, `collector.lock` i `logs/collector.log`. Plik statusu przechowuje m.in. ostatni wynik, terminy, ostatni sukces, bezpieczne liczniki, pauzę sesji, `not_before` i zastosowaną rewizję. Status/log można odczytać bez PostgreSQL. Log ma limit 5 MiB i pięć kopii rotacji. Nie zawiera pomiarów, tokenów, haseł, MFA, odpowiedzi dostawcy, pełnych wyjątków ani DSN.
 
@@ -80,17 +73,17 @@ Zapis konfiguracji i zastosowanie zadania to osobne operacje. Po zapisie wybierz
 W źródłach używaj `python -m garmin_database.bootstrap.collector`, po instalacji pakietu `garmin-db-collector`, a w paczce Windows `GarminDatabaseCollector.exe`. Globalne `--config` podaje się przed poleceniem.
 
 ```text
-garmin-db-collector --config /etc/garmin-database/collector.json init
-garmin-db-collector --config /etc/garmin-database/collector.json prepare-key
-garmin-db-collector --config /etc/garmin-database/collector.json login
-garmin-db-collector --config /etc/garmin-database/collector.json status --json
-garmin-db-collector --config /etc/garmin-database/collector.json logs
-garmin-db-collector --config /etc/garmin-database/collector.json schedule install
-garmin-db-collector --config /etc/garmin-database/collector.json schedule enable
-garmin-db-collector --config /etc/garmin-database/collector.json schedule disable
-garmin-db-collector --config /etc/garmin-database/collector.json schedule apply
-garmin-db-collector --config /etc/garmin-database/collector.json schedule status
-garmin-db-collector --config /etc/garmin-database/collector.json run --scheduled
+garmin-db-collector --config /etc/garmin-database/settings.json init
+garmin-db-collector --config /etc/garmin-database/settings.json prepare-key
+garmin-db-collector --config /etc/garmin-database/settings.json login
+garmin-db-collector --config /etc/garmin-database/settings.json status --json
+garmin-db-collector --config /etc/garmin-database/settings.json logs
+garmin-db-collector --config /etc/garmin-database/settings.json schedule install
+garmin-db-collector --config /etc/garmin-database/settings.json schedule enable
+garmin-db-collector --config /etc/garmin-database/settings.json schedule disable
+garmin-db-collector --config /etc/garmin-database/settings.json schedule apply
+garmin-db-collector --config /etc/garmin-database/settings.json schedule status
+garmin-db-collector --config /etc/garmin-database/settings.json run --scheduled
 ```
 
 `init` i `prepare-key` odmawiają nadpisania istniejącego pliku. `run --scheduled` respektuje włączenie, termin i zastosowaną rewizję. Samo `run` jest jawnym ręcznym uruchomieniem i nadal respektuje pauzę sesji oraz Retry-After. Kody wyjścia: 0 dla sukcesu i zwykłego pominięcia, 2 dla wyniku z problemami/pauzy, 1 dla błędu konfiguracji lub wykonania polecenia. System nie wykonuje dodatkowego restartu zadania po kodzie 1/2.
@@ -107,7 +100,7 @@ garmin-db-collector --config /etc/garmin-database/collector.json run --scheduled
 Przykład polecenia wewnątrz konsoli właściwego konta:
 
 ```powershell
-C:\Apps\GarminDatabaseCollector\GarminDatabaseCollector.exe --config C:\Users\operator\AppData\Local\GarminDatabase\collector.json login
+C:\Apps\GarminDatabaseCollector\GarminDatabaseCollector.exe --config C:\Users\operator\AppData\Local\GarminDatabase\settings.json login
 ```
 
 DPAPI wiąże sesję z kontem i komputerem. Logowanie w GUI głównego użytkownika nie odnawia sesji dedykowanego konta. Po przeniesieniu konta/maszyny potrzebne jest nowe logowanie. Nie kopiować ani automatycznie usuwać cudzej sesji, pgpass, ustawień, ZIP i eksportów.
@@ -121,7 +114,7 @@ Przykładowy układ po utworzeniu dedykowanego konta `garmin-collector` z własn
 ```sh
 sudo python3.12 -m venv /opt/garmin-database/.venv
 sudo /opt/garmin-database/.venv/bin/python -m pip install '.[collector]'
-sudo /opt/garmin-database/.venv/bin/garmin-db-collector --config /etc/garmin-database/collector.json init
+sudo /opt/garmin-database/.venv/bin/garmin-db-collector --config /etc/garmin-database/settings.json init
 ```
 
 Instalację pakietu wykonuj z katalogu źródeł; na dedykowanej maszynie dopuszczalna jest również instalacja zbudowanego wheel z dodatkiem `[collector]`. Interpreter i pakiet muszą być czytelne/wykonywalne dla użytkownika usługi. Qt i SDK MCP nie należą do zależności kolektora.
@@ -129,8 +122,8 @@ Instalację pakietu wykonuj z katalogu źródeł; na dedykowanej maszynie dopusz
 Edytuj konfigurację: ustaw `run_as`, DSN bez hasła, katalogi, interwał i kotwicę. Przygotuj `.pgpass` konta kolektora z trybem 0600. Następnie jako administrator:
 
 ```sh
-sudo /opt/garmin-database/.venv/bin/garmin-db-collector --config /etc/garmin-database/collector.json prepare-key
-sudo /opt/garmin-database/.venv/bin/garmin-db-collector --config /etc/garmin-database/collector.json schedule install
+sudo /opt/garmin-database/.venv/bin/garmin-db-collector --config /etc/garmin-database/settings.json prepare-key
+sudo /opt/garmin-database/.venv/bin/garmin-db-collector --config /etc/garmin-database/settings.json schedule install
 ```
 
 Instalacja tworzy jednostki `garmin-database-default.service` i `.timer` pod `/etc/systemd/system`, przydziela katalogi kontu usługi i nie pobiera historii. Domyślnie harmonogram pozostaje wyłączony. Klucz AES jest generowany w pamięci i przekazywany przez pipe do systemd-creds. Nie nadpisuj istniejącego poświadczenia.
@@ -142,14 +135,14 @@ sudo systemd-run --wait --collect --pty \
   --property=User=garmin-collector \
   --property=LoadCredentialEncrypted=garmin-session-key:/etc/garmin-database/session-key.cred \
   /opt/garmin-database/.venv/bin/garmin-db-collector \
-  --config /etc/garmin-database/collector.json login
+  --config /etc/garmin-database/settings.json login
 ```
 
 Po logowaniu włącz harmonogram:
 
 ```sh
-sudo /opt/garmin-database/.venv/bin/garmin-db-collector --config /etc/garmin-database/collector.json schedule enable
-sudo /opt/garmin-database/.venv/bin/garmin-db-collector --config /etc/garmin-database/collector.json status --json
+sudo /opt/garmin-database/.venv/bin/garmin-db-collector --config /etc/garmin-database/settings.json schedule enable
+sudo /opt/garmin-database/.venv/bin/garmin-db-collector --config /etc/garmin-database/settings.json status --json
 ```
 
 Sesja jest zapisywana jako osobny, uwierzytelniony szyfrogram AES-GCM z losowym nonce. systemd przekazuje klucz przez chroniony katalog poświadczeń, a nie jako wartość zmiennej środowiskowej. Tokeny są odświeżane w szyfrowanym pliku z trybem 0600, nie w tylko do odczytu katalogu poświadczeń. Nie ma jawnego fallbacku ani potrzeby odblokowania graficznego keyringu. Ochrona ta nie zastępuje szyfrowania nośnika i kopii zapasowych.

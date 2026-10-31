@@ -82,12 +82,12 @@ def test_default_path_and_identity_match_application(monkeypatch, tmp_path):
     monkeypatch.setenv("USERDOMAIN", "SYNTHETIC-PC")
     assert (
         collector_files.default_config_path(tmp_path / "settings.json")
-        == tmp_path / "collector.json"
+        == tmp_path / "settings.json"
     )
     if os.name == "nt":
         assert (
             collector_files.default_config_path()
-            == application_dir() / "collector.json"
+            == application_dir() / "settings.json"
         )
         assert files_account(collector_files) == "SYNTHETIC-PC\\synthetic-user"
     else:

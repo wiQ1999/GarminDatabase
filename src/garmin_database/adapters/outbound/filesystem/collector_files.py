@@ -28,10 +28,10 @@ def current_account():
 
 def default_config_path(settings_path=None):
     if settings_path is not None:
-        return Path(settings_path).resolve().parent / "collector.json"
+        return Path(settings_path).resolve()
     if os.name == "nt":
-        return application_dir() / "collector.json"
-    return Path("/etc/garmin-database/collector.json")
+        return application_dir() / "settings.json"
+    return Path("/etc/garmin-database/settings.json")
 
 
 class CollectorFiles:
@@ -75,9 +75,22 @@ class CollectorFiles:
         )
 
     def load_config(self):
-        config = CollectorConfig(
-            **json.loads(self.config_path.read_text(encoding="utf-8"))
-        )
+        value = json.loads(self.config_path.read_text(encoding="utf-8"))
+        if "data_dir" in value and "state_dir" in value:
+            config = CollectorConfig(**value)  # Legacy standalone CLI file.
+        else:
+            settings = Settings.load(self.config_path)
+            if settings.collector is None:
+                raise FileNotFoundError("Brak konfiguracji kolektora")
+            config = CollectorConfig(
+                **{
+                    **settings.collector,
+                    "data_dir": settings.data_dir,
+                    "database_dsn": None,
+                    "download_from": None,
+                    "settings_path": str(self.config_path),
+                }
+            )
         config.validate()
         Settings(database_dsn=config.database_dsn or "").validate()
         return config
@@ -85,7 +98,23 @@ class CollectorFiles:
     def save_config(self, config):
         config.validate()
         Settings(database_dsn=config.database_dsn or "").validate()
-        atomic_json(self.config_path, asdict(config))
+        if self.config_path.name != "settings.json" and config.settings_path != str(
+            self.config_path
+        ):
+            atomic_json(self.config_path, asdict(config))
+            return
+        with file_lock(self.config_path.with_suffix(".lock")):
+            settings = Settings.load(self.config_path)
+            if not self.config_path.exists():
+                settings.data_dir = config.data_dir
+                settings.database_dsn = config.database_dsn or ""
+                settings.download_from = config.download_from or "2024-01-01"
+            value = asdict(config)
+            for key in ("data_dir", "database_dsn", "download_from", "settings_path"):
+                value.pop(key)
+            settings.collector = value
+            settings.validate()
+            atomic_json(self.config_path, asdict(settings))
 
     def lock(self, config):
         return file_lock(Path(config.state_dir) / "collector.lock")

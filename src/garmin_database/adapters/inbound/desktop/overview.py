@@ -29,7 +29,7 @@ class OverviewPoller(QObject):
         self.catalog_checked = float("-inf")
         self.pending = self.stopped = False
         self.timer = QTimer(self)
-        self.timer.setInterval(self.interval_ms)
+        self.timer.setInterval(settings.refresh_seconds * 1000)
         self.timer.timeout.connect(self.poll)
         self.timer.start()
 
@@ -43,6 +43,7 @@ class OverviewPoller(QObject):
 
     def configure(self, services, settings):
         self.services, self.settings = services, settings
+        self.timer.setInterval(settings.refresh_seconds * 1000)
         self.generation += 1
         self.catalog_revision = None
         self.catalog_checked = float("-inf")

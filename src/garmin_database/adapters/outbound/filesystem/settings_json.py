@@ -4,7 +4,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from garmin_database.adapters.outbound.filesystem.files import atomic_json
+from garmin_database.adapters.outbound.filesystem.files import atomic_json, file_lock
 from garmin_database.application.settings import Settings as SettingsModel
 
 
@@ -55,7 +55,15 @@ class Settings(SettingsModel):
 
     def save(self, path=None):
         self.validate()
-        atomic_json(path or application_dir() / "settings.json", asdict(self))
+        path = Path(path or application_dir() / "settings.json")
+        with file_lock(path.with_suffix(".lock")):
+            value = asdict(self)
+            # A desktop snapshot must not overwrite a newer collector edit.
+            if path.exists():
+                previous = json.loads(path.read_text(encoding="utf-8"))
+                if "collector" in previous:
+                    value["collector"] = previous["collector"]
+            atomic_json(path, value)
 
     def validate(self):
         from psycopg.conninfo import conninfo_to_dict

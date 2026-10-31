@@ -16,8 +16,7 @@ def test_save_collector_config_is_separate_from_apply_and_gui_preferences(
 ):
     w = window(qtbot, tmp_path)
     panel = w.collector_panel
-    path = tmp_path / "collector.json"
-    panel.path.setText(str(path))
+    path = tmp_path / "settings.json"
     assert panel.interval.minimum() == 15 and panel.interval.value() == 120
     panel.enabled.setChecked(True)
     panel.account.setText("garmin")
@@ -31,7 +30,7 @@ def test_save_collector_config_is_separate_from_apply_and_gui_preferences(
     assert "Zastosuj" in panel.message.text()
     w.save_settings()
     ready(qtbot, w)
-    assert w.settings.collector_config_path == str(path)
+    assert w.settings.refresh_seconds == 15
     panel.interval.setValue(30)
     panel.buttons["load"].click()
     ready(qtbot, w)
@@ -41,9 +40,9 @@ def test_save_collector_config_is_separate_from_apply_and_gui_preferences(
 def test_defaults_share_configuration_directory_and_current_account(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
     panel = w.collector_panel
-    assert panel.path.text() == str(tmp_path / "collector.json")
-    assert panel.path.isReadOnly() and w.config_directory.isReadOnly()
-    assert w.config_directory.text() == str(tmp_path)
+    assert panel.path.text() == str(tmp_path / "settings.json")
+    assert not hasattr(w, "config_directory")
+    assert w.open_config_button.text() == "Otwórz folder konfiguracji"
     assert panel.account.text() == w.services.current_account()
     assert not hasattr(panel, "dsn")
     assert not hasattr(panel, "data_dir")

@@ -35,7 +35,7 @@ class CollectorPanel(QWidget):
             )
         )
         self.path.setReadOnly(True)
-        form.addRow("Konfiguracja kolektora", self.path)
+        self.path.hide()
         self.enabled = QCheckBox("Włącz cykliczne pobieranie")
         form.addRow(self.enabled)
         self.interval = QSpinBox()
@@ -111,8 +111,11 @@ class CollectorPanel(QWidget):
                 self.message.setText(message)
 
         def execute(worker):
-            if key != "save" and not manager.files.config_path.is_file():
-                return missing
+            if key != "save":
+                try:
+                    manager.files.load_config()
+                except FileNotFoundError:
+                    return missing
             return operation(manager)
 
         self.message.setText("Wykonywanie operacji kolektora…")
@@ -153,11 +156,24 @@ class CollectorPanel(QWidget):
         )
 
         def operation(manager):
-            config = (
-                manager.files.load_config()
-                if manager.files.config_path.exists()
-                else manager.files.defaults(data_dir, None, settings_path=settings_path)
-            )
+            try:
+                config = manager.files.load_config()
+            except FileNotFoundError:
+                legacy = manager.files.config_path.parent / "collector.json"
+                if legacy.is_file():
+                    config = self.host.services.collector_manager(
+                        legacy
+                    ).files.load_config()
+                    config = replace(
+                        config,
+                        settings_path=str(settings_path),
+                        database_dsn=None,
+                        download_from=None,
+                    )
+                else:
+                    config = manager.files.defaults(
+                        data_dir, None, settings_path=settings_path
+                    )
             config = replace(config, **values)
             manager.files.save_config(config)
             return config

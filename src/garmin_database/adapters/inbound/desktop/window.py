@@ -222,9 +222,10 @@ class Window(QMainWindow):
         )
         layout.addWidget(self.status)
         state_header = QHBoxLayout()
-        state_header.addWidget(
-            QLabel("Stan aktualizuje się automatycznie co 15 sekund")
+        self.refresh_note = QLabel(
+            f"Automatyczne odświeżanie co {self.settings.refresh_seconds} s"
         )
+        state_header.addWidget(self.refresh_note)
         state_header.addStretch()
         self.status_indicator = BusyIndicator(self)
         state_header.addWidget(self.status_indicator)
@@ -237,7 +238,9 @@ class Window(QMainWindow):
         actions = QHBoxLayout()
         self.download_button = button("Pobierz nowe dane", self.sync, True)
         actions.addWidget(self.download_button)
-        self.download_all_button = button("Pobierz wszystko", lambda: self.sync(refresh_all=True))
+        self.download_all_button = button(
+            "Pobierz wszystko", lambda: self.sync(refresh_all=True)
+        )
         actions.addWidget(self.download_all_button)
         layout.addLayout(actions)
         self.progress = QProgressBar()
@@ -279,7 +282,9 @@ class Window(QMainWindow):
         )
         self.range.setCurrentIndex(2)
         controls.addWidget(self.range)
-        layout.addWidget(QLabel("Dane bieżącego dnia mogą być niepełne do kolejnej synchronizacji."))
+        layout.addWidget(
+            QLabel("Dane bieżącego dnia mogą być niepełne do kolejnej synchronizacji.")
+        )
         self.chart_from = date_edit(today() - timedelta(days=29))
         self.chart_to = date_edit(today())
         controls.addWidget(self.chart_from)
@@ -390,6 +395,10 @@ class Window(QMainWindow):
         scroll.setWidget(content)
         scroll.setStyleSheet("QScrollArea { border:0; }")
         outer.addWidget(scroll)
+        self.open_config_button = button(
+            "Otwórz folder konfiguracji", self.open_config_folder
+        )
+        outer.addWidget(self.open_config_button)
         self.build_storage_settings(
             self.settings_section(layout, "Dane lokalne i PostgreSQL")
         )
@@ -398,7 +407,9 @@ class Window(QMainWindow):
         )
         self.build_sharing(self.settings_section(layout, "Udostępnianie danych"))
         self.collector_panel = CollectorPanel(self)
-        self.settings_section(layout, "Automatyczne pobieranie").addWidget(self.collector_panel)
+        self.settings_section(layout, "Automatyczne pobieranie").addWidget(
+            self.collector_panel
+        )
         layout.addStretch()
         footer = QHBoxLayout()
         self.settings_status = QLabel()
@@ -441,20 +452,19 @@ class Window(QMainWindow):
         form.addRow("Połączenie PostgreSQL", self.database_dsn)
         self.download_from = date_edit(date.fromisoformat(self.settings.download_from))
         form.addRow("Początek pobierania z Garmin", self.download_from)
-        self.config_directory = QLineEdit(
-            str(self.services.settings_store.location(self.settings_path).parent)
-        )
-        self.config_directory.setReadOnly(True)
-        form.addRow("Folder plików konfiguracji", self.config_directory)
+        self.refresh_seconds = QSpinBox()
+        self.refresh_seconds.setRange(5, 3600)
+        self.refresh_seconds.setSuffix(" s")
+        self.refresh_seconds.setValue(self.settings.refresh_seconds)
+        form.addRow("Odświeżanie stanu bazy i kolektora", self.refresh_seconds)
         layout.addLayout(form)
-        label = QLabel(
-            "Ustawienia: "
-            + str(self.services.settings_store.location(self.settings_path))
-        )
-        label.setWordWrap(True)
-        label.setStyleSheet("color:#a3afbf;")
-        layout.addWidget(label)
         layout.addWidget(QLabel("Strefa zakresu importu i wykresów: Europe/Warsaw"))
+
+    def open_config_folder(self):
+        path = self.services.settings_store.location(self.settings_path).parent
+        self.start_aux(
+            self.open_config_button, lambda worker: self.services.open_folder(path)
+        )
 
     def build_login_settings(self, layout):
         garmin_account = QLabel(
@@ -1058,9 +1068,15 @@ class Window(QMainWindow):
         trigger = self.download_all_button if refresh_all else self.download_button
         self.start_work(
             lambda w: db.sync(
-                start, today(), w.stop, w.progress.emit,
-                delay=delay, detailed=True, refresh_all=refresh_all,
-            ), trigger,
+                start,
+                today(),
+                w.stop,
+                w.progress.emit,
+                delay=delay,
+                detailed=True,
+                refresh_all=refresh_all,
+            ),
+            trigger,
         )
 
     def login(self):
@@ -1155,7 +1171,7 @@ class Window(QMainWindow):
             export_parameters=self.sharing_keys(2),
             mcp_parameters=self.sharing_keys(3),
             mcp_enabled=self.mcp_enabled.isChecked(),
-            collector_config_path=self.collector_panel.path.text(),
+            refresh_seconds=self.refresh_seconds.value(),
         )
         previous, path = self.services, self.settings_path
 
@@ -1190,6 +1206,9 @@ class Window(QMainWindow):
             else:
                 self.populate_parameters(preserve=False)
             self.overview.configure(services, candidate)
+            self.refresh_note.setText(
+                f"Automatyczne odświeżanie co {candidate.refresh_seconds} s"
+            )
             self.settings_status.setText("Ustawienia zapisane")
 
         self.settings_status.setText("Sprawdzanie połączenia i zapisywanie ustawień…")
