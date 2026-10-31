@@ -490,6 +490,10 @@ class Window(QMainWindow):
         layout.addWidget(garmin_account)
         form = QFormLayout()
         self.email = QLineEdit()
+        self.login_target = QComboBox()
+        self.login_target.addItem("Aplikacja — pobieranie ręczne", "application")
+        self.login_target.addItem("Kolektor — aktualne konto Windows", "collector")
+        form.addRow("Sesja Garmin", self.login_target)
         form.addRow("E-mail Garmin", self.email)
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
@@ -1105,8 +1109,21 @@ class Window(QMainWindow):
             self.session_status.setText("Podaj e-mail i hasło")
             return
 
+        collector_login = self.login_target.currentData() == "collector"
+        services = self.services
+        collector_path = self.collector_panel.path.text()
+
         def operation(w):
-            return self.services.login(
+            if collector_login:
+                return services.login_collector(
+                    collector_path,
+                    email,
+                    password,
+                    w.ask_mfa,
+                    w.stop,
+                    w.login_stage.emit,
+                )
+            return services.login(
                 email, password, w.ask_mfa, w.stop, w.login_stage.emit
             )
 

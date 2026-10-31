@@ -27,7 +27,7 @@ def test_save_collector_config_is_separate_from_apply_and_gui_preferences(
     assert config.data_dir == w.settings.data_dir
     assert config.database_dsn is None and config.download_from is None
     assert config.settings_path == str(tmp_path / "settings.json")
-    assert "Zastosuj" in panel.message.text()
+    assert "Zainstaluj" in panel.message.text()
     w.save_settings()
     ready(qtbot, w)
     assert w.settings.refresh_seconds == 15
@@ -50,7 +50,7 @@ def test_defaults_share_configuration_directory_and_current_account(qtbot, tmp_p
 
 def test_missing_config_shows_actionable_message(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
-    for action in ("load", "apply"):
+    for action in ("load",):
         w.collector_panel.buttons[action].click()
         ready(qtbot, w)
         assert "Zapisz konfigurację" in w.collector_panel.message.text()

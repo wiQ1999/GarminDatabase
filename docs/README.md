@@ -15,6 +15,7 @@ Ten katalog opisuje aktualny stan aplikacji, jej kontrakty, wymagania, cele rozw
 | [Konfiguracja PostgreSQL](13-postgresql-setup.md) | Serwer, role, połączenie, pgpass i ochrona danych |
 | [Objaśnienia parametrów Garmin](14-parameter-descriptions.md) | Oficjalne źródła, znaczenie pól, czujniki i algorytmy oraz porównanie UI/MCP z Garmin Connect |
 | [Kolektor cykliczny](15-scheduled-collector.md) | Harmonogram Windows/Linux/Pi, konta i sesje, konfiguracja GUI/CLI, współbieżność, instalacja, build i odbiór |
+| [Instrukcja użytkownika](16-user-guide.md) | Krótka instalacja aplikacji, kolektora i MCP oraz lista komend |
 
 ## Zasada utrzymania
 

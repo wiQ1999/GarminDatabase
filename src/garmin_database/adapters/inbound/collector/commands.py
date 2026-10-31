@@ -5,6 +5,7 @@ import getpass
 import json
 import signal
 import sys
+from dataclasses import replace
 from threading import Event
 
 from garmin_database.application.use_cases.run_collector import RunCollector
@@ -16,6 +17,14 @@ def parser():
     subs = result.add_subparsers(dest="command", required=True)
     init = subs.add_parser("init")
     init.add_argument("--data-dir")
+    install = subs.add_parser(
+        "install", help="Przygotuj konfigurację i zarejestruj harmonogram"
+    )
+    install.add_argument("--account", help="Istniejące konto systemowe kolektora")
+    install.add_argument("--interval", type=int, help="Cykl w minutach, minimum 15")
+    install.add_argument(
+        "--enable", action="store_true", help="Włącz przyszłe uruchomienia"
+    )
     run = subs.add_parser("run")
     run.add_argument("--scheduled", action="store_true")
     subs.add_parser("login")
@@ -43,6 +52,24 @@ def main(argv=None, *, files_factory, manager_factory, session_factory, synchron
                 raise FileExistsError("Konfiguracja już istnieje")
             files.save_config(files.defaults(args.data_dir))
             print(str(files.config_path))
+            return 0
+        if args.command == "install":
+            try:
+                config = files.load_config()
+            except FileNotFoundError:
+                config = files.defaults()
+            changes = {}
+            if args.account is not None:
+                changes["run_as"] = args.account
+            if args.interval is not None:
+                changes["interval_minutes"] = args.interval
+            if args.enable:
+                changes["enabled"] = True
+            files.save_config(replace(config, **changes))
+            manager_factory(args.config).install(files.load_config())
+            print(
+                "Kolektor zainstalowany. Przygotuj sesję Garmin poleceniem login; sprawdź status i logs."
+            )
             return 0
         config = files.load_config()
         if args.command == "run":

@@ -89,3 +89,20 @@ def test_login_never_prompts_in_scheduled_or_noninteractive_context(cli, monkeyp
 
     monkeypatch.setattr(commands.sys.stdin, "isatty", lambda: False)
     assert cli.invoke(["login"]) == 1
+
+
+def test_install_preserves_settings_and_registers_saved_config(cli):
+    assert cli.invoke(["install", "--account", "synthetic", "--interval", "30"]) == 0
+    config = cli.files.load_config()
+    assert config.run_as == "synthetic" and config.interval_minutes == 30
+    assert not config.enabled
+    cli.manager.scheduler.apply.assert_called_once_with(config)
+    assert cli.invoke(["install", "--enable"]) == 0
+    assert cli.files.load_config().enabled
+
+
+def test_install_creates_missing_section_and_rejects_bad_cycle(cli):
+    cli.files.config_path.unlink()
+    assert cli.invoke(["install", "--interval", "1"]) == 1
+    assert not cli.files.config_path.exists()
+    assert cli.invoke(["install"]) == 0

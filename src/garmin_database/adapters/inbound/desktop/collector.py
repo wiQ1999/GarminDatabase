@@ -63,7 +63,7 @@ class CollectorPanel(QWidget):
         for key, text, slot in [
             ("load", "Wczytaj", self.load),
             ("save", "Zapisz konfigurację", self.save),
-            ("apply", "Zastosuj harmonogram", self.apply),
+            ("apply", "Zainstaluj / zaktualizuj kolektor", self.apply),
         ]:
             trigger = BusyButton(text)
             trigger.clicked.connect(slot)
@@ -100,7 +100,7 @@ class CollectorPanel(QWidget):
                 self.message.setText(message)
 
         def execute(worker):
-            if key != "save":
+            if key not in {"save", "apply"}:
                 try:
                     manager.files.load_config()
                 except FileNotFoundError:
@@ -128,7 +128,7 @@ class CollectorPanel(QWidget):
         )
         self.message.setText("Konfiguracja wczytana")
 
-    def save(self):
+    def save(self, *, install=False):
         values = dict(
             enabled=self.enabled.isChecked(),
             interval_minutes=self.interval.value(),
@@ -165,19 +165,19 @@ class CollectorPanel(QWidget):
                     )
             config = replace(config, **values)
             manager.files.save_config(config)
+            if install:
+                manager.install(manager.files.load_config())
             return config
 
         def saved(config):
             self.config = config
             self.message.setText(
-                "Konfiguracja zapisana. Zastosuj harmonogram, aby zmiana zaczęła działać."
+                "Kolektor zainstalowany. Przygotuj jego sesję Garmin i sprawdź zakładkę Kolektor."
+                if install
+                else "Konfiguracja zapisana. Zainstaluj / zaktualizuj kolektor, aby zastosować harmonogram."
             )
 
-        self._run("save", operation, saved)
+        self._run("apply" if install else "save", operation, saved)
 
     def apply(self):
-        self._run(
-            "apply",
-            lambda manager: manager.apply(manager.files.load_config()),
-            lambda _: self.message.setText("Harmonogram zastosowany"),
-        )
+        self.save(install=True)

@@ -114,6 +114,12 @@ class ScheduleManager:
             for name in ("status.json", "collector.lock"):
                 os.chown(Path(config.state_dir) / name, account.pw_uid, account.pw_gid)
 
+    def install(self, config):
+        """Prepare a new Linux key once and register the saved configuration."""
+        if os.name != "nt" and not Path(config.credential_path).exists():
+            self.prepare_key(config)
+        self.apply(config)
+
     def prepare_key(self, config):
         if os.name == "nt":
             raise ValueError("Windows używa DPAPI; osobny klucz nie jest potrzebny")
