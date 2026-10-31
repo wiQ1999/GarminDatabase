@@ -148,6 +148,8 @@ W źródłach odpowiednikiem jest `.venv/Scripts/python.exe scripts/entrypoints/
 | `garmin_catalog` | opcjonalny `cursor`; katalog v1 mieści pięć metryk w jednej odpowiedzi | Włączone metryki, etykiety, jednostki, dostępny zakres rozpoznanych czasów, precyzja, limity i objaśnienie pomiaru ze źródłami Garmin |
 | `get_daily` | `date_from`, `date_to`, wymagane `metrics`, opcjonalny `cursor` | Dzienne średnie, min/max, liczniki jakości i pierwszy/ostatni czas; do 92 dni na stronę; objaśnienie każdej metryki |
 | `get_period_stats` | `date_from`, `date_to`, wymagane `metrics` | Jeden wiersz całego okresu na metrykę, średnia ważona próbkami, min/max, liczby próbek i dni; objaśnienie każdej metryki |
+| `get_samples` | `day`, `parameter`, opcjonalne `cursor`, `limit` (1–500, domyślnie 200) | Szczegółowe wartości bez zaokrągleń, czas, ważność FIT, dzień żądania, podstawa czasu i kwalifikacja do średniej; stronicowanie do 16 KiB |
+| `get_history` | daty i `metrics`, `period`: `day` lub `month` (domyślnie), `cursor` | Historia dzienna albo miesiące ważone liczbą poprawnych próbek; strony miesięczne do końca roku |
 
 Wymagany jest wybór 1–5 różnych kluczy z katalogu: `monitoring.heart_rate`, `hrv_value.value`, `respiration_rate.respiration_rate`, `spo2_data.reading_spo2`, `stress_level.stress_level_value`, jeśli są obecne i włączone. Są to średnie próbek dni, bez zgadywania znaczenia nocnego HRV czy tętna spoczynkowego. Zakres katalogu nie gwarantuje ciągłości ani pełnego pokrycia doby.
 
@@ -156,6 +158,8 @@ Przykładowe argumenty metod odczytu:
 ```json
 {"date_from":"2026-09-01","date_to":"2026-09-30","metrics":["monitoring.heart_rate","hrv_value.value"]}
 ```
+
+Agent zaczyna od katalogu i wybiera metodę z `operations`. Do przebiegu doby używa `get_samples`, do trendu `get_history`, do pojedynczych dni `get_daily`, do jednej statystyki całego zakresu `get_period_stats`. Kontynuacja wymaga identycznych argumentów oraz otrzymanego kursora; kończy się przy `next_cursor=null`. `requested_day` nie jest zastępczym czasem pomiaru. `included_in_mean=false` zachowuje obserwację, ale wyjaśnia jej wykluczenie z algorytmu średnich.
 
 Zakres obejmuje obie daty w Warszawie i kończy się najpóźniej dzisiaj. Wynik jest w `structuredContent.series`; seria podaje `parameter`, `unit`, `description`, `aggregation`, `precision`, `columns` i tablicę wierszy `data`. Krótka część tekstowa nie powiela JSON. Czas jest lokalny z pełną datą i offsetem, np. `2026-10-22T13:30:00+02:00`. Dni zmiany czasu mają rzeczywiste granice 23/25 godzin; PostgreSQL i eksport v2 zachowują momenty UTC.
 

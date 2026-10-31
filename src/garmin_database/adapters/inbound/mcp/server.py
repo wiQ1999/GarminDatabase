@@ -2,7 +2,7 @@
 
 import sys
 from threading import Event
-from typing import Annotated
+from typing import Annotated, Literal
 
 import anyio
 from mcp import types
@@ -48,7 +48,34 @@ class DailyInput(PeriodInput):
     cursor: Annotated[str | None, Field(max_length=4096)] = None
 
 
+class SamplesInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    day: Annotated[
+        str,
+        Field(pattern=r"^\d{4}-\d{2}-\d{2}$", description="Jeden dzień Europe/Warsaw"),
+    ]
+    parameter: Annotated[
+        str, Field(max_length=200, description="Klucz z garmin_catalog")
+    ]
+    cursor: Annotated[str | None, Field(max_length=4096)] = None
+    limit: Annotated[int, Field(ge=1, le=500)] = 200
+
+
+class HistoryInput(DailyInput):
+    period: Literal["day", "month"] = "month"
+
+
 TOOLS = {
+    "get_samples": (
+        SamplesInput,
+        "samples",
+        "Szczegółowe obserwacje jednej metryki z jednego dnia. Wartości źródłowe bez zaokrągleń; czas, ważność i włączenie do średniej. Kontynuuj cursor aż do null. Nie traktuj requested_day jako czasu pomiaru.",
+    ),
+    "get_history": (
+        HistoryInput,
+        "history",
+        "Historia średnich dziennych lub miesięcznych. Miesiące są ważone liczbą poprawnych próbek; nie są źródłowymi podsumowaniami Garmin. Kontynuuj cursor aż do null.",
+    ),
     "garmin_catalog": (
         CatalogInput,
         "catalog",

@@ -61,6 +61,39 @@ def unpack(payload, index=0):
 
 
 @pytest.mark.integration
+def test_detail_pages_preserve_every_observation_and_reject_stale_cursor(source):
+    db, settings, path, service = source
+    parameter = next(p for p in Queries(db).parameters() if p["key"] == KEY)
+    expected = list(Queries(db).rows(parameter, date(2024, 11, 8), date(2024, 11, 8)))
+    first = service.samples("2024-11-08", KEY, limit=1)
+    assert first["truncated"] and first["next_cursor"]
+    second = service.samples("2024-11-08", KEY, first["next_cursor"], limit=1)
+    assert not second["truncated"]
+    assert [r[1] for r in first["data"] + second["data"]] == [
+        r["value"] for r in expected
+    ]
+    assert first["data"][0][-1] is True
+    assert first["data"][0][0].endswith("+01:00")
+    settings.mcp_parameters = []
+    settings.save(path)
+    with pytest.raises(ValueError):
+        service.samples("2024-11-08", KEY, first["next_cursor"], limit=1)
+
+
+@pytest.mark.integration
+def test_monthly_history_equals_weighted_period_and_daily_alias(source):
+    service = source[3]
+    monthly = service.history("2024-11-01", "2024-11-30", [KEY])
+    row = unpack(monthly)[0]
+    period = unpack(service.period("2024-11-01", "2024-11-30", [KEY]))[0]
+    assert row["month"] == "2024-11"
+    assert row["mean"] == period["mean"] and row["valid_count"] == period["valid_count"]
+    assert service.history("2024-11-08", "2024-11-08", [KEY], "day") == service.daily(
+        "2024-11-08", "2024-11-08", [KEY]
+    )
+
+
+@pytest.mark.integration
 def test_all_five_metrics_include_shared_descriptions_within_protocol_budget(source):
     db, settings, path, service = source
     samples = [
@@ -148,7 +181,12 @@ def test_catalog_only_enabled_metrics_and_revision_cache(source):
     result = service.catalog()
     assert [r["parameter"] for r in result["metrics"]] == [KEY]
     assert result["metrics"][0]["from"] == "2024-11-08"
-    assert result["metrics"][0]["operations"] == ["get_daily", "get_period_stats"]
+    assert result["metrics"][0]["operations"] == [
+        "get_samples",
+        "get_daily",
+        "get_history",
+        "get_period_stats",
+    ]
     assert service.catalog() == result
     settings.mcp_parameters = []
     settings.save(path)
@@ -557,6 +595,8 @@ def test_real_stdio_client_all_tools(tmp_path, source):
                     "garmin_catalog",
                     "get_daily",
                     "get_period_stats",
+                    "get_samples",
+                    "get_history",
                 }
                 result = await session.call_tool("garmin_catalog", {})
                 assert (

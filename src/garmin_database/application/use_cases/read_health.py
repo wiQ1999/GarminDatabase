@@ -7,7 +7,7 @@ import json
 import os
 import secrets
 import time
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from threading import Event
@@ -22,7 +22,12 @@ from garmin_database.application.read_models import (
     aggregation,
 )
 from garmin_database.application.settings import valid_parameter_list
-from garmin_database.domain.aggregation import MEAN_PARAMETERS, period_summary
+from garmin_database.domain.aggregation import (
+    MEAN_PARAMETERS,
+    monthly_summaries,
+    numeric_sample,
+    period_summary,
+)
 from garmin_database.domain.cancellation import Cancelled
 from garmin_database.domain.time import dates
 from garmin_database.domain.values import dumps
@@ -138,6 +143,29 @@ def series(parameter, rows, columns, period):
         columns=columns,
         data=[formatted_row(r, columns, key) for r in rows],
     )
+
+
+def sample_row(row, parameter):
+    included = None
+    if parameter["key"] in MEAN_PARAMETERS:
+        included = bool(
+            row["time"]
+            and row["validity"] == "valid"
+            and numeric_sample(row["value"], parameter)
+        )
+    instant = (
+        datetime.fromisoformat(row["time"]).astimezone(ZONE).isoformat()
+        if row["time"]
+        else None
+    )
+    return [
+        instant,
+        row["value"],
+        row["validity"],
+        row["requested_day"],
+        row["time_basis"],
+        included,
+    ]
 
 
 class MCPData:
@@ -287,7 +315,7 @@ class MCPData:
             method="sample_mean",
             precision=PRECISION[parameter["key"]],
             **{"from": limits[0], "to": limits[1]},
-            operations=["get_daily", "get_period_stats"],
+            operations=["get_samples", "get_daily", "get_history", "get_period_stats"],
         )
 
     def daily(self, date_from, date_to, metrics, cursor=None, stop=None):
@@ -402,5 +430,103 @@ class MCPData:
             if not self.fits(result):
                 raise AccessError(
                     "Podsumowanie przekracza limit. Wybierz mniej metryk."
+                )
+            return result
+
+    def samples(self, day, parameter, cursor=None, limit=200, stop=None):
+        start, end = date_range(day, day)
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise AccessError("Wybierz od 1 do 500 obserwacji na stronę.")
+        with self.snapshot(stop) as (settings, snap, budget, identity):
+            selected = self.select(snap, settings, [parameter])[0]
+            query = ["samples", identity, day, parameter, limit]
+            offset = self.decode_cursor(cursor, query) if cursor else 0
+            result = self.envelope(snap, start, end)
+            result.update(
+                parameter=parameter,
+                unit=selected["unit"],
+                description=parameter_description(selected),
+                representation=selected["representation"],
+                value_labels=selected.get("enum", {}),
+                columns=[
+                    "time",
+                    "value",
+                    "validity",
+                    "requested_day",
+                    "time_basis",
+                    "included_in_mean",
+                ],
+                data=[],
+                coverage=snap.coverage(start, end),
+            )
+            with closing(snap.rows(selected, start, end)) as rows:
+                for index, row in enumerate(rows):
+                    budget.check()
+                    if index < offset:
+                        continue
+                    result["next_cursor"] = self.encode_cursor(
+                        dict(query=query, next=offset + len(result["data"]))
+                    )
+                    result["truncated"] = True
+                    if len(result["data"]) == limit:
+                        return result
+                    item = sample_row(row, selected)
+                    result["data"].append(item)
+                    if not self.fits(result):
+                        result["data"].pop()
+                        if not result["data"]:
+                            raise AccessError("Obserwacja przekracza limit odpowiedzi.")
+                        return result
+            result.update(next_cursor=None, truncated=False)
+            return result
+
+    def history(
+        self, date_from, date_to, metrics, period="month", cursor=None, stop=None
+    ):
+        if period == "day":
+            return self.daily(date_from, date_to, metrics, cursor, stop)
+        if period != "month":
+            raise AccessError("Wybierz okres day albo month.")
+        start, end = date_range(date_from, date_to)
+        with self.snapshot(stop) as (settings, snap, budget, identity):
+            parameters = self.select(snap, settings, metrics)
+            query = ["history", identity, date_from, date_to, metrics, period]
+            begin = (
+                date.fromisoformat(self.decode_cursor(cursor, query))
+                if cursor
+                else start
+            )
+            if not start <= begin <= end:
+                raise AccessError("Nieprawidłowy zakres kursora.")
+            finish = min(end, date(begin.year + 1, 1, 1) - timedelta(days=1))
+            result = self.envelope(snap, start, end)
+            tables = []
+            for parameter in parameters:
+                rows = [
+                    row
+                    for a, b in date_chunks(begin, finish)
+                    for row in snap.daily(parameter, a, b, budget)
+                ]
+                monthly = monthly_summaries(rows, begin, finish)
+                columns = ["day", "mean", "minimum", "maximum", *PERIOD_COLUMNS[5:]]
+                table = series(parameter, monthly, columns, "month")
+                table["columns"][0] = "month"
+                tables.append(table)
+            result.update(
+                series=tables,
+                coverage=snap.coverage(begin, finish),
+                **{"from": begin.isoformat(), "to": finish.isoformat()},
+            )
+            if finish < end:
+                result.update(
+                    truncated=True,
+                    next_cursor=self.encode_cursor(
+                        dict(query=query, next=(finish + timedelta(days=1)).isoformat())
+                    ),
+                )
+            budget.check()
+            if not self.fits(result):
+                raise AccessError(
+                    "Historia przekracza limit; wybierz mniej metryk lub krótszy zakres."
                 )
             return result

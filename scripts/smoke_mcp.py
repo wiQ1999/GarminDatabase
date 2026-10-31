@@ -109,11 +109,15 @@ async def smoke(executable, result_dir):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 tools = await session.list_tools()
-                assert len(tools.tools) == 3
+                assert len(tools.tools) == 5
                 catalog = await session.call_tool("garmin_catalog", {})
                 assert not catalog.isError, catalog.content
                 evaluation_count = await evaluate(session, key)
-                for name in ("get_daily", "get_period_stats"):
+                detail = await session.call_tool(
+                    "get_samples", dict(day="2024-01-02", parameter=key, limit=1)
+                )
+                assert not detail.isError and detail.structuredContent["next_cursor"]
+                for name in ("get_daily", "get_period_stats", "get_history"):
                     result = await session.call_tool(
                         name,
                         dict(
@@ -133,7 +137,7 @@ async def smoke(executable, result_dir):
     )
     report = dict(
         status="passed",
-        tools=3,
+        tools=5,
         evaluations=evaluation_count,
         synthetic=True,
         packaged=bool(executable),
