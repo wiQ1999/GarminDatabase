@@ -89,15 +89,19 @@ class Services:
         return create_manager(path)
 
     def login_collector(self, path, email, password, mfa, stop, progress):
+        from garmin_database.application.errors import CollectorLoginUnavailable
         from garmin_database.bootstrap.collector import session_store
 
         manager = self.collector_manager(path)
-        config = manager.files.load_config()
+        try:
+            config = manager.files.load_config()
+        except FileNotFoundError:
+            raise CollectorLoginUnavailable("configuration") from None
         if config.run_as.casefold() != self.current_account().casefold():
-            raise ValueError(
-                "Logowanie kolektora wymaga uruchomienia pod kontem zadania; użyj CLI login"
-            )
-        manager.login(config, session_store, email, password, mfa, stop)
+            raise CollectorLoginUnavailable("account")
+        manager.login(
+            config, session_store, email, password, mfa, stop, progress=progress
+        )
         return "login"
 
     def status(self):

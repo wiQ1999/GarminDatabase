@@ -127,13 +127,17 @@ class ScheduleManager:
 
         prepare_key(config.credential_path)
 
-    def login(self, config, session_factory, email, password, mfa, stop):
+    def login(
+        self, config, session_factory, email, password, mfa, stop, *, progress=None
+    ):
         from garmin_database.adapters.outbound.garmin.client import GarminSource
 
         store = session_factory(config)
         try:
             with self.files.lock(config), store.lock():
-                GarminSource(store).login(email, password, mfa, stop=stop)
+                GarminSource(store).login(
+                    email, password, mfa, stop=stop, progress=progress
+                )
                 state = self.files.load_state(config)
                 state.auth_required = False
                 state.auth_generation = None

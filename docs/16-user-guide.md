@@ -28,7 +28,7 @@ $config = "$env:LOCALAPPDATA\GarminDatabase\settings.json"
 & $collector --config $config logs
 ```
 
-`login` wykonuj jako konto zadania, wskazując pełną ścieżkę wspólnego pliku operatora. `install` tworzy brakującą sekcję kolektora, zachowuje pozostałe ustawienia i przygotowuje harmonogram. Zmiana konta wymaga przygotowania jego sesji i dostępu do bazy.
+`login` wykonuj jako konto zadania, wskazując pełną ścieżkę wspólnego pliku operatora. `install` tworzy brakującą sekcję kolektora, zachowuje pozostałe ustawienia i przygotowuje harmonogram, także gdy istniejący plik aplikacji ma własną nazwę podaną przez `--config`. Zmiana konta wymaga przygotowania jego sesji i dostępu do bazy. Formularz Garmin w aplikacji odrzuca logowanie kolektora skonfigurowanego dla innego konta, zanim użyje poświadczeń; brak konfiguracji wymaga jej wcześniejszego zapisania.
 
 ## Linux / Raspberry Pi OS
 

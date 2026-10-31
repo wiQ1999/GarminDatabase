@@ -54,3 +54,16 @@ class SessionRequired(RuntimeError):
         super().__init__(
             "Brak zapisanej sesji Garmin. Otwórz Ustawienia i zaloguj się do Garmin."
         )
+
+
+class CollectorLoginUnavailable(RuntimeError):
+    """Fixed local setup guidance, safe for the login dialog."""
+
+    def __init__(self, reason):
+        messages = {
+            "account": "Sesja kolektora wymaga konta zadania. Uruchom CLI login pod tym kontem Windows.",
+            "configuration": "Najpierw zapisz konfigurację kolektora w Ustawieniach → Automatyczne pobieranie.",
+        }
+        super().__init__(
+            messages.get(reason, "Sprawdź konfigurację logowania kolektora.")
+        )

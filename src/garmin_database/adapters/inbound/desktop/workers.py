@@ -4,6 +4,7 @@ from PySide6.QtCore import QThread, Signal
 
 from garmin_database.application.errors import (
     BusyError,
+    CollectorLoginUnavailable,
     LoginFailed,
     SessionRequired,
     SessionStorageError,
@@ -60,7 +61,13 @@ class Worker(QThread):
                 str(error)
                 if isinstance(
                     error,
-                    (SessionRequired, SessionStorageError, LoginFailed, BusyError),
+                    (
+                        SessionRequired,
+                        SessionStorageError,
+                        LoginFailed,
+                        BusyError,
+                        CollectorLoginUnavailable,
+                    ),
                 )
                 else "Operacja nie powiodła się: "
                 + type(error).__name__

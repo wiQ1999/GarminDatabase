@@ -106,3 +106,21 @@ def test_install_creates_missing_section_and_rejects_bad_cycle(cli):
     assert cli.invoke(["install", "--interval", "1"]) == 1
     assert not cli.files.config_path.exists()
     assert cli.invoke(["install"]) == 0
+
+
+def test_install_preserves_existing_global_file_with_custom_name(cli, tmp_path):
+    from garmin_database.adapters.outbound.filesystem.settings_json import Settings
+
+    cli.files.config_path.unlink()
+    Settings(
+        data_dir=str(tmp_path / "archive"),
+        database_dsn="host=existing",
+        download_from="2025-02-03",
+        refresh_seconds=45,
+    ).save(cli.files.config_path)
+    assert cli.invoke(["install", "--interval", "30"]) == 0
+    saved = Settings.load(cli.files.config_path)
+    assert saved.data_dir == str(tmp_path / "archive")
+    assert saved.database_dsn == "host=existing"
+    assert saved.download_from == "2025-02-03" and saved.refresh_seconds == 45
+    assert saved.collector["interval_minutes"] == 30

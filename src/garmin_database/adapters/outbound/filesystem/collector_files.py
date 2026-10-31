@@ -106,12 +106,20 @@ class CollectorFiles:
         Settings(database_dsn=config.database_dsn or "").validate()
         return config
 
+    def _uses_shared_settings(self, config):
+        if self.config_path.name == "settings.json" or config.settings_path == str(
+            self.config_path
+        ):
+            return True
+        if not self.config_path.exists():
+            return False
+        document = json.loads(self.config_path.read_text(encoding="utf-8"))
+        return isinstance(document, dict) and "state_dir" not in document
+
     def save_config(self, config):
         config.validate()
         Settings(database_dsn=config.database_dsn or "").validate()
-        if self.config_path.name != "settings.json" and config.settings_path != str(
-            self.config_path
-        ):
+        if not self._uses_shared_settings(config):
             atomic_json(self.config_path, asdict(config))
             return
         with file_lock(self.config_path.with_suffix(".lock")):
