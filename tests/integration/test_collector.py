@@ -119,7 +119,7 @@ def test_collector_runs_the_real_incremental_import_and_busy_is_only_logged(
     log = files.logs(config)
     assert "Pominięto cykl: trwa inna operacja" in log
     assert "Dni z poprawnym importem: 1" in log
-    assert "Nierozstrzygnięte dni (HTTP 404): 0" in log
+    assert "Brakujące dni (brak danych Garmin): 0" in log
     assert source.download_health_snapshot.call_count == 2
     assert source.download_health_snapshot.call_args.args[0] == "2024-01-03"
     assert not list(tmp_path.rglob("*.zip"))
@@ -129,7 +129,8 @@ def test_collector_runs_the_real_incremental_import_and_busy_is_only_logged(
     now += timedelta(hours=2)
     assert runner.run(config, threading.Event()) == "issues"
     log = files.logs(config)
-    assert "Nierozstrzygnięte dni (HTTP 404): 1" in log
+    assert "Brakujące dni (brak danych Garmin): 1" in log
     assert "Błędy pobierania (dni): 0" in log
-    assert "nie potwierdza braku danych" in log
+    assert "brakujących danych" in log
+    assert "404" not in log
     assert "private" not in log

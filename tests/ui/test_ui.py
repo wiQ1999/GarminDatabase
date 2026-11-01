@@ -352,14 +352,14 @@ def test_failed_days_show_details_and_summary_after_worker_finishes(qtbot, tmp_p
     w.details.append("Poprzednia operacja")
 
     def operation(worker):
-        worker.progress.emit("2024-01-01", "Błąd pobierania — HTTP 404", 1, 2)
+        worker.progress.emit("2024-01-01", "Błąd pobierania — HTTP 503", 1, 2)
         worker.progress.emit("2024-01-02", "import", 2, 2)
         return 1
 
     w.start_work(operation)
     qtbot.waitUntil(lambda: not w.stop_button.isEnabled(), timeout=5000)
     assert w.details.isVisible()
-    assert "HTTP 404" in w.details.toPlainText()
+    assert "HTTP 503" in w.details.toPlainText()
     assert "Podsumowanie całej operacji" in w.stage.text()
     assert w.stage.text() in w.details.toPlainText()
     assert "Poprzednia operacja" not in w.details.toPlainText()
@@ -386,9 +386,10 @@ def test_sync_summary_distinguishes_historical_404s_from_successful_last_day(
     w.on_success(result)
     text = w.details.toPlainText()
     assert "Podsumowanie całej operacji" in w.stage.text()
-    assert "z błędami" not in w.stage.text() and "HTTP 404" in w.stage.text()
+    assert "z błędami" not in w.stage.text() and "pominięto dni" in w.stage.text()
+    assert "404" not in text
     assert "Zakres całej operacji: 2024-01-01 — 2026-10-24" in text
-    assert "Dni nierozstrzygnięte (HTTP 404): 169" in text
+    assert "Brakujące dni (brak danych Garmin): 169" in text
     assert "Błędy importu FIT (pliki): 0" in text
     assert "Ostatni obsłużony dzień: 2026-10-24 — import zakończony bez błędów" in text
     assert text.index("Rozpoczynanie importu FIT") < text.index(

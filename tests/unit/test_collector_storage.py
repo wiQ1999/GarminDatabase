@@ -126,7 +126,7 @@ def test_log_converts_legacy_utc_without_rewriting_original(files, tmp_path):
     path.write_bytes(original.encode("utf-8"))
     assert (
         files.logs(config)
-        == "2026-07-16 01:30:00 +02:00 Synchronizacja zakończona bez błędów i nierozstrzygniętych dni.\n"
+        == "2026-07-16 01:30:00 +02:00 Synchronizacja zakończona bez błędów.\n"
     )
     assert path.read_text() == original
 

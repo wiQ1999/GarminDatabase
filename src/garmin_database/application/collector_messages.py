@@ -4,7 +4,7 @@ OUTCOME_LABELS = {
     "never_run": "jeszcze nie uruchomiono",
     "running": "synchronizacja trwa",
     "success": "synchronizacja zakończona",
-    "issues": "synchronizacja z nierozstrzygniętymi dniami lub błędami",
+    "issues": "synchronizacja zakończona z uwagami",
     "auth_required": "wymagane logowanie Garmin na koncie kolektora",
     "access_denied": "Garmin odmówił dostępu",
     "rate_limited": "oczekiwanie po ograniczeniu liczby żądań Garmin",

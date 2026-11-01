@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QFormLayout, QLabel, QTextEdit, QVBoxLayout, QWidg
 
 from garmin_database.adapters.inbound.desktop.busy import BusyButton
 from garmin_database.adapters.inbound.desktop.workers import Worker
-from garmin_database.application.collector_log import readable_log
+from garmin_database.application.collector_log import outcome_message, readable_log
 from garmin_database.application.collector_messages import OUTCOME_LABELS
 from garmin_database.application.time_presentation import display_time
 
@@ -117,6 +117,8 @@ class CollectorStatusPanel(QWidget):
             if not task["revision_matches"]:
                 registration += "; zmiany niezastosowane"
         outcome = OUTCOME_LABELS.get(state["outcome"], "nieznany stan")
+        if state["outcome"] == "issues" and state.get("summary"):
+            outcome = outcome_message("issues", state["summary"]).rstrip(".")
         self.message.setText(f"Harmonogram: {registration}. Ostatni wynik: {outcome}.")
         self.values["account"].setText(task.get("account") or config.run_as)
         logon = task.get(

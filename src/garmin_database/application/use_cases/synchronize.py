@@ -170,7 +170,7 @@ class Sync:
         self.finish_day(
             summary,
             report,
-            "nierozstrzygnięty HTTP 404; brak danych nie został potwierdzony",
+            "pominięto — brak dostępnych danych Garmin",
         )
 
     def record_checked_day(self, summary, old, day, report):
@@ -232,7 +232,7 @@ class Sync:
         if old["download_status"] != "not_found_unverified":
             return 0
         report(
-            "Nierozstrzygnięty dzień — poprzednio HTTP 404. Pominięto ponowne żądanie; nie potwierdzono braku danych."
+            "Brak dostępnych danych Garmin. Pominięto ponowne żądanie; oczekiwanie na kolejne sprawdzenie dostępności."
         )
         return 1
 
@@ -358,10 +358,11 @@ def download_error_message(error, status):
     """Explain failures without exposing upstream responses or credentials."""
     if isinstance(error, (SessionRequired, LoginFailed, SessionStorageError)):
         return str(error)
+    if status == 404:
+        return "Brak dostępnych danych Garmin dla tego dnia. Dzień pominięty; sprawdzam kolejne dni."
     explanations = {
         401: "Sesja Garmin wygasła lub została odrzucona. Zaloguj się w Ustawieniach. Pobieranie zatrzymano.",
         403: "Garmin odmówił dostępu do archiwum. Pobieranie zatrzymano.",
-        404: "Garmin nie zwrócił archiwum dla tej daty. Dzień pozostaje nierozstrzygnięty; sprawdzam kolejne dni.",
         429: "Garmin ograniczył liczbę żądań. Pobieranie zatrzymano; odczekaj przed wznowieniem.",
     }
     code = f"HTTP {status}" if status is not None else type(error).__name__

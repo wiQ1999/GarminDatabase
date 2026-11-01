@@ -386,13 +386,14 @@ def test_404_is_explained_and_next_day_downloads_then_resume_reports_unresolved(
     begin, end = date(2024, 1, 1), date(2024, 1, 2)
     assert sync.run(begin, end, threading.Event(), progress) == 1
     assert source.calls == ["2024-01-01", "2024-01-02"]
-    assert any("HTTP 404" in stage and "nierozstrzygnięty" in stage for stage in stages)
+    assert any("brak dostępnych danych Garmin" in stage for stage in stages)
+    assert not any("404" in stage or "Błąd pobierania" in stage for stage in stages)
     assert not any("private" in stage for stage in stages)
     assert db.status()["archives"] == 1
     stages.clear()
     assert sync.run(begin, end, threading.Event(), progress) == 1
     assert source.calls == ["2024-01-01", "2024-01-02", "2024-01-02"]
-    assert any("poprzednio HTTP 404" in stage for stage in stages)
+    assert any("Pominięto ponowne żądanie" in stage for stage in stages)
     assert db.status()["days"] == {"not_found_unverified": 1, "downloaded": 1}
 
 

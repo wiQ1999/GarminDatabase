@@ -183,8 +183,41 @@ def test_status_is_human_readable_and_busy_does_not_enter_gui_journal(qtbot, tmp
     assert panel.values["next"].text() == "2026-10-30 13:00:00 +01:00"
     assert (
         panel.log_view.toPlainText()
-        == "2026-10-30 13:00:00 +01:00 Synchronizacja zakończona bez błędów i nierozstrzygniętych dni.\n"
+        == "2026-10-30 13:00:00 +01:00 Synchronizacja zakończona bez błędów.\n"
     )
+
+
+@pytest.mark.parametrize("errors", [0, 2])
+def test_missing_data_status_is_informational_but_real_errors_remain_visible(
+    qtbot, tmp_path, errors
+):
+    w = window(qtbot, tmp_path)
+    panel = w.collector_status
+    summary = {
+        "unresolved_days": 170,
+        "download_errors": errors,
+        "import_errors": 0,
+        "archive_errors": 0,
+    }
+    panel.render(
+        (
+            CollectorFiles(tmp_path / "settings.json").defaults(tmp_path),
+            {
+                "schedule": {
+                    "installed": True,
+                    "enabled": True,
+                    "revision_matches": True,
+                },
+                "state": {"outcome": "issues", "summary": summary},
+                "next_run": None,
+            },
+            "2026-11-01 17:46:15 +01:00 issues\n",
+        )
+    )
+    assert ("z błędami" in panel.message.text()) == bool(errors)
+    assert "404" not in panel.message.text() + panel.log_view.toPlainText()
+    if not errors:
+        assert "dni bez dostępnych danych pominięto" in panel.message.text()
 
 
 def test_collector_has_separate_page_and_shares_poll_clock(

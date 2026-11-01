@@ -81,9 +81,10 @@ def test_historical_404s_do_not_mark_successful_last_day_as_failed():
     )
     text = sync_summary_text(result)
     assert "Zakres całej operacji: 2024-01-01 — 2026-10-24" in text
-    assert "Dni nierozstrzygnięte (HTTP 404): 169" in text
+    assert "Brakujące dni (brak danych Garmin): 169" in text
     assert "Błędy importu FIT (pliki): 0" in text
-    assert "HTTP 404 nie potwierdza braku danych" in text
+    assert "Dostępność danych zostanie sprawdzona ponownie" in text
+    assert "404" not in text and "pominięto dni" in sync_heading(result)
     assert "z błędami" not in sync_heading(result)
     assert (
         sync.run(begin, end, Event()) == 169
