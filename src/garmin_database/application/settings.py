@@ -18,7 +18,6 @@ class Settings:
     export_parameters: list[str] | None = None
     mcp_parameters: list[str] = field(default_factory=list)
     mcp_enabled: bool = False
-    collector_config_path: str = ""
     download_from: str = "2024-01-01"
     refresh_seconds: int = 15
     collector: dict | None = None
@@ -33,10 +32,7 @@ class Settings:
         return True
 
     def validate(self):
-        import math
-        from datetime import date
-
-        if not isinstance(self.recent_days, int) or self.recent_days < 1:
+        if type(self.recent_days) is not int or self.recent_days < 1:
             raise ValueError("Okres szczegółowy musi być dodatnią liczbą dni")
         self.validate_sharing()
         if (
@@ -46,16 +42,30 @@ class Settings:
             raise ValueError("Odświeżanie wymaga od 5 do 3600 sekund")
         if self.collector is not None and not isinstance(self.collector, dict):
             raise ValueError("Nieprawidłowa sekcja kolektora")
+        self.validate_ranges()
+        self.validate_locations()
+
+    def validate_ranges(self):
+        import math
+        from datetime import date
+
         if self.summary_period not in {"day", "month"}:
             raise ValueError("Nieprawidłowy okres podsumowań")
-        if not math.isfinite(self.delay) or self.delay < 0:
+        if (
+            type(self.delay) not in (int, float)
+            or not math.isfinite(self.delay)
+            or self.delay < 0
+        ):
             raise ValueError("Nieprawidłowe opóźnienie")
         date.fromisoformat(self.history_from)
         date.fromisoformat(self.download_from)
         if self.history_to:
             date.fromisoformat(self.history_to)
-        if not self.data_dir or not self.export_dir:
-            raise ValueError("Wybierz katalogi danych i eksportu")
+
+    def validate_locations(self):
+        for value in (self.data_dir, self.export_dir):
+            if not isinstance(value, str) or not value.strip() or "\x00" in value:
+                raise ValueError("Wybierz katalogi danych i eksportu")
 
     def validate_sharing(self):
         if type(self.settings_version) is not int or self.settings_version not in {

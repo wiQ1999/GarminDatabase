@@ -102,3 +102,21 @@ def test_login_diagnostic_rejects_unknown_categories_and_unstructured_status():
     assert error.code == "CONNECT/CLIENT_ERROR"
     assert error.http_status is None
     assert "synthetic" not in str(error)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("recent_days", True),
+        ("delay", "3"),
+        ("delay", False),
+        ("data_dir", []),
+        ("export_dir", "  "),
+        ("data_dir", "bad\x00path"),
+    ],
+)
+def test_settings_reject_invalid_types_before_effects(field, value):
+    settings = Settings()
+    setattr(settings, field, value)
+    with pytest.raises(ValueError):
+        settings.validate()

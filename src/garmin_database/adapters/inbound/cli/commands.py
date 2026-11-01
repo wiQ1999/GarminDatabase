@@ -16,22 +16,19 @@ def parse_args(argv):
         description="GarminDatabase — import, status i eksport"
     )
     parser.add_argument(
-        "command", choices=["sync", "sync-all", "import-local", "reprocess", "status", "export"]
+        "command",
+        choices=["sync", "sync-all", "import-local", "reprocess", "status", "export"],
     )
     parser.add_argument("--data-dir")
     parser.add_argument("--settings-file")
-    parser.add_argument(
-        "--from", dest="start", type=date.fromisoformat, default=date(2024, 1, 1)
-    )
-    parser.add_argument(
-        "--to", dest="end", type=date.fromisoformat, default=today()
-    )
+    parser.add_argument("--from", dest="start", type=date.fromisoformat)
+    parser.add_argument("--to", dest="end", type=date.fromisoformat)
     parser.add_argument("--output")
     parser.add_argument(
         "--parameters", help="Nazwy message.field, oddzielone przecinkiem"
     )
-    parser.add_argument("--recent-days", type=int, default=90)
-    parser.add_argument("--summary-period", choices=["day", "month"], default="day")
+    parser.add_argument("--recent-days", type=int)
+    parser.add_argument("--summary-period", choices=["day", "month"])
     return parser.parse_args(argv)
 
 
@@ -67,6 +64,7 @@ def export_files(args, settings, db, stop):
 
 
 def run_command(args, services, settings, stop):
+    apply_defaults(args, settings)
     if args.command in {"sync", "sync-all", "import-local", "reprocess"}:
         result = services.sync(
             args.start,
@@ -85,6 +83,26 @@ def run_command(args, services, settings, stop):
         print(json.dumps(services.status(), ensure_ascii=False, indent=2))
         return 0
     return export_files(args, settings, services, stop)
+
+
+def apply_defaults(args, settings):
+    exporting = args.command == "export"
+    if args.start is None:
+        args.start = date.fromisoformat(
+            settings.history_from if exporting else settings.download_from
+        )
+    if args.end is None:
+        args.end = (
+            date.fromisoformat(settings.history_to)
+            if exporting and settings.history_to
+            else today()
+        )
+    if not exporting:
+        return
+    if args.recent_days is None:
+        args.recent_days = settings.recent_days
+    if args.summary_period is None:
+        args.summary_period = settings.summary_period
 
 
 def main(argv=None, *, settings_store, services_factory):

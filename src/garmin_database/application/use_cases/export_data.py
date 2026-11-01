@@ -30,8 +30,12 @@ class Exporter:
         summary_period="day",
         progress=lambda *a: None,
     ):
-        list(dates(start, end))
-        if recent_days < 1 or summary_period not in {"day", "month"}:
+        next(dates(start, end))
+        if (
+            type(recent_days) is not int
+            or recent_days < 1
+            or summary_period not in {"day", "month"}
+        ):
             raise ValueError("Nieprawidłowy okres szczegółów lub podsumowań")
         if not parameters or len({p["key"] for p in parameters}) != len(parameters):
             raise ValueError("Wybierz niepowtarzające się parametry")
