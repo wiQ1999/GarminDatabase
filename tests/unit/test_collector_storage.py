@@ -101,7 +101,7 @@ def test_corrupt_state_fails_closed_and_log_is_allowlisted(files, tmp_path):
     config = replace(files.defaults(tmp_path), state_dir=str(tmp_path / "state"))
     assert files.logs(config) == "Brak logów kolektora"
     files.log(config, "skipped_busy")
-    assert "skipped_busy" in files.logs(config)
+    assert "Pominięto cykl: trwa inna operacja" in files.logs(config)
     with pytest.raises(ValueError):
         files.log(config, "private-secret")
     path = tmp_path / "state/status.json"
@@ -117,14 +117,17 @@ def test_log_converts_legacy_utc_without_rewriting_original(files, tmp_path):
     from datetime import datetime
 
     timestamp = datetime.strptime(
-        path.read_text().splitlines()[0], "%Y-%m-%d %H:%M:%S %z success"
+        path.read_text().splitlines()[0][:26], "%Y-%m-%d %H:%M:%S %z"
     )
     from garmin_database.application.time_presentation import warsaw_iso
 
     assert warsaw_iso(timestamp) == timestamp.isoformat()
     original = "2026-07-15T23:30:00.123456+00:00 success\n"
     path.write_bytes(original.encode("utf-8"))
-    assert files.logs(config) == "2026-07-16 01:30:00 +02:00 success\n"
+    assert (
+        files.logs(config)
+        == "2026-07-16 01:30:00 +02:00 Synchronizacja zakończona bez błędów i nierozstrzygniętych dni.\n"
+    )
     assert path.read_text() == original
 
 

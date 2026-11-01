@@ -39,8 +39,8 @@ class CollectorRuntime:
     def save(self, state):
         self.files.save_state(self.config, state)
 
-    def log(self, outcome):
-        self.files.log(self.config, outcome)
+    def log(self, outcome, *, summary=None, not_before=None):
+        self.files.log(self.config, outcome, summary=summary, not_before=not_before)
 
     def session_generation(self):
         path = Path(self.config.session_path)

@@ -52,6 +52,7 @@ class RunCollector:
             generation = self.runtime.session_generation()
         except OSError:
             state.outcome = "session_error"
+            state.summary = None
             return self._finish(config, state)
         if state.auth_required and generation == state.auth_generation:
             return "auth_required"
@@ -68,6 +69,7 @@ class RunCollector:
         state.started_at = now.isoformat()
         state.finished_at = None
         state.outcome = "running"
+        state.summary = None
         self.runtime.save(state)
         try:
             result = self.runtime.synchronize(config, stop)
@@ -103,5 +105,7 @@ class RunCollector:
         if config.enabled:
             state.next_run = config.schedule.next_after(self.runtime.now()).isoformat()
         self.runtime.save(state)
-        self.runtime.log(state.outcome)
+        self.runtime.log(
+            state.outcome, summary=state.summary, not_before=state.not_before
+        )
         return state.outcome

@@ -35,9 +35,9 @@ def test_schedule_anchor_displays_warsaw_and_survives_save(
     assert panel.anchor.text() == display
     panel.buttons["save"].click()
     ready(qtbot, w)
-    assert datetime.fromisoformat(files.load_config().anchor_at) == datetime.fromisoformat(
-        anchor
-    )
+    assert datetime.fromisoformat(
+        files.load_config().anchor_at
+    ) == datetime.fromisoformat(anchor)
 
 
 def test_save_collector_config_is_separate_from_apply_and_gui_preferences(
@@ -181,7 +181,10 @@ def test_status_is_human_readable_and_busy_does_not_enter_gui_journal(qtbot, tmp
     assert "logowanie Garmin" in panel.message.text()
     assert w.details.toPlainText() == before
     assert panel.values["next"].text() == "2026-10-30 13:00:00 +01:00"
-    assert panel.log_view.toPlainText() == "2026-10-30 13:00:00 +01:00 success\n"
+    assert (
+        panel.log_view.toPlainText()
+        == "2026-10-30 13:00:00 +01:00 Synchronizacja zakończona bez błędów i nierozstrzygniętych dni.\n"
+    )
 
 
 def test_collector_has_separate_page_and_shares_poll_clock(

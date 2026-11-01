@@ -116,7 +116,20 @@ def test_collector_runs_the_real_incremental_import_and_busy_is_only_logged(
     with Database(tmp_path / "other-host").writer_lock():
         assert runner.run(config, threading.Event()) == "skipped_busy"
     assert files.load_state(config).outcome == "success"
-    assert "skipped_busy" in files.logs(config)
+    log = files.logs(config)
+    assert "Pominięto cykl: trwa inna operacja" in log
+    assert "Dni z poprawnym importem: 1" in log
+    assert "Nierozstrzygnięte dni (HTTP 404): 0" in log
     assert source.download_health_snapshot.call_count == 2
     assert source.download_health_snapshot.call_args.args[0] == "2024-01-03"
     assert not list(tmp_path.rglob("*.zip"))
+    error = RuntimeError("private upstream response")
+    error.response = SimpleNamespace(status_code=404, headers={})
+    source.download_health_snapshot.side_effect = error
+    now += timedelta(hours=2)
+    assert runner.run(config, threading.Event()) == "issues"
+    log = files.logs(config)
+    assert "Nierozstrzygnięte dni (HTTP 404): 1" in log
+    assert "Błędy pobierania (dni): 0" in log
+    assert "nie potwierdza braku danych" in log
+    assert "private" not in log

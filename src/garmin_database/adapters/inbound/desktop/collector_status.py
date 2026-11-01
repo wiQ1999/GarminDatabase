@@ -5,11 +5,9 @@ from PySide6.QtWidgets import QFormLayout, QLabel, QTextEdit, QVBoxLayout, QWidg
 
 from garmin_database.adapters.inbound.desktop.busy import BusyButton
 from garmin_database.adapters.inbound.desktop.workers import Worker
+from garmin_database.application.collector_log import readable_log
 from garmin_database.application.collector_messages import OUTCOME_LABELS
-from garmin_database.application.time_presentation import (
-    collector_log_text,
-    display_time,
-)
+from garmin_database.application.time_presentation import display_time
 
 
 class CollectorStatusPanel(QWidget):
@@ -146,7 +144,7 @@ class CollectorStatusPanel(QWidget):
             ("pause", state.get("not_before")),
         ]:
             self.values[key].setText(display_time(value))
-        self.log_view.setPlainText(collector_log_text(log))
+        self.log_view.setPlainText(readable_log(log))
 
     def release(self):
         worker, self.worker = self.worker, None

@@ -37,6 +37,7 @@ class Runtime:
         self.state = CollectorState(applied_revision=config.revision)
         self.generation = None
         self.events = []
+        self.event_details = []
         self.synchronize = Mock(return_value=SyncSummary("2024-01-01", "2026-10-30", 1))
 
     def now(self):
@@ -54,8 +55,11 @@ class Runtime:
     def save(self, state):
         self.state = deepcopy(state)
 
-    def log(self, outcome):
+    def log(self, outcome, *, summary=None, not_before=None):
         self.events.append(outcome)
+        self.event_details.append(
+            dict(summary=deepcopy(summary), not_before=not_before)
+        )
 
     def session_generation(self):
         return self.generation
@@ -226,6 +230,34 @@ def test_session_access_error_has_durable_status(config):
     assert RunCollector(runtime).run(config, Event()) == "session_error"
     assert runtime.state.finished_at == NOW.isoformat()
     runtime.synchronize.assert_not_called()
+
+
+def test_run_passes_current_summary_and_cooldown_to_log(config):
+    runtime = Runtime(config)
+    summary = runtime.synchronize.return_value
+    summary.unresolved_days = 3
+    assert RunCollector(runtime).run(config, Event()) == "issues"
+    assert runtime.event_details[-1]["summary"]["unresolved_days"] == 3
+    summary.halt_reason = "rate_limited"
+    summary.retry_not_before = (NOW + timedelta(hours=3)).isoformat()
+    runtime.time += timedelta(hours=2)
+    assert RunCollector(runtime).run(config, Event()) == "rate_limited"
+    assert runtime.event_details[-1]["not_before"] == summary.retry_not_before
+
+
+@pytest.mark.parametrize("failure", ["sync", "session"])
+def test_failed_attempt_does_not_log_summary_from_previous_run(config, failure):
+    runtime = Runtime(config)
+    runtime.state.summary = {"successful_days": 99, "unresolved_days": 8}
+    if failure == "sync":
+        runtime.synchronize.side_effect = RuntimeError("private")
+    else:
+        runtime.session_generation = Mock(side_effect=PermissionError("private"))
+    assert RunCollector(runtime).run(config, Event()) in {
+        "database_error",
+        "session_error",
+    }
+    assert runtime.event_details[-1]["summary"] is None
 
 
 @pytest.mark.parametrize(

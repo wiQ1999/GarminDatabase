@@ -15,15 +15,13 @@ from garmin_database.adapters.outbound.filesystem.settings_json import (
     Settings,
     application_dir,
 )
+from garmin_database.application.collector_log import event_text, readable_log
 from garmin_database.application.collector_models import (
     OUTCOMES,
     CollectorConfig,
     CollectorState,
 )
-from garmin_database.application.time_presentation import (
-    collector_log_text,
-    display_time,
-)
+from garmin_database.application.time_presentation import display_time
 
 
 def current_account():
@@ -201,7 +199,7 @@ class CollectorFiles:
     def save_state(self, config, state):
         atomic_json(Path(config.state_dir) / "status.json", asdict(state))
 
-    def log(self, config, outcome):
+    def log(self, config, outcome, *, summary=None, not_before=None):
         if outcome not in OUTCOMES | {"skipped_busy"}:
             raise ValueError("Nieprawidłowe zdarzenie kolektora")
         directory = Path(config.state_dir) / "logs"
@@ -220,7 +218,10 @@ class CollectorFiles:
                     "",
                     0,
                     "%s %s",
-                    (display_time(datetime.now(timezone.utc)), outcome),
+                    (
+                        display_time(datetime.now(timezone.utc)),
+                        event_text(outcome, summary=summary, not_before=not_before),
+                    ),
                     None,
                 )
             )
@@ -233,4 +234,4 @@ class CollectorFiles:
             return "Brak logów kolektora"
         with path.open("rb") as stream:
             stream.seek(max(0, path.stat().st_size - 65536))
-            return collector_log_text(stream.read().decode("utf-8", errors="replace"))
+            return readable_log(stream.read().decode("utf-8", errors="replace"))
