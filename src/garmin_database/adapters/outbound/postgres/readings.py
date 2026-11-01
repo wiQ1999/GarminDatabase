@@ -16,12 +16,6 @@ from garmin_database.application.read_models import select_parameters
 from garmin_database.domain.values import dumps
 
 
-def read_daily(db, parameter, start, end, conn, stop=None, *, publish_cache=False):
-    return Summaries(db).daily(
-        parameter, start, end, conn, stop, publish_cache=publish_cache
-    )
-
-
 @dataclass
 class DataSnapshot:
     db: object
@@ -37,8 +31,8 @@ class DataSnapshot:
         return select_parameters(self.catalog, allowed, requested)
 
     def daily(self, parameter, start, end, stop=None, *, publish_cache=False):
-        return read_daily(
-            self.db, parameter, start, end, self.conn, stop, publish_cache=publish_cache
+        return Summaries(self.db).daily(
+            parameter, start, end, self.conn, stop, publish_cache=publish_cache
         )
 
     @property
@@ -60,11 +54,7 @@ class DataSnapshot:
         return Queries(self.db).rows(parameter, start, end, self.conn, offset=offset)
 
     def availability(self, parameter):
-        marks = ",".join("%s" for _ in parameter["ids"])
-        return self.conn.execute(
-            f"SELECT min(m.time_unix_ms),max(m.time_unix_ms) FROM fit_fields f JOIN fit_messages m ON m.id=f.message_id JOIN file_decodes d ON d.id=m.file_decode_id WHERE f.resolved_catalog_id IN ({marks}) AND d.is_active=1",
-            parameter["ids"],
-        ).fetchone()
+        return Queries(self.db).availability(parameter, self.conn)
 
 
 class DataAccess:
@@ -110,10 +100,7 @@ class DataAccess:
                 watcher = Thread(target=cancel_on_stop, daemon=True)
                 watcher.start()
             try:
-                version = conn.execute(
-                    "SELECT max(version) FROM schema_migrations"
-                ).fetchone()[0]
-                if version != 3:
+                if not self.db.schema_ready(conn):
                     raise ValueError(
                         "Przygotuj obsługiwaną bazę w aplikacji GarminDatabase."
                     )

@@ -175,6 +175,27 @@ class Queries:
     def __init__(self, db):
         self.db = db
 
+    @staticmethod
+    def component_rules(parameter, conn):
+        return {
+            row[0]: json.loads(row[1])
+            for row in conn.execute(
+                "SELECT source_catalog_id,rule_json FROM interpretation_rules "
+                "WHERE kind='component' AND target_catalog_id=ANY(%s)",
+                (list(parameter["ids"]),),
+            )
+        }
+
+    def availability(self, parameter, conn):
+        ids = set(parameter["ids"]) | self.component_rules(parameter, conn).keys()
+        return conn.execute(
+            "SELECT min(m.time_unix_ms),max(m.time_unix_ms) FROM fit_fields f "
+            "JOIN fit_messages m ON m.id=f.message_id "
+            "JOIN file_decodes d ON d.id=m.file_decode_id "
+            "WHERE f.resolved_catalog_id=ANY(%s) AND d.is_active=1",
+            (list(ids),),
+        ).fetchone()
+
     def parameters(self, conn=None):
         with (
             nullcontext(conn)
@@ -272,15 +293,7 @@ class Queries:
             ids = list(parameter["ids"])
             if not ids:
                 return
-            rules = {
-                r[0]: json.loads(r[1])
-                for r in c.execute(
-                    "SELECT source_catalog_id,rule_json FROM interpretation_rules WHERE kind='component' AND target_catalog_id IN ("
-                    + ",".join("%s" for _ in ids)
-                    + ")",
-                    ids,
-                )
-            }
+            rules = self.component_rules(parameter, c)
             requested = set(ids)
             ids = list(set(ids) | set(rules))
             placeholders = ",".join("%s" for _ in ids)
@@ -339,28 +352,32 @@ class Queries:
         if start != end and not has_chart_summary(parameter):
             return [], "Brak podsumowań źródłowych Garmin. Wybierz pojedynczy dzień."
         if start != end and summary_method(parameter) == "sample_mean":
-            with (
-                nullcontext(conn)
-                if conn is not None
-                else self.db.connect(readonly=True)
-            ) as conn:
-                rows = Summaries(self.db).daily(parameter, start, end, conn, stop)
-            points = [
-                (
-                    bounds(
-                        date.fromisoformat(row["day"]), date.fromisoformat(row["day"])
-                    )[0],
-                    row["mean"],
-                    row["day"] + f" • średnia obliczona z {row['valid_count']} próbek",
-                )
-                for row in rows
-            ]
-            return (
-                points,
-                "Czas: Europe/Warsaw; średnie dzienne obliczone przez aplikację"
-                if points
-                else "Brak danych dla wybranego okresu",
+            return self.mean_chart(parameter, start, end, conn, stop)
+        return self.observation_chart(parameter, start, end, conn, stop)
+
+    def mean_chart(self, parameter, start, end, conn, stop):
+        with (
+            nullcontext(conn) if conn is not None else self.db.connect(readonly=True)
+        ) as conn:
+            rows = Summaries(self.db).daily(parameter, start, end, conn, stop)
+        points = [
+            (
+                bounds(date.fromisoformat(row["day"]), date.fromisoformat(row["day"]))[
+                    0
+                ],
+                row["mean"],
+                row["day"] + f" • średnia obliczona z {row['valid_count']} próbek",
             )
+            for row in rows
+        ]
+        return (
+            points,
+            "Czas: Europe/Warsaw; średnie dzienne obliczone przez aplikację"
+            if points
+            else "Brak danych dla wybranego okresu",
+        )
+
+    def observation_chart(self, parameter, start, end, conn, stop):
         result = []
         for row in self.rows(parameter, start, end, conn):
             check_stop(stop)

@@ -3,6 +3,7 @@ from contextlib import ExitStack
 
 import psycopg
 
+from garmin_database.application.errors import BusyError
 from garmin_database.domain.aggregation import (
     ALGORITHM_VERSION,
     aggregate_days,
@@ -63,7 +64,7 @@ class Summaries:
         with ExitStack() as stack:
             try:
                 stack.enter_context(self.db.writer_lock(allow_nested=False))
-            except RuntimeError:
+            except BusyError:
                 return
             try:
                 with self.db.connect() as writer:

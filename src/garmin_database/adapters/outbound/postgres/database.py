@@ -86,9 +86,11 @@ class Database:
                 self._writer.active = False
                 lock.execute("SELECT pg_advisory_unlock(%s)", (key,))
 
-    def schema_ready(self):
-        with self.connect(readonly=True) as conn:
-            return len(self._check_schema(conn)) == 3
+    def schema_ready(self, conn=None):
+        with (
+            nullcontext(conn) if conn is not None else self.connect(readonly=True)
+        ) as conn:
+            return len(self._check_schema(conn)) == len(MIGRATIONS)
 
     def _check_schema(self, conn):
         exists = conn.execute("SELECT to_regclass('schema_migrations')").fetchone()[0]
@@ -97,7 +99,7 @@ class Database:
             if exists
             else {}
         )
-        if any(version not in {1, 2, 3} for version in migrations):
+        if any(version not in range(1, len(MIGRATIONS) + 1) for version in migrations):
             raise ValueError("Baza pochodzi z nowszej wersji aplikacji")
         for version, filename in enumerate(MIGRATIONS, 1):
             if version in migrations:
