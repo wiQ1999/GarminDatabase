@@ -176,6 +176,31 @@ def test_auth_pause_survives_recreation_and_resumes_only_after_new_session(confi
     assert not runtime.state.auth_required
 
 
+def test_busy_preserves_authentication_and_elapsed_retry_state(config):
+    runtime = Runtime(config)
+    runtime.state.auth_required = True
+    runtime.state.auth_generation = "old session"
+    runtime.state.not_before = (NOW - timedelta(hours=1)).isoformat()
+    runtime.state.outcome = "auth_required"
+    runtime.generation = "new session"
+    runtime.synchronize.side_effect = BusyError()
+    assert RunCollector(runtime).run(config, Event()) == "skipped_busy"
+    assert runtime.state.auth_required
+    assert runtime.state.auth_generation == "old session"
+    assert runtime.state.not_before == (NOW - timedelta(hours=1)).isoformat()
+    assert runtime.state.claimed_slot == NOW.isoformat()
+
+
+def test_session_becoming_unreadable_after_sync_has_durable_status(config):
+    runtime = Runtime(config)
+    runtime.session_generation = Mock(side_effect=[None, PermissionError("private")])
+    runtime.synchronize.return_value.halt_reason = "auth_required"
+    assert RunCollector(runtime).run(config, Event()) == "session_error"
+    assert runtime.state.finished_at == NOW.isoformat()
+    assert not runtime.state.auth_required
+    assert runtime.events == ["session_error"]
+
+
 def test_retry_after_survives_runs_and_uses_first_normal_eligible_slot(config):
     runtime = Runtime(config)
     result = runtime.synchronize.return_value

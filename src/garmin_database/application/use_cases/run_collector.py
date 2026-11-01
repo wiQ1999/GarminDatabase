@@ -1,6 +1,6 @@
 """Execute one scheduled synchronization; waiting belongs to the OS scheduler."""
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from garmin_database.application.errors import BusyError
 from garmin_database.application.ports import CollectorRuntime
@@ -54,16 +54,23 @@ class RunCollector:
             state.outcome = "session_error"
             state.summary = None
             return self._finish(config, state)
-        if state.auth_required and generation == state.auth_generation:
-            return "auth_required"
-        if state.not_before and now < instant(state.not_before):
-            return "rate_limited"
+        paused = self.pause_outcome(state, generation, now)
+        if paused is not None:
+            return paused
         if state.outcome == "running":
             state.outcome = "interrupted"
         return self._synchronize(config, stop, state, now)
 
+    @staticmethod
+    def pause_outcome(state, generation, now):
+        if state.auth_required and generation == state.auth_generation:
+            return "auth_required"
+        if state.not_before and now < instant(state.not_before):
+            return "rate_limited"
+        return None
+
     def _synchronize(self, config, stop, state, now):
-        previous = asdict(state)
+        previous = replace(state)
         state.auth_required = False
         state.not_before = None
         state.started_at = now.isoformat()
@@ -79,16 +86,12 @@ class RunCollector:
             )
             state.not_before = result.retry_not_before
             state.auth_required = state.outcome == "auth_required"
-            state.auth_generation = (
-                self.runtime.session_generation() if state.auth_required else None
-            )
+            state.auth_generation = None
             if state.outcome == "success":
                 state.last_success = self.runtime.now().isoformat()
         except BusyError:
             # Keep the slot claim, but do not replace the last real outcome.
-            for key in ("outcome", "started_at", "finished_at", "summary"):
-                setattr(state, key, previous[key])
-            self.runtime.save(state)
+            self.runtime.save(previous)
             self.runtime.log("skipped_busy")
             return "skipped_busy"
         except Cancelled:
@@ -96,8 +99,12 @@ class RunCollector:
         except Exception as error:
             state.outcome = self.runtime.classify(error)
         if state.outcome == "auth_required":
-            state.auth_required = True
-            state.auth_generation = self.runtime.session_generation()
+            try:
+                state.auth_generation = self.runtime.session_generation()
+                state.auth_required = True
+            except OSError:
+                state.outcome = "session_error"
+                state.auth_required = False
         return self._finish(config, state)
 
     def _finish(self, config, state):

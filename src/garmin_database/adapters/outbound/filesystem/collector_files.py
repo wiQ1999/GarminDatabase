@@ -187,6 +187,12 @@ class CollectorFiles:
     def lock(self, config):
         return file_lock(Path(config.state_dir) / "collector.lock")
 
+    def session_present(self, config):
+        try:
+            return Path(config.session_path).is_file()
+        except PermissionError:
+            return None
+
     def load_state(self, config):
         path = Path(config.state_dir) / "status.json"
         if not path.exists():

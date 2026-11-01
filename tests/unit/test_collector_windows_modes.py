@@ -14,11 +14,11 @@ from garmin_database.adapters.outbound.filesystem.collector_files import (
 )
 from garmin_database.adapters.outbound.filesystem.settings_json import application_dir
 from garmin_database.adapters.outbound.scheduler import windows, windows_access
-from garmin_database.adapters.outbound.scheduler.manager import (
-    ScheduleManager,
-    collector_command,
-)
 from garmin_database.application.errors import CollectorInstallIncomplete
+from garmin_database.bootstrap.collector import (
+    collector_command,
+    create_manager,
+)
 
 
 def test_interactive_registration_never_asks_for_password_or_batch_rights(
@@ -77,12 +77,12 @@ def test_elevated_exit_success_requires_readable_current_task(
     }
     elevation = Mock()
     monkeypatch.setattr(windows_access, "elevate", elevation)
-    manager = ScheduleManager(files, scheduler)
+    manager = create_manager(files, scheduler)
     if accepted:
-        manager._elevate(config)
+        manager.registration._elevate(config)
     else:
         with pytest.raises(CollectorInstallIncomplete):
-            manager._elevate(config)
+            manager.registration._elevate(config)
     elevation.assert_called_once()
     scheduler.status.assert_called_once_with(config)
 
@@ -124,7 +124,7 @@ def test_current_profile_installs_without_elevation_or_acl_changes(
     monkeypatch.setattr(windows_access, "elevate", blocked)
     monkeypatch.setattr(windows_access, "prepare_paths", blocked)
     scheduler = Mock()
-    manager = ScheduleManager(files, scheduler)
+    manager = create_manager(files, scheduler)
     manager.apply(config)
     scheduler.apply.assert_called_once_with(config)
     assert files.load_state(config).applied_revision == config.revision
@@ -135,7 +135,7 @@ def test_current_profile_installs_without_elevation_or_acl_changes(
 def test_scheduler_uses_windowless_entry_and_console_cli_stays_available(
     tmp_path, monkeypatch
 ):
-    from garmin_database.adapters.outbound.scheduler import manager
+    from garmin_database.bootstrap import collector as manager
 
     binary = tmp_path / "GarminDatabase/GarminDatabase.exe"
     monkeypatch.setattr(manager.sys, "frozen", True, raising=False)

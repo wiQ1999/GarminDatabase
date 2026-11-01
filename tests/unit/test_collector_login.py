@@ -5,10 +5,10 @@ from unittest.mock import Mock
 import pytest
 
 from garmin_database.adapters.outbound.filesystem.collector_files import CollectorFiles
-from garmin_database.adapters.outbound.scheduler.manager import ScheduleManager
 from garmin_database.adapters.outbound.security.dpapi_session import SessionStore
 from garmin_database.application.collector_models import CollectorState
 from garmin_database.application.errors import CollectorLoginUnavailable
+from garmin_database.bootstrap.collector import create_manager
 from garmin_database.bootstrap.dependencies import Services
 
 
@@ -16,7 +16,7 @@ def setup(tmp_path):
     files = CollectorFiles(tmp_path / "collector.json")
     config = replace(files.defaults(tmp_path / "data"), run_as="synthetic-current")
     files.save_config(config)
-    manager = ScheduleManager(files, Mock(), manage_access=False)
+    manager = create_manager(files, Mock(), manage_access=False)
     services = object.__new__(Services)
     services.current_account = lambda: "synthetic-current"
     services.collector_manager = lambda path: manager

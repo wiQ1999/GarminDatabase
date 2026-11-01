@@ -9,8 +9,8 @@ import pytest
 
 from garmin_database.adapters.inbound.collector.commands import main
 from garmin_database.adapters.outbound.filesystem.collector_files import CollectorFiles
-from garmin_database.adapters.outbound.scheduler.manager import ScheduleManager
 from garmin_database.application.collector_models import CollectorState
+from garmin_database.bootstrap.collector import create_manager
 
 pytestmark = pytest.mark.unit
 
@@ -30,7 +30,7 @@ def cli(tmp_path):
         "enabled": False,
         "revision_matches": False,
     }
-    manager = ScheduleManager(files, scheduler, manage_access=False)
+    manager = create_manager(files, scheduler, manage_access=False)
 
     def invoke(args):
         return main(

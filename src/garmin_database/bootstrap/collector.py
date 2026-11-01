@@ -1,6 +1,8 @@
 """Collector composition; status and schedule commands never load Garmin or Qt."""
 
 import os
+import sys
+from pathlib import Path
 
 from garmin_database.adapters.outbound.filesystem.collector_files import CollectorFiles
 
@@ -34,10 +36,74 @@ def synchronize(config, stop):
         return sync.run_summary(date.fromisoformat(config.download_from), today(), stop)
 
 
-def create_manager(config_path=None):
-    from garmin_database.adapters.outbound.scheduler.manager import ScheduleManager
+def collector_command(*, windowless=False):
+    if getattr(sys, "frozen", False):
+        binary = Path(sys.executable)
+        if binary.stem != "GarminDatabaseCollector":
+            binary = (
+                binary.parent.parent
+                / "GarminDatabaseCollector"
+                / (
+                    "GarminDatabaseCollector.exe"
+                    if os.name == "nt"
+                    else "GarminDatabaseCollector"
+                )
+            )
+        if windowless and os.name == "nt":
+            binary = binary.with_name("GarminDatabaseCollectorTask.exe")
+        return [str(binary)]
+    interpreter = os.path.abspath(sys.executable)
+    if windowless and os.name == "nt":
+        interpreter = str(Path(interpreter).with_name("pythonw.exe"))
+    return [
+        interpreter,
+        "-m",
+        "garmin_database.bootstrap.collector",
+    ]
 
-    return ScheduleManager(CollectorFiles(config_path))
+
+def collector_source(store):
+    from garmin_database.adapters.outbound.garmin.client import GarminSource
+
+    return GarminSource(store)
+
+
+def create_manager(config_path=None, scheduler=None, *, manage_access=True):
+    from garmin_database.adapters.outbound.collector_runtime import CollectorRuntime
+    from garmin_database.adapters.outbound.scheduler.registration import (
+        NativeRegistration,
+    )
+    from garmin_database.application.use_cases.manage_collector import CollectorManager
+
+    files = (
+        config_path
+        if isinstance(config_path, CollectorFiles)
+        else CollectorFiles(config_path)
+    )
+    if scheduler is None:
+        if os.name == "nt":
+            from garmin_database.adapters.outbound.scheduler.windows import (
+                WindowsScheduler,
+            )
+
+            scheduler = WindowsScheduler(
+                collector_command(windowless=True), files.config_path
+            )
+        else:
+            from garmin_database.adapters.outbound.scheduler.systemd import (
+                SystemdScheduler,
+            )
+
+            scheduler = SystemdScheduler(collector_command(), files.config_path)
+    return CollectorManager(
+        files,
+        scheduler,
+        registration=NativeRegistration(
+            files, scheduler, collector_command, manage_access=manage_access
+        ),
+        runtime_factory=lambda config, sync: CollectorRuntime(files, config, sync),
+        source_factory=collector_source,
+    )
 
 
 def main(argv=None):

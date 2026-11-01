@@ -11,11 +11,11 @@ from unittest.mock import Mock
 import pytest
 
 from garmin_database.adapters.outbound.filesystem.collector_files import CollectorFiles
-from garmin_database.adapters.outbound.scheduler.manager import (
-    ScheduleManager,
-    collector_command,
-)
 from garmin_database.adapters.outbound.scheduler.windows import WindowsScheduler
+from garmin_database.bootstrap.collector import (
+    collector_command,
+    create_manager,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -207,7 +207,7 @@ def test_manager_status_works_without_sql_and_records_only_applied_revision(
         "enabled": True,
         "revision_matches": True,
     }
-    manager = ScheduleManager(files, scheduler, manage_access=False)
+    manager = create_manager(files, scheduler, manage_access=False)
     manager.apply(config)
     status = manager.status()
     assert status["state"]["applied_revision"] == config.revision
@@ -222,7 +222,7 @@ def test_manager_status_works_without_sql_and_records_only_applied_revision(
 
 
 def test_command_preserves_virtualenv_interpreter_path(monkeypatch, tmp_path):
-    from garmin_database.adapters.outbound.scheduler import manager
+    from garmin_database.bootstrap import collector as manager
 
     interpreter = str(tmp_path / ".venv/bin/python")
     monkeypatch.setattr(manager.sys, "executable", interpreter)

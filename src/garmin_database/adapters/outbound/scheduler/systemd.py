@@ -104,6 +104,20 @@ WantedBy=timers.target
             raise PermissionError("Kolektor wymaga konta bez uprawnień root")
         os.chown(self.config_path, 0, account.pw_gid)
         self.config_path.chmod(0o640)
+        self.prepare_directories(config, account)
+        self.unit_dir.mkdir(parents=True, exist_ok=True)
+        for suffix, content in (("service", service), ("timer", timer)):
+            atomic_write(
+                self.unit_dir / f"{self.name(config)}.{suffix}", content.encode()
+            )
+        self._checked(["systemctl", "daemon-reload"])
+        action = "enable" if config.enabled else "disable"
+        self._checked(["systemctl", action, "--now", self.name(config) + ".timer"])
+        if config.enabled:
+            self._checked(["systemctl", "restart", self.name(config) + ".timer"])
+
+    @staticmethod
+    def prepare_directories(config, account):
         for directory in (
             config.state_dir,
             str(Path(config.session_path).parent),
@@ -137,16 +151,6 @@ WantedBy=timers.target
             os.chown(path, account.pw_uid, account.pw_gid)
         Path(config.state_dir).chmod(0o700)
         Path(config.session_path).parent.chmod(0o700)
-        self.unit_dir.mkdir(parents=True, exist_ok=True)
-        for suffix, content in (("service", service), ("timer", timer)):
-            atomic_write(
-                self.unit_dir / f"{self.name(config)}.{suffix}", content.encode()
-            )
-        self._checked(["systemctl", "daemon-reload"])
-        action = "enable" if config.enabled else "disable"
-        self._checked(["systemctl", action, "--now", self.name(config) + ".timer"])
-        if config.enabled:
-            self._checked(["systemctl", "restart", self.name(config) + ".timer"])
 
     def _checked(self, command):
         result = self.run(command, capture_output=True, check=False)
