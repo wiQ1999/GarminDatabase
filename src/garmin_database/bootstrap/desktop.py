@@ -40,7 +40,7 @@ def smoke_import(window, args):
         )
         if result.issue_count:
             raise RuntimeError("Błąd syntetycznego importu smoke")
-        window.on_success(result)
+        window.start_page.on_success(result)
     window.refresh()
 
 
@@ -64,17 +64,12 @@ def smoke_snapshot(window, picture, app):
         leave_when_closed()
 
     def snapshot():
-        idle = (
-            not window.overview.busy
-            and not window.collector_status.busy
-            and window.query_worker is None
-            and not window.query_pending
-        )
+        idle = background_idle(window)
         if (
             idle
             and window.status_info
             and window.catalog_loaded
-            and not window.status_error.text()
+            and not window.start_page.status_error.text()
         ):
             atomic_json(
                 Path(picture).with_suffix(".ui.json"),
@@ -82,10 +77,12 @@ def smoke_snapshot(window, picture, app):
             )
             window.grab().save(picture)
             window.navigation.setCurrentRow(3)
-            for index in range(window.settings_tabs.count()):
-                window.settings_tabs.setCurrentIndex(index)
+            for index in range(window.settings_page.settings_tabs.count()):
+                window.settings_page.settings_tabs.setCurrentIndex(index)
                 app.processEvents()
-                window.grab().save(str(Path(picture).with_name(f"settings-{index}.png")))
+                window.grab().save(
+                    str(Path(picture).with_name(f"settings-{index}.png"))
+                )
             window.navigation.setCurrentRow(4)
             app.processEvents()
             window.grab().save(str(Path(picture).with_name("collector.png")))
@@ -96,6 +93,15 @@ def smoke_snapshot(window, picture, app):
             QTimer.singleShot(100, snapshot)
 
     QTimer.singleShot(100, snapshot)
+
+
+def background_idle(window):
+    return (
+        not window.overview.busy
+        and not window.collector_status.busy
+        and window.data_page.query_worker is None
+        and not window.data_page.query_pending
+    )
 
 
 def main(argv=None):

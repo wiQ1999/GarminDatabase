@@ -14,9 +14,10 @@ from garmin_database.application.time_presentation import display_time
 class CollectorStatusPanel(QWidget):
     idle = Signal()
 
-    def __init__(self, host):
+    def __init__(self, host, configuration_panel):
         super().__init__(host)
         self.host = host
+        self.configuration_panel = configuration_panel
         self.worker = None
         self.generation = 0
         self.stopped = False
@@ -66,12 +67,12 @@ class CollectorStatusPanel(QWidget):
             or self.host.isMinimized()
         ):
             return
-        manager = self.host.services.collector_manager(
-            self.host.collector_panel.path.text()
-        )
+        services = self.host.services
+        path = self.configuration_panel.path.text()
         generation = self.generation
 
         def read(worker):
+            manager = services.collector_manager(path)
             try:
                 config = manager.files.load_config()
             except FileNotFoundError:
@@ -107,21 +108,16 @@ class CollectorStatusPanel(QWidget):
                 value.setText("brak")
             return
         config, result, log = result
-        panel = self.host.collector_panel
+        panel = self.configuration_panel
         if panel.config is None and not panel.edited:
             panel._loaded(config)
         task, state = result["schedule"], result["state"]
-        registration = "niezarejestrowany"
-        if task.get("error") == "access_denied":
-            registration = "brak dostępu do istniejącego zadania; zainstaluj / zaktualizuj kolektor, aby naprawić uprawnienia"
-        elif task["installed"]:
-            registration = "aktywny" if task["enabled"] else "wyłączony"
-            if not task["revision_matches"]:
-                registration += "; zmiany niezastosowane"
         outcome = OUTCOME_LABELS.get(state["outcome"], "nieznany stan")
         if state["outcome"] == "issues" and state.get("summary"):
             outcome = outcome_message("issues", state["summary"]).rstrip(".")
-        self.message.setText(f"Harmonogram: {registration}. Ostatni wynik: {outcome}.")
+        self.message.setText(
+            f"Harmonogram: {registration_label(task)}. Ostatni wynik: {outcome}."
+        )
         self.values["account"].setText(task.get("account") or config.run_as)
         logon = task.get(
             "logon_type", 3 if config.windows_logon == "interactive" else 1
@@ -131,6 +127,11 @@ class CollectorStatusPanel(QWidget):
             if logon == 3
             else "Także po wylogowaniu"
         )
+        self.show_session_instruction(config, result)
+        self.show_times(result, state)
+        self.update_log(readable_log(log))
+
+    def show_session_instruction(self, config, result):
         if result.get("session_present") is False:
             instruction = (
                 "zaloguj Garmin w aplikacji"
@@ -140,6 +141,8 @@ class CollectorStatusPanel(QWidget):
             self.message.setText(
                 self.message.text() + " Brak sesji: " + instruction + "."
             )
+
+    def show_times(self, result, state):
         for key, value in [
             ("next", result["next_run"]),
             ("started", state.get("started_at")),
@@ -148,7 +151,6 @@ class CollectorStatusPanel(QWidget):
             ("pause", state.get("not_before")),
         ]:
             self.values[key].setText(display_time(value))
-        self.update_log(readable_log(log))
 
     def update_log(self, text):
         text = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -177,3 +179,12 @@ class CollectorStatusPanel(QWidget):
         self.stopped = True
         if self.worker is not None:
             self.worker.stop.set()
+
+
+def registration_label(task):
+    if task.get("error") == "access_denied":
+        return "brak dostępu do istniejącego zadania; zainstaluj / zaktualizuj kolektor, aby naprawić uprawnienia"
+    if not task["installed"]:
+        return "niezarejestrowany"
+    label = "aktywny" if task["enabled"] else "wyłączony"
+    return label if task["revision_matches"] else label + "; zmiany niezastosowane"

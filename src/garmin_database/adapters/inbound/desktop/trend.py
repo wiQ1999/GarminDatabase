@@ -5,15 +5,7 @@ from math import fsum, isfinite
 
 def linear_trend(points):
     """Fit value against actual time, using finite numeric observations only."""
-    values = [
-        (stamp, value)
-        for stamp, value, _ in points
-        if isinstance(stamp, (int, float))
-        and isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and isfinite(stamp)
-        and isfinite(value)
-    ]
+    values = finite_points(points)
     if len(values) < 2:
         return []
     begin = min(stamp for stamp, _ in values)
@@ -30,3 +22,15 @@ def linear_trend(points):
         / variance
     )
     return [(begin, mean_y - slope * mean_x), (end, mean_y + slope * (1 - mean_x))]
+
+
+def finite_number(value):
+    return type(value) in (int, float) and isfinite(value)
+
+
+def finite_points(points):
+    return [
+        (stamp, value)
+        for stamp, value, _ in points
+        if finite_number(stamp) and finite_number(value)
+    ]

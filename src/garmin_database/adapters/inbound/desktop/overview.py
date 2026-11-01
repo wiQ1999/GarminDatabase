@@ -15,7 +15,6 @@ class OverviewPoller(QObject):
     catalog_failed = Signal(str)
     busy_changed = Signal(bool)
     idle = Signal()
-    interval_ms = 15_000
     catalog_interval = 60.0
 
     def __init__(self, services, settings, path, visible, parent):

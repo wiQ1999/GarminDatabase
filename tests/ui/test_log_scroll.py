@@ -14,7 +14,7 @@ pytestmark = pytest.mark.ui
 @pytest.fixture
 def panel(qtbot):
     host = QWidget()
-    view = CollectorStatusPanel(host)
+    view = CollectorStatusPanel(host, None)
     QVBoxLayout(host).addWidget(view)
     host.resize(700, 600)
     qtbot.addWidget(host)

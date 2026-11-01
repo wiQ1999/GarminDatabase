@@ -17,6 +17,23 @@ from tests.support.fixtures import archive, fit_bytes
 pytestmark = pytest.mark.ui
 
 
+def test_reversed_export_range_does_not_save_settings_or_start_worker(
+    qtbot, tmp_path, monkeypatch
+):
+    w = window(qtbot, tmp_path)
+    page = w.export_page
+    page.select_exports(True)
+    page.export_from.setDate(QDate(2024, 11, 10))
+    page.export_to.setDate(QDate(2024, 11, 9))
+    calls = []
+    monkeypatch.setattr(w, "start_work", lambda *a: calls.append(a))
+    before = w.settings_path.read_bytes()
+    page.export()
+    assert "Początek zakresu" in page.export_result.text()
+    assert not calls
+    assert w.settings_path.read_bytes() == before
+
+
 @pytest.mark.parametrize("span", [1000, 60000, 30 * 86400000])
 def test_time_axis_adds_readable_ticks_and_adapts_to_width(qtbot, span):
     chart = Chart()
@@ -75,8 +92,8 @@ def ready(qtbot, w):
             and not w.overview.busy
             and not w.collector_status.busy
             and w.aux_worker is None
-            and w.query_worker is None
-            and not w.query_pending
+            and w.data_page.query_worker is None
+            and not w.data_page.query_pending
         ),
         timeout=5000,
     )
@@ -91,24 +108,28 @@ def test_sharing_policy_is_independent_and_survives_restart(qtbot, tmp_path):
     other = next(
         i for i, p in enumerate(w.parameters) if p["key"] == "monitoring.distance"
     )
-    w.select_sharing(2, False)
-    w.sharing_table.item(heart, 3).setCheckState(Qt.CheckState.Checked)
-    w.mcp_enabled.setChecked(True)
-    assert w.sharing_table.item(other, 3).flags() & Qt.ItemFlag.ItemIsEnabled
-    w.save_settings()
+    w.settings_page.select_sharing(2, False)
+    w.settings_page.sharing_table.item(heart, 3).setCheckState(Qt.CheckState.Checked)
+    w.settings_page.mcp_enabled.setChecked(True)
+    assert (
+        w.settings_page.sharing_table.item(other, 3).flags() & Qt.ItemFlag.ItemIsEnabled
+    )
+    w.settings_page.save_settings()
     ready(qtbot, w)
     saved = Settings.load(tmp_path / "settings.json")
     assert saved.export_parameters == []
     assert saved.mcp_parameters == ["monitoring.heart_rate"] and saved.mcp_enabled
-    assert w.export_list.count() == 0
+    assert w.export_page.export_list.count() == 0
     w.refresh()
     ready(qtbot, w)
-    assert w.sharing_keys(2) == [] and w.sharing_keys(3) == ["monitoring.heart_rate"]
-    w.copy_sharing(3, 2)
-    w.save_settings()
+    assert w.settings_page.sharing_keys(2) == [] and w.settings_page.sharing_keys(
+        3
+    ) == ["monitoring.heart_rate"]
+    w.settings_page.copy_sharing(3, 2)
+    w.settings_page.save_settings()
     ready(qtbot, w)
-    assert w.export_list.count() == 1
-    w.copy_mcp_config()
+    assert w.export_page.export_list.count() == 1
+    w.settings_page.copy_mcp_config()
     ready(qtbot, w)
     from PySide6.QtWidgets import QApplication
 
@@ -117,19 +138,21 @@ def test_sharing_policy_is_independent_and_survives_restart(qtbot, tmp_path):
 
 def test_sharing_group_actions_respect_filter(qtbot, tmp_path):
     w = window(qtbot, tmp_path, summaries=True)
-    w.sharing_group.setCurrentIndex(w.sharing_group.findData("Serce i HRV"))
-    w.select_sharing(2, False)
-    assert "monitoring.heart_rate" not in w.sharing_keys(2)
-    assert "monitoring.distance" in w.sharing_keys(2)
-    w.select_sharing(3, True)
-    assert w.sharing_keys(3) == ["monitoring.heart_rate"]
+    w.settings_page.sharing_group.setCurrentIndex(
+        w.settings_page.sharing_group.findData("Serce i HRV")
+    )
+    w.settings_page.select_sharing(2, False)
+    assert "monitoring.heart_rate" not in w.settings_page.sharing_keys(2)
+    assert "monitoring.distance" in w.settings_page.sharing_keys(2)
+    w.settings_page.select_sharing(3, True)
+    assert w.settings_page.sharing_keys(3) == ["monitoring.heart_rate"]
 
 
 def select_parameter(w, key):
-    for i in range(w.parameter_list.count()):
-        parameter = w.parameter_list.item(i).data(Qt.ItemDataRole.UserRole)
+    for i in range(w.data_page.parameter_list.count()):
+        parameter = w.data_page.parameter_list.item(i).data(Qt.ItemDataRole.UserRole)
         if parameter and parameter["key"] == key:
-            w.parameter_list.setCurrentRow(i)
+            w.data_page.parameter_list.setCurrentRow(i)
             return
     raise AssertionError(f"Missing parameter: {key}")
 
@@ -140,8 +163,8 @@ def test_parameter_explanation_tracks_selection_without_waiting_for_chart(
     w = window(qtbot, tmp_path, summaries=True)
     w.navigation.setCurrentRow(1)
     select_parameter(w, "monitoring.heart_rate")
-    assert "PPG" in w.parameter_help.toPlainText()
-    assert "garmin.com" in w.parameter_help.toHtml()
+    assert "PPG" in w.data_page.parameter_help.toPlainText()
+    assert "garmin.com" in w.data_page.parameter_help.toHtml()
     ready(qtbot, w)
     started, release = threading.Event(), threading.Event()
     original = w.services.chart
@@ -155,91 +178,95 @@ def test_parameter_explanation_tracks_selection_without_waiting_for_chart(
     try:
         select_parameter(w, "monitoring.distance")
         qtbot.waitUntil(started.is_set)
-        assert "dystans" in w.parameter_help.toPlainText().lower()
-        assert "PPG" not in w.parameter_help.toPlainText()
-        assert w.chart_view.loading
+        assert "dystans" in w.data_page.parameter_help.toPlainText().lower()
+        assert "PPG" not in w.data_page.parameter_help.toPlainText()
+        assert w.data_page.chart_view.loading
         select_parameter(w, "monitoring.heart_rate")
-        assert "PPG" in w.parameter_help.toPlainText()
+        assert "PPG" in w.data_page.parameter_help.toPlainText()
     finally:
         release.set()
     ready(qtbot, w)
-    assert "PPG" in w.parameter_help.toPlainText()
-    w.range.setCurrentIndex(0)
-    w.chart_to.setDate(QDate(2024, 11, 8))
+    assert "PPG" in w.data_page.parameter_help.toPlainText()
+    w.data_page.range.setCurrentIndex(0)
+    w.data_page.chart_to.setDate(QDate(2024, 11, 8))
     ready(qtbot, w)
     w.resize(900, 650)
     w.grab()
-    assert w.chart.height() <= w.chart_view.height()
-    assert w.chart.time_labels
+    assert w.data_page.chart.height() <= w.data_page.chart_view.height()
+    assert w.data_page.chart.time_labels
     assert all(
-        box.bottom() <= w.chart_view.height() for _, _, _, box in w.chart.time_labels
+        box.bottom() <= w.data_page.chart_view.height()
+        for _, _, _, box in w.data_page.chart.time_labels
     )
-    assert w.parameter_help.height() >= 100
+    assert w.data_page.parameter_help.height() >= 100
 
 
 def test_navigation_and_chart(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
-    assert f"Rozpoznane serie / właściwości: {len(w.parameters)}" in w.status.text()
+    assert (
+        f"Rozpoznane serie / właściwości: {len(w.parameters)}"
+        in w.start_page.status.text()
+    )
     for index in range(4):
         w.navigation.setCurrentRow(index)
         assert w.pages.currentIndex() == index
     w.navigation.setCurrentRow(1)
     heart = next(
         i
-        for i in range(w.parameter_list.count())
-        if "Tętno" == w.parameter_list.item(i).text()
+        for i in range(w.data_page.parameter_list.count())
+        if "Tętno" == w.data_page.parameter_list.item(i).text()
     )
-    w.parameter_list.setCurrentRow(heart)
-    qtbot.waitUntil(lambda: w.query_worker is None, timeout=5000)
-    assert all(w.range.model().item(i).isEnabled() for i in range(6))
-    w.range.setCurrentIndex(0)
-    w.chart_to.setDate(QDate(2024, 11, 8))
-    qtbot.waitUntil(lambda: w.query_worker is None, timeout=5000)
-    assert w.chart.points and len(w.chart.points) == 2
-    assert w.chart.grab().width() > 0
+    w.data_page.parameter_list.setCurrentRow(heart)
+    qtbot.waitUntil(lambda: w.data_page.query_worker is None, timeout=5000)
+    assert all(w.data_page.range.model().item(i).isEnabled() for i in range(6))
+    w.data_page.range.setCurrentIndex(0)
+    w.data_page.chart_to.setDate(QDate(2024, 11, 8))
+    qtbot.waitUntil(lambda: w.data_page.query_worker is None, timeout=5000)
+    assert w.data_page.chart.points and len(w.data_page.chart.points) == 2
+    assert w.data_page.chart.grab().width() > 0
 
 
 def test_ranges_follow_parameter_and_dates_refresh_automatically(qtbot, tmp_path):
     w = window(qtbot, tmp_path, summaries=True)
     select_parameter(w, "sleep_assessment.overall_sleep_score")
-    w.chart_to.setDate(QDate(2024, 11, 9))
-    w.range.setCurrentIndex(2)
+    w.data_page.chart_to.setDate(QDate(2024, 11, 9))
+    w.data_page.range.setCurrentIndex(2)
     ready(qtbot, w)
-    assert [point[1] for point in w.chart.points] == [70, 72]
-    assert all(w.range.model().item(i).isEnabled() for i in range(6))
+    assert [point[1] for point in w.data_page.chart.points] == [70, 72]
+    assert all(w.data_page.range.model().item(i).isEnabled() for i in range(6))
 
     select_parameter(w, "monitoring.distance")
     ready(qtbot, w)
-    assert w.range.currentText() == "Dzień"
-    assert w.chart_from.date() == w.chart_to.date()
-    assert not w.chart_from.isEnabled()
-    assert all(not w.range.model().item(i).isEnabled() for i in range(1, 6))
+    assert w.data_page.range.currentText() == "Dzień"
+    assert w.data_page.chart_from.date() == w.data_page.chart_to.date()
+    assert not w.data_page.chart_from.isEnabled()
+    assert all(not w.data_page.range.model().item(i).isEnabled() for i in range(1, 6))
     # Even a programmatic attempt to use a disabled range remains single-day.
-    w.range.setCurrentIndex(5)
-    w.chart_to.setDate(QDate(2024, 11, 8))
+    w.data_page.range.setCurrentIndex(5)
+    w.data_page.chart_to.setDate(QDate(2024, 11, 8))
     ready(qtbot, w)
-    assert w.range.currentText() == "Dzień"
-    assert [point[1] for point in w.chart.points] == [1]
+    assert w.data_page.range.currentText() == "Dzień"
+    assert [point[1] for point in w.data_page.chart.points] == [1]
 
     select_parameter(w, "monitoring.heart_rate")
-    w.range.setCurrentIndex(2)
+    w.data_page.range.setCurrentIndex(2)
     ready(qtbot, w)
-    assert [point[1] for point in w.chart.points] == [63]
-    assert "obliczone" in w.chart_message.text()
+    assert [point[1] for point in w.data_page.chart.points] == [63]
+    assert "obliczone" in w.data_page.chart_message.text()
 
     select_parameter(w, "sleep_assessment.overall_sleep_score")
-    w.range.setCurrentIndex(5)
-    w.chart_to.setDate(QDate(2024, 11, 9))
+    w.data_page.range.setCurrentIndex(5)
+    w.data_page.chart_to.setDate(QDate(2024, 11, 9))
     ready(qtbot, w)
-    assert w.chart_from.isEnabled()
-    assert len(w.chart.points) == 2
-    w.chart_from.setDate(QDate(2024, 11, 9))
+    assert w.data_page.chart_from.isEnabled()
+    assert len(w.data_page.chart.points) == 2
+    w.data_page.chart_from.setDate(QDate(2024, 11, 9))
     ready(qtbot, w)
-    assert [point[1] for point in w.chart.points] == [72]
-    w.chart_to.setDate(QDate(2024, 11, 8))
+    assert [point[1] for point in w.data_page.chart.points] == [72]
+    w.data_page.chart_to.setDate(QDate(2024, 11, 8))
     ready(qtbot, w)
-    assert "późniejsza" in w.chart_message.text()
-    assert not w.chart.points and not w.chart_view.loading
+    assert "późniejsza" in w.data_page.chart_message.text()
+    assert not w.data_page.chart.points and not w.data_page.chart_view.loading
     assert not any(b.text() == "Pokaż wykres" for b in w.findChildren(QPushButton))
 
 
@@ -250,7 +277,7 @@ def test_loading_animates_and_stale_results_do_not_replace_latest_selection(
     w = window(qtbot, tmp_path)
     w.navigation.setCurrentRow(1)
     select_parameter(w, "monitoring.heart_rate")
-    w.range.setCurrentIndex(0)
+    w.data_page.range.setCurrentIndex(0)
     ready(qtbot, w)
     started = threading.Event()
     release = threading.Event()
@@ -267,23 +294,35 @@ def test_loading_animates_and_stale_results_do_not_replace_latest_selection(
 
     monkeypatch.setattr(Queries, "chart", query)
     try:
-        w.chart_to.setDate(QDate(2024, 11, 8))
+        w.data_page.chart_to.setDate(QDate(2024, 11, 8))
         qtbot.waitUntil(started.is_set)
-        assert w.chart_view.loading and w.chart_view.overlay.isVisible()
-        assert w.chart_view.blur.isEnabled() and not w.chart.isEnabled()
-        angle = w.chart_view.overlay.angle
-        qtbot.waitUntil(lambda: w.chart_view.overlay.angle != angle)
-        w.chart_to.setDate(QDate(2024, 11, 10))
-        w.chart_to.setDate(QDate(2024, 11, 9))
-        assert w.chart_view.loading
+        assert (
+            w.data_page.chart_view.loading
+            and w.data_page.chart_view.overlay.isVisible()
+        )
+        assert (
+            w.data_page.chart_view.blur.isEnabled()
+            and not w.data_page.chart.isEnabled()
+        )
+        angle = w.data_page.chart_view.overlay.angle
+        qtbot.waitUntil(lambda: w.data_page.chart_view.overlay.angle != angle)
+        w.data_page.chart_to.setDate(QDate(2024, 11, 10))
+        w.data_page.chart_to.setDate(QDate(2024, 11, 9))
+        assert w.data_page.chart_view.loading
     finally:
         release.set()
     ready(qtbot, w)
     assert len(calls) == 2 and calls[-1][1].day == 9
-    assert w.chart.points[0][1] == 9 and w.chart_message.text() == "latest"
-    assert not w.chart_view.loading and not w.chart_view.overlay.isVisible()
-    assert not w.chart_view.blur.isEnabled() and w.chart.isEnabled()
-    assert not w.chart_view.overlay.timer.isActive()
+    assert (
+        w.data_page.chart.points[0][1] == 9
+        and w.data_page.chart_message.text() == "latest"
+    )
+    assert (
+        not w.data_page.chart_view.loading
+        and not w.data_page.chart_view.overlay.isVisible()
+    )
+    assert not w.data_page.chart_view.blur.isEnabled() and w.data_page.chart.isEnabled()
+    assert not w.data_page.chart_view.overlay.timer.isActive()
 
 
 def test_loading_ends_on_query_error(qtbot, tmp_path, monkeypatch):
@@ -293,63 +332,63 @@ def test_loading_ends_on_query_error(qtbot, tmp_path, monkeypatch):
         raise RuntimeError("Synthetic failure")
 
     monkeypatch.setattr(Queries, "chart", query)
-    w.chart_to.setDate(QDate(2024, 11, 8))
+    w.data_page.chart_to.setDate(QDate(2024, 11, 8))
     ready(qtbot, w)
-    assert not w.chart_view.loading and not w.chart.points
-    assert not w.trend.isEnabled()
-    assert "RuntimeError" in w.chart_message.text()
+    assert not w.data_page.chart_view.loading and not w.data_page.chart.points
+    assert not w.data_page.trend.isEnabled()
+    assert "RuntimeError" in w.data_page.chart_message.text()
 
 
 def test_trend_toggle_draws_overlay_without_changing_source_points(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
     w.navigation.setCurrentRow(1)
     select_parameter(w, "monitoring.heart_rate")
-    w.range.setCurrentIndex(0)
-    w.chart_to.setDate(QDate(2024, 11, 8))
+    w.data_page.range.setCurrentIndex(0)
+    w.data_page.chart_to.setDate(QDate(2024, 11, 8))
     ready(qtbot, w)
-    assert w.trend.isEnabled() and not w.trend.isChecked()
-    original = list(w.chart.points)
-    without = w.chart.grab().toImage()
-    w.trend.setChecked(True)
-    with_trend = w.chart.grab().toImage()
-    assert w.chart.trend_visible and without != with_trend
-    assert w.chart.points == original
-    w.trend.setChecked(False)
-    assert not w.chart.trend_visible
+    assert w.data_page.trend.isEnabled() and not w.data_page.trend.isChecked()
+    original = list(w.data_page.chart.points)
+    without = w.data_page.chart.grab().toImage()
+    w.data_page.trend.setChecked(True)
+    with_trend = w.data_page.chart.grab().toImage()
+    assert w.data_page.chart.trend_visible and without != with_trend
+    assert w.data_page.chart.points == original
+    w.data_page.trend.setChecked(False)
+    assert not w.data_page.chart.trend_visible
     # Categorical series cannot acquire a numerical regression.
-    parameter = dict(w.selected_parameter(), enum={"1": "light", "2": "deep"})
-    w.show_chart(([(0, 1, "a"), (10, 2, "b")], "categories"), parameter)
-    assert not w.trend.isEnabled() and not w.chart.trend_points
+    parameter = dict(w.data_page.selected_parameter(), enum={"1": "light", "2": "deep"})
+    w.data_page.show_chart(([(0, 1, "a"), (10, 2, "b")], "categories"), parameter)
+    assert not w.data_page.trend.isEnabled() and not w.data_page.chart.trend_points
 
 
 def test_ui_export_and_settings(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
-    w.export_from.setDate(
+    w.export_page.export_from.setDate(
         __import__("PySide6.QtCore", fromlist=["QDate"]).QDate(2024, 1, 1)
     )
-    w.recent.setValue(1000)
-    w.summary_period.setCurrentIndex(1)
-    w.export()
+    w.export_page.recent.setValue(1000)
+    w.export_page.summary_period.setCurrentIndex(1)
+    w.export_page.export()
     qtbot.waitUntil(
         lambda: w.worker is not None and not w.worker.isRunning(), timeout=5000
     )
-    qtbot.waitUntil(lambda: not w.stop_button.isEnabled())
-    assert w.last_export_dir.is_dir()
-    assert list((w.last_export_dir / "details").glob("*.json"))
-    assert list((w.last_export_dir / "history").glob("*.json"))
-    assert not (w.last_export_dir / "recent.json").exists()
+    qtbot.waitUntil(lambda: not w.start_page.stop_button.isEnabled())
+    assert w.export_page.last_export_dir.is_dir()
+    assert list((w.export_page.last_export_dir / "details").glob("*.json"))
+    assert list((w.export_page.last_export_dir / "history").glob("*.json"))
+    assert not (w.export_page.last_export_dir / "recent.json").exists()
     assert Settings.load(tmp_path / "settings.json").recent_days == 1000
     assert Settings.load(tmp_path / "settings.json").summary_period == "month"
-    first = w.last_export_dir
-    w.export()
-    qtbot.waitUntil(lambda: not w.stop_button.isEnabled())
-    assert w.last_export_dir != first and first.is_dir()
-    assert w.export_button.isEnabled()
+    first = w.export_page.last_export_dir
+    w.export_page.export()
+    qtbot.waitUntil(lambda: not w.start_page.stop_button.isEnabled())
+    assert w.export_page.last_export_dir != first and first.is_dir()
+    assert w.export_page.export_button.isEnabled()
 
 
 def test_failed_days_show_details_and_summary_after_worker_finishes(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
-    w.details.append("Poprzednia operacja")
+    w.start_page.details.append("Poprzednia operacja")
 
     def operation(worker):
         worker.progress.emit("2024-01-01", "Błąd pobierania — HTTP 503", 1, 2)
@@ -357,12 +396,12 @@ def test_failed_days_show_details_and_summary_after_worker_finishes(qtbot, tmp_p
         return 1
 
     w.start_work(operation)
-    qtbot.waitUntil(lambda: not w.stop_button.isEnabled(), timeout=5000)
-    assert w.details.isVisible()
-    assert "HTTP 503" in w.details.toPlainText()
-    assert "Podsumowanie całej operacji" in w.stage.text()
-    assert w.stage.text() in w.details.toPlainText()
-    assert "Poprzednia operacja" not in w.details.toPlainText()
+    qtbot.waitUntil(lambda: not w.start_page.stop_button.isEnabled(), timeout=5000)
+    assert w.start_page.details.isVisible()
+    assert "HTTP 503" in w.start_page.details.toPlainText()
+    assert "Podsumowanie całej operacji" in w.start_page.stage.text()
+    assert w.start_page.stage.text() in w.start_page.details.toPlainText()
+    assert "Poprzednia operacja" not in w.start_page.details.toPlainText()
     assert not hasattr(w, "details_button")
 
 
@@ -382,11 +421,14 @@ def test_sync_summary_distinguishes_historical_404s_from_successful_last_day(
         last_day="2026-10-24",
         last_day_result="import zakończony bez błędów",
     )
-    w.on_progress("2026-10-24", "Rozpoczynanie importu FIT", 12, 12)
-    w.on_success(result)
-    text = w.details.toPlainText()
-    assert "Podsumowanie całej operacji" in w.stage.text()
-    assert "z błędami" not in w.stage.text() and "pominięto dni" in w.stage.text()
+    w.start_page.on_progress("2026-10-24", "Rozpoczynanie importu FIT", 12, 12)
+    w.start_page.on_success(result)
+    text = w.start_page.details.toPlainText()
+    assert "Podsumowanie całej operacji" in w.start_page.stage.text()
+    assert (
+        "z błędami" not in w.start_page.stage.text()
+        and "pominięto dni" in w.start_page.stage.text()
+    )
     assert "404" not in text
     assert "Zakres całej operacji: 2024-01-01 — 2026-10-24" in text
     assert "Brakujące dni (brak danych Garmin): 169" in text
@@ -492,17 +534,17 @@ def test_login_failure_allows_a_new_attempt_without_restarting(
 
     monkeypatch.setattr("garmin_database.bootstrap.dependencies.create_source", Source)
     w = window(qtbot, tmp_path)
-    w.email.setText("synthetic@example.invalid")
-    w.password.setText("wrong-synthetic-password")
+    w.settings_page.email.setText("synthetic@example.invalid")
+    w.settings_page.password.setText("wrong-synthetic-password")
     w.login()
     first = w.login_dialog
     qtbot.waitUntil(lambda: not first.spinner.timer.isActive())
     assert not first.authenticated and first.worker.operation is None
     assert "synthetic-private-detail" not in first.message.text()
-    assert w.worker is None and w.password.text() == ""
+    assert w.worker is None and w.settings_page.password.text() == ""
     first.reject()
-    assert w.login_dialog is None and w.login_button.isEnabled()
-    w.password.setText("new-synthetic-password")
+    assert w.login_dialog is None and w.settings_page.login_button.isEnabled()
+    w.settings_page.password.setText("new-synthetic-password")
     w.login()
     second = w.login_dialog
     try:
@@ -514,7 +556,7 @@ def test_login_failure_allows_a_new_attempt_without_restarting(
         release.set()
     qtbot.waitUntil(lambda: not second.spinner.timer.isActive())
     assert second.authenticated and second.worker.operation is None
-    assert "Zalogowano" in w.session_status.text()
+    assert "Zalogowano" in w.settings_page.session_status.text()
     second.reject()
     assert len(attempts) == 2 and w.login_dialog is None
     assert "synthetic-password" not in (tmp_path / "settings.json").read_text()
@@ -535,16 +577,16 @@ def test_login_cancellation_waits_for_worker_and_allows_retry(
 
     monkeypatch.setattr("garmin_database.bootstrap.dependencies.create_source", Source)
     w = window(qtbot, tmp_path)
-    w.email.setText("synthetic@example.invalid")
-    w.password.setText("synthetic-password")
+    w.settings_page.email.setText("synthetic@example.invalid")
+    w.settings_page.password.setText("synthetic-password")
     w.login()
     first = w.login_dialog
     qtbot.waitUntil(started.is_set)
     first.close()
     qtbot.waitUntil(lambda: w.login_dialog is None)
-    assert "anulowane" in w.session_status.text()
-    assert w.login_button.isEnabled()
-    w.password.setText("synthetic-password")
+    assert "anulowane" in w.settings_page.session_status.text()
+    assert w.settings_page.login_button.isEnabled()
+    w.settings_page.password.setText("synthetic-password")
     w.login()
     second = w.login_dialog
     qtbot.waitUntil(lambda: not second.spinner.timer.isActive())
@@ -561,15 +603,15 @@ def test_login_mfa_cancel_then_fresh_codes_on_retry(qtbot, tmp_path, monkeypatch
 
     monkeypatch.setattr("garmin_database.bootstrap.dependencies.create_source", Source)
     w = window(qtbot, tmp_path)
-    w.email.setText("synthetic@example.invalid")
-    w.password.setText("synthetic-password")
+    w.settings_page.email.setText("synthetic@example.invalid")
+    w.settings_page.password.setText("synthetic-password")
     w.login()
     first = w.login_dialog
     qtbot.waitUntil(lambda: first.mfa_dialog is not None)
     first.mfa_dialog.reject()
     qtbot.waitUntil(lambda: w.login_dialog is None)
-    assert "anulowane" in w.session_status.text()
-    w.password.setText("synthetic-password")
+    assert "anulowane" in w.settings_page.session_status.text()
+    w.settings_page.password.setText("synthetic-password")
     w.login()
     second = w.login_dialog
     for code in ("123456", "654321"):
@@ -594,8 +636,8 @@ def test_closing_window_cancels_login_before_destroying_the_worker(
 
     monkeypatch.setattr("garmin_database.bootstrap.dependencies.create_source", Source)
     w = window(qtbot, tmp_path)
-    w.email.setText("synthetic@example.invalid")
-    w.password.setText("synthetic-password")
+    w.settings_page.email.setText("synthetic@example.invalid")
+    w.settings_page.password.setText("synthetic-password")
     w.login()
     qtbot.waitUntil(started.is_set)
     w.close()
@@ -614,7 +656,7 @@ def test_missing_session_is_explained_in_settings_and_worker(
         lambda: SessionStore(tmp_path / "missing"),
     )
     w = window(qtbot, tmp_path)
-    assert "Brak zapisanej sesji" in w.session_status.text()
+    assert "Brak zapisanej sesji" in w.settings_page.session_status.text()
 
     def operation(worker):
         raise SessionRequired()
@@ -650,8 +692,8 @@ def test_postgresql_connection_change_persists_and_reads_new_database(
                 monkeypatch.setenv("PGPASSWORD", password)
             options["options"] = f"-c search_path={schema}"
             dsn = make_conninfo(**options)
-            w.database_dsn.setText(dsn)
-            w.save_settings()
+            w.settings_page.database_dsn.setText(dsn)
+            w.settings_page.save_settings()
             ready(qtbot, w)
             assert Settings.load(tmp_path / "settings.json").database_dsn == dsn
             assert w.services.status()["fields"] == 0
@@ -666,12 +708,14 @@ def test_postgresql_password_is_not_persisted_from_ui(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
     original_db = w.services
     previous = (tmp_path / "settings.json").read_bytes()
-    w.database_dsn.setText("host=localhost dbname=garmin password=private-secret")
-    w.save_settings()
+    w.settings_page.database_dsn.setText(
+        "host=localhost dbname=garmin password=private-secret"
+    )
+    w.settings_page.save_settings()
     ready(qtbot, w)
     assert w.services is original_db
-    assert "ValueError" in w.settings_status.text()
-    assert "private-secret" not in w.settings_status.text()
+    assert "ValueError" in w.settings_page.settings_status.text()
+    assert "private-secret" not in w.settings_page.settings_status.text()
     assert (tmp_path / "settings.json").read_bytes() == previous
 
 
@@ -704,14 +748,15 @@ def test_startup_database_error_explains_password_failure(
 
 def test_download_menu_and_current_day_range(qtbot, tmp_path):
     from garmin_database.domain.time import today
+
     w = window(qtbot, tmp_path)
     day = today()
     current = QDate(day.year, day.month, day.day)
-    assert w.download_button.text() == "Pobierz nowe dane"
-    assert w.download_all_button.text() == "Pobierz wszystko"
+    assert w.start_page.download_button.text() == "Pobierz nowe dane"
+    assert w.start_page.download_all_button.text() == "Pobierz wszystko"
     labels = {button.text() for button in w.findChildren(QPushButton)}
     assert "Importuj lokalne archiwa" not in labels
     assert "Przetwórz ponownie" not in labels
-    assert w.chart_to.date() == current
-    assert w.chart_to.maximumDate() == current
+    assert w.data_page.chart_to.date() == current
+    assert w.data_page.chart_to.maximumDate() == current
     w.close()

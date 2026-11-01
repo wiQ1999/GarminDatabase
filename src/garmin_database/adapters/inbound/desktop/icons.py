@@ -3,6 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
@@ -59,28 +60,21 @@ SYMBOLS = {
 
 def symbol(parameter):
     key = parameter["key"]
-    if "hrv" in key:
-        return "hrv"
-    if "heart_rate" in key:
-        return "heart"
-    if "stress" in key:
-        return "stress"
-    if "respiration" in key:
-        return "breath"
-    if "spo2" in key:
-        return "oxygen"
-    if "skin_temp" in key or "temperature" in key:
-        return "temperature"
-    if "sleep" in key or "nap" in key:
-        return "sleep"
-    if "calories" in key:
-        return "calories"
-    if "steps" in key:
-        return "steps"
-    if "ascent" in key or "descent" in key:
-        return "floors"
-    if "minutes" in key or "duration" in key:
-        return "clock"
+    for fragments, name in (
+        (("hrv",), "hrv"),
+        (("heart_rate",), "heart"),
+        (("stress",), "stress"),
+        (("respiration",), "breath"),
+        (("spo2",), "oxygen"),
+        (("skin_temp", "temperature"), "temperature"),
+        (("sleep", "nap"), "sleep"),
+        (("calories",), "calories"),
+        (("steps",), "steps"),
+        (("ascent", "descent"), "floors"),
+        (("minutes", "duration"), "clock"),
+    ):
+        if any(fragment in key for fragment in fragments):
+            return name
     return "other"
 
 
@@ -90,9 +84,7 @@ def icon(name):
     svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 28 28" fill="{color}" color="{color}">{content}</svg>'
     renderer = QSvgRenderer(svg.encode())
     pixmap = QPixmap(28, 28)
-    pixmap.fill(
-        __import__("PySide6.QtCore", fromlist=["Qt"]).Qt.GlobalColor.transparent
-    )
+    pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     renderer.render(painter)
     painter.end()

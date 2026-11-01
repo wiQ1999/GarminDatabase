@@ -7,7 +7,7 @@ import pytest
 from PySide6.QtCore import QDate, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QPushButton
 
-from garmin_database.adapters.inbound.desktop import window as desktop
+from garmin_database.adapters.inbound.desktop import data_page, settings_page
 from garmin_database.adapters.outbound.filesystem.settings_json import SettingsStore
 from garmin_database.adapters.outbound.postgres.queries import Queries
 from garmin_database.application.ports import ReadFailure
@@ -63,7 +63,7 @@ def test_refresh_during_download_never_blocks_or_duplicates_reads(
     monkeypatch.setattr(w.services, "sync", sync)
     monkeypatch.setattr(w.services, "overview", read)
     try:
-        w.download_button.click()
+        w.start_page.download_button.click()
         qtbot.waitUntil(downloading.is_set)
         before = time.monotonic()
         w.overview.poll()
@@ -72,15 +72,18 @@ def test_refresh_during_download_never_blocks_or_duplicates_reads(
         for _ in range(20):
             w.overview.poll()
             w.overview.poll()
-        heartbeat(qtbot, w, w.status_indicator)
+        heartbeat(qtbot, w, w.start_page.status_indicator)
         assert calls == [calls[0]] and calls[0] != threading.get_ident()
-        assert w.download_button.loading and w.work_is_running()
+        assert w.start_page.download_button.loading and w.work_is_running()
     finally:
         read_done.set()
         download_done.set()
     ready(qtbot, w)
-    qtbot.waitUntil(lambda: not w.stop_button.isEnabled())
-    assert not w.status_indicator.loading and not w.download_button.loading
+    qtbot.waitUntil(lambda: not w.start_page.stop_button.isEnabled())
+    assert (
+        not w.start_page.status_indicator.loading
+        and not w.start_page.download_button.loading
+    )
 
 
 @pytest.mark.parametrize(
@@ -101,34 +104,46 @@ def test_slow_main_actions_have_live_spinners(qtbot, tmp_path, monkeypatch, acti
 
     if action == "connection":
         monkeypatch.setattr(w.services, "reconfigure", slow(w.services.reconfigure))
-        trigger, launch, page = w.save_button, w.save_settings, 3
+        trigger, launch, page = (
+            w.settings_page.save_button,
+            w.settings_page.save_settings,
+            3,
+        )
     elif action in {"settings", "export"}:
         monkeypatch.setattr(SettingsStore, "save", slow(SettingsStore.save))
         trigger, launch, page = (
-            (w.export_button, w.export, 2)
+            (w.export_page.export_button, w.export_page.export, 2)
             if action == "export"
-            else (w.save_button, w.save_settings, 3)
+            else (w.settings_page.save_button, w.settings_page.save_settings, 3)
         )
     elif action == "config":
         monkeypatch.setattr(
-            desktop, "client_config", slow(lambda path: {"mcpServers": {}})
+            settings_page, "client_config", slow(lambda path: {"mcpServers": {}})
         )
-        trigger, launch, page = w.copy_config_button, w.copy_mcp_config, 3
+        trigger, launch, page = (
+            w.settings_page.copy_config_button,
+            w.settings_page.copy_mcp_config,
+            3,
+        )
     elif action == "folder":
         monkeypatch.setattr(w.services, "open_folder", slow(lambda path: None))
-        trigger, launch, page = w.open_export_button, w.open_export_folder, 2
+        trigger, launch, page = (
+            w.export_page.open_export_button,
+            w.export_page.open_export_folder,
+            2,
+        )
     else:
         monkeypatch.setattr(w.services, "open_url", slow(lambda url: None))
         trigger, launch, page = (
-            w.login_button,
+            w.settings_page.login_button,
             lambda: w.open_link("https://connect.garmin.com/"),
             3,
         )
     w.navigation.setCurrentRow(page)
     if action == "config":
-        w.settings_tabs.setCurrentIndex(3)
+        w.settings_page.settings_tabs.setCurrentIndex(3)
     elif action == "browser":
-        w.settings_tabs.setCurrentIndex(2)
+        w.settings_page.settings_tabs.setCurrentIndex(2)
     try:
         before = time.monotonic()
         launch()
@@ -138,7 +153,9 @@ def test_slow_main_actions_have_live_spinners(qtbot, tmp_path, monkeypatch, acti
         assert background_threads == [background_threads[0]]
         assert background_threads[0] != threading.get_ident()
         if action != "export":
-            assert trigger.text() + " — rozpoczęto" in w.details.toPlainText()
+            assert (
+                trigger.text() + " — rozpoczęto" in w.start_page.details.toPlainText()
+            )
     finally:
         release.set()
     ready(qtbot, w)
@@ -146,20 +163,20 @@ def test_slow_main_actions_have_live_spinners(qtbot, tmp_path, monkeypatch, acti
     if action == "config":
         assert "mcpServers" in QApplication.clipboard().text()
     if action == "export":
-        assert w.last_export_dir.is_dir()
+        assert w.export_page.last_export_dir.is_dir()
     else:
-        assert trigger.text() + " — ukończono" in w.details.toPlainText()
+        assert trigger.text() + " — ukończono" in w.start_page.details.toPlainText()
 
 
 def test_periodic_refresh_preserves_edits_and_never_reloads_unchanged_catalog(
     qtbot, tmp_path, monkeypatch
 ):
     w = window(qtbot, tmp_path)
-    w.export_list.item(0).setCheckState(Qt.CheckState.Unchecked)
-    w.sharing_table.item(0, 2).setCheckState(Qt.CheckState.Unchecked)
-    w.mcp_enabled.setChecked(True)
-    w.sharing_group.setCurrentIndex(1)
-    old_group = w.sharing_group.currentData()
+    w.export_page.export_list.item(0).setCheckState(Qt.CheckState.Unchecked)
+    w.settings_page.sharing_table.item(0, 2).setCheckState(Qt.CheckState.Unchecked)
+    w.settings_page.mcp_enabled.setChecked(True)
+    w.settings_page.sharing_group.setCurrentIndex(1)
+    old_group = w.settings_page.sharing_group.currentData()
     original = w.services.overview
     calls = []
 
@@ -181,10 +198,15 @@ def test_periodic_refresh_preserves_edits_and_never_reloads_unchanged_catalog(
     w.refresh()
     ready(qtbot, w)
     assert calls[-1] is False
-    assert w.export_list.item(0).checkState() == Qt.CheckState.Unchecked
-    assert w.sharing_table.item(0, 2).checkState() == Qt.CheckState.Unchecked
-    assert w.mcp_enabled.isChecked() and w.sharing_group.currentData() == old_group
-    assert not w.status_error.text()
+    assert w.export_page.export_list.item(0).checkState() == Qt.CheckState.Unchecked
+    assert (
+        w.settings_page.sharing_table.item(0, 2).checkState() == Qt.CheckState.Unchecked
+    )
+    assert (
+        w.settings_page.mcp_enabled.isChecked()
+        and w.settings_page.sharing_group.currentData() == old_group
+    )
+    assert not w.start_page.status_error.text()
 
 
 def test_all_history_uses_cached_first_day(qtbot, tmp_path, monkeypatch):
@@ -192,9 +214,9 @@ def test_all_history_uses_cached_first_day(qtbot, tmp_path, monkeypatch):
     select_parameter(w, "monitoring.heart_rate")
     ready(qtbot, w)
     monkeypatch.setattr(w.services, "status", lambda: pytest.fail("SQL on GUI thread"))
-    w.range.setCurrentText("Cała historia")
+    w.data_page.range.setCurrentText("Cała historia")
     ready(qtbot, w)
-    assert w.chart_from.date() == QDate.fromString(
+    assert w.data_page.chart_from.date() == QDate.fromString(
         w.status_info["first_day"], "yyyy-MM-dd"
     )
 
@@ -202,12 +224,12 @@ def test_all_history_uses_cached_first_day(qtbot, tmp_path, monkeypatch):
 def test_folder_dialog_is_nonblocking_and_spinner_stops_on_cancel(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
     w.navigation.setCurrentRow(2)
-    w.browse_export_button.click()
+    w.export_page.browse_export_button.click()
     assert w.folder_dialog is not None and w.folder_dialog.isVisible()
-    angle = w.browse_export_button.angle
-    qtbot.waitUntil(lambda: w.browse_export_button.angle != angle)
+    angle = w.export_page.browse_export_button.angle
+    qtbot.waitUntil(lambda: w.export_page.browse_export_button.angle != angle)
     w.folder_dialog.reject()
-    assert w.folder_dialog is None and not w.browse_export_button.loading
+    assert w.folder_dialog is None and not w.export_page.browse_export_button.loading
 
 
 @pytest.mark.parametrize("operation", ["overview", "chart", "settings"])
@@ -224,10 +246,10 @@ def test_closing_does_not_wait_on_gui_thread(qtbot, tmp_path, monkeypatch, opera
         w.refresh()
     elif operation == "chart":
         monkeypatch.setattr(w.services, "chart", delayed)
-        w.load_chart()
+        w.data_page.load_chart()
     else:
         monkeypatch.setattr(w.services, "reconfigure", delayed)
-        w.save_settings()
+        w.settings_page.save_settings()
     try:
         qtbot.waitUntil(started.is_set)
         before = time.monotonic()
@@ -241,7 +263,11 @@ def test_closing_does_not_wait_on_gui_thread(qtbot, tmp_path, monkeypatch, opera
     finally:
         release.set()
     qtbot.waitUntil(lambda: not w.isVisible())
-    assert w.query_worker is None and w.aux_worker is None and not w.overview.busy
+    assert (
+        w.data_page.query_worker is None
+        and w.aux_worker is None
+        and not w.overview.busy
+    )
 
 
 def test_overview_error_is_safe_and_next_cycle_recovers(qtbot, tmp_path, monkeypatch):
@@ -255,14 +281,14 @@ def test_overview_error_is_safe_and_next_cycle_recovers(qtbot, tmp_path, monkeyp
     w.refresh()
     ready(qtbot, w)
     assert (
-        "RuntimeError" in w.status_error.text()
-        and "private data" not in w.status_error.text()
+        "RuntimeError" in w.start_page.status_error.text()
+        and "private data" not in w.start_page.status_error.text()
     )
-    assert not w.status_indicator.loading
+    assert not w.start_page.status_indicator.loading
     monkeypatch.setattr(w.services, "overview", original)
     w.overview.poll()
     ready(qtbot, w)
-    assert not w.status_error.text()
+    assert not w.start_page.status_error.text()
 
 
 def test_reconfigured_services_discard_old_inflight_overview(
@@ -282,26 +308,26 @@ def test_reconfigured_services_discard_old_inflight_overview(
     try:
         w.refresh()
         qtbot.waitUntil(started.is_set)
-        w.save_settings()
+        w.settings_page.save_settings()
         qtbot.waitUntil(lambda: w.aux_worker is None)
         assert w.overview.pending and w.overview.worker.stop.is_set()
     finally:
         release.set()
     ready(qtbot, w)
-    assert w.status_info["archives"] == 1 and "999" not in w.status.text()
+    assert w.status_info["archives"] == 1 and "999" not in w.start_page.status.text()
 
 
 def test_chart_preparation_runs_off_gui_thread(qtbot, tmp_path, monkeypatch):
     w = window(qtbot, tmp_path)
-    prepare = desktop.prepare_series
+    prepare = data_page.prepare_series
     threads = []
 
     def prepared(*args):
         threads.append(threading.get_ident())
         return prepare(*args)
 
-    monkeypatch.setattr(desktop, "prepare_series", prepared)
-    w.load_chart()
+    monkeypatch.setattr(data_page, "prepare_series", prepared)
+    w.data_page.load_chart()
     ready(qtbot, w)
     assert len(threads) == 1 and threads[0] != threading.get_ident()
 
@@ -342,12 +368,15 @@ def test_legacy_settings_migration_blocks_competing_saves(qtbot, tmp_path, monke
     try:
         w.refresh()
         qtbot.waitUntil(started.is_set)
-        assert not w.save_button.isEnabled() and not w.export_button.isEnabled()
-        heartbeat(qtbot, w, w.status_indicator)
+        assert (
+            not w.settings_page.save_button.isEnabled()
+            and not w.export_page.export_button.isEnabled()
+        )
+        heartbeat(qtbot, w, w.start_page.status_indicator)
     finally:
         release.set()
     ready(qtbot, w)
-    assert w.settings.settings_version == 2 and w.save_button.isEnabled()
+    assert w.settings.settings_version == 2 and w.settings_page.save_button.isEnabled()
 
 
 def test_stop_button_animates_until_background_operation_returns(
@@ -361,23 +390,26 @@ def test_stop_button_animates_until_background_operation_returns(
 
     monkeypatch.setattr(w.services, "sync", sync)
     try:
-        w.download_button.click()
+        w.start_page.download_button.click()
         qtbot.waitUntil(started.is_set)
-        w.stop_button.click()
-        heartbeat(qtbot, w, w.stop_button)
+        w.start_page.stop_button.click()
+        heartbeat(qtbot, w, w.start_page.stop_button)
         assert w.worker.stop.is_set()
     finally:
         release.set()
-    qtbot.waitUntil(lambda: not w.stop_button.loading)
-    assert not w.stop_button.isEnabled() and not w.download_button.loading
+    qtbot.waitUntil(lambda: not w.start_page.stop_button.loading)
+    assert (
+        not w.start_page.stop_button.isEnabled()
+        and not w.start_page.download_button.loading
+    )
 
 
 def test_start_has_passive_activity_indicator_and_no_refresh_button(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
     assert not any(b.text() == "Odśwież stan" for b in w.findChildren(QPushButton))
     assert not hasattr(w, "refresh_button")
-    assert not isinstance(w.status_indicator, QPushButton)
-    assert w.details.isVisible() and w.details.isReadOnly()
+    assert not isinstance(w.start_page.status_indicator, QPushButton)
+    assert w.start_page.details.isVisible() and w.start_page.details.isReadOnly()
     assert not any(b.text() == "Pokaż szczegóły" for b in w.findChildren(QPushButton))
 
 
@@ -393,20 +425,23 @@ def test_operation_log_is_visible_during_work_and_keeps_only_recent_lines(
         return 0
 
     try:
-        w.start_work(operation, w.download_button)
+        w.start_work(operation, w.start_page.download_button)
         qtbot.waitUntil(started.is_set)
-        qtbot.waitUntil(lambda: "Pobieranie" in w.details.toPlainText())
-        assert w.details.isVisible()
-        heartbeat(qtbot, w, w.download_button)
+        qtbot.waitUntil(lambda: "Pobieranie" in w.start_page.details.toPlainText())
+        assert w.start_page.details.isVisible()
+        heartbeat(qtbot, w, w.start_page.download_button)
     finally:
         release.set()
-    qtbot.waitUntil(lambda: not w.stop_button.isEnabled())
-    assert w.details.isVisible() and "Ukończono" in w.details.toPlainText()
-    w.details.append("\n".join(f"Wiersz {i}" for i in range(600)))
-    assert w.details.document().blockCount() == 500
+    qtbot.waitUntil(lambda: not w.start_page.stop_button.isEnabled())
     assert (
-        "Wiersz 599" in w.details.toPlainText()
-        and "Wiersz 0\n" not in w.details.toPlainText()
+        w.start_page.details.isVisible()
+        and "Ukończono" in w.start_page.details.toPlainText()
+    )
+    w.start_page.details.append("\n".join(f"Wiersz {i}" for i in range(600)))
+    assert w.start_page.details.document().blockCount() == 500
+    assert (
+        "Wiersz 599" in w.start_page.details.toPlainText()
+        and "Wiersz 0\n" not in w.start_page.details.toPlainText()
     )
 
 
@@ -417,8 +452,8 @@ def test_repeated_state_errors_replace_one_notice(
     w = window(qtbot, tmp_path)
     if initial:
         w.status_info = {}
-        w.status.setText("Odczytywanie stanu archiwum…")
-    previous = w.status.text()
+        w.start_page.status.setText("Odczytywanie stanu archiwum…")
+    previous = w.start_page.status.text()
 
     def failed(*args):
         raise ReadFailure("private details", reason="connection")
@@ -428,11 +463,11 @@ def test_repeated_state_errors_replace_one_notice(
     for _ in range(4):
         w.overview.poll()
         ready(qtbot, w)
-        notices.append(w.status_error.text())
+        notices.append(w.start_page.status_error.text())
     assert len(set(notices)) == 1
     assert notices[0].count("Nie udało się odświeżyć stanu") == 1
     assert "private details" not in notices[0] and "ReadFailure" not in notices[0]
-    assert w.status.text() == (
+    assert w.start_page.status.text() == (
         "Stan archiwum jest chwilowo niedostępny." if initial else previous
     )
 
@@ -450,13 +485,13 @@ def test_slow_catalog_publishes_counters_before_catalog_finishes(
 
     monkeypatch.setattr(w.services, "catalog", delayed)
     w.status_info = {}
-    w.status.setText("Odczytywanie stanu archiwum…")
+    w.start_page.status.setText("Odczytywanie stanu archiwum…")
     try:
         w.refresh()
         qtbot.waitUntil(started.is_set)
         qtbot.waitUntil(lambda: bool(w.status_info))
-        assert "Archiwa w bazie: 1" in w.status.text()
-        heartbeat(qtbot, w, w.status_indicator)
+        assert "Archiwa w bazie: 1" in w.start_page.status.text()
+        heartbeat(qtbot, w, w.start_page.status_indicator)
     finally:
         release.set()
     ready(qtbot, w)
@@ -476,23 +511,23 @@ def test_catalog_timeout_keeps_status_and_obeys_retry_interval(
     monkeypatch.setattr(w.services, "catalog", failed)
     w.refresh()
     ready(qtbot, w)
-    assert "Archiwa w bazie: 1" in w.status.text()
+    assert "Archiwa w bazie: 1" in w.start_page.status.text()
     assert (
-        "listy parametrów" in w.status_error.text()
-        and "czas odczytu" in w.status_error.text()
+        "listy parametrów" in w.start_page.status_error.text()
+        and "czas odczytu" in w.start_page.status_error.text()
     )
     assert (
-        "połączyć" not in w.status_error.text()
-        and "private" not in w.status_error.text()
+        "połączyć" not in w.start_page.status_error.text()
+        and "private" not in w.start_page.status_error.text()
     )
     for _ in range(3):
         w.overview.poll()
         ready(qtbot, w)
     assert calls == [True]
-    assert "Archiwa w bazie: 1" in w.status.text()
-    assert w.status_error.text().count("listy parametrów") == 1
+    assert "Archiwa w bazie: 1" in w.start_page.status.text()
+    assert w.start_page.status_error.text().count("listy parametrów") == 1
     monkeypatch.setattr(w.services, "catalog", original)
     w.overview.catalog_checked = float("-inf")
     w.overview.poll()
     ready(qtbot, w)
-    assert not w.status_error.text()
+    assert not w.start_page.status_error.text()

@@ -133,17 +133,19 @@ class Chart(QWidget):
                 "Brak wartości do wyświetlenia",
             )
             return
-        # Axis extents are display geometry, never exported health aggregates.
-        lo = min(x[1] for x in valid)
-        hi = max(x[1] for x in valid)
-        if hi == lo:
-            lo -= 1
-            hi += 1
-        xmin = self.points[0][0]
-        xmax = self.points[-1][0]
-        if xmin == xmax:
-            xmin -= 30000
-            xmax += 30000
+        lo, hi, xmin, xmax = series_limits(self.points, valid)
+        self.draw_value_axis(p, rect, lo, hi)
+        self.draw_time_axis(p, rect, xmin, xmax)
+        p.setPen(QPen(QColor("#4fa4f3"), 3))
+        for point in valid:
+            x = rect.left() + (point[0] - xmin) / (xmax - xmin) * rect.width()
+            y = rect.bottom() - (point[1] - lo) / (hi - lo) * rect.height()
+            p.drawPoint(QPointF(x, y))
+            self.positions.append((x, y, point))
+        if self.trend_visible and self.trend_points:
+            self.draw_trend(p, rect, xmin, xmax, lo, hi)
+
+    def draw_value_axis(self, p, rect, lo, hi):
         for step in range(5):
             y = rect.bottom() - rect.height() * step / 4
             p.setPen(QPen(QColor("#303947"), 1))
@@ -154,6 +156,8 @@ class Chart(QWidget):
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                 f"{lo + (hi - lo) * step / 4:.1f}",
             )
+
+    def draw_time_axis(self, p, rect, xmin, xmax):
         # Measure actual text, including dates/offsets, before choosing density.
         for count in range(8, 0, -1):
             ticks = []
@@ -174,27 +178,22 @@ class Chart(QWidget):
             p.drawLine(QPointF(x, rect.bottom()), QPointF(x, rect.bottom() + 6))
             p.setPen(QColor("#a3afbf"))
             p.drawText(box, Qt.AlignmentFlag.AlignCenter, label)
-        p.setPen(QPen(QColor("#4fa4f3"), 3))
-        for point in valid:
-            x = rect.left() + (point[0] - xmin) / (xmax - xmin) * rect.width()
-            y = rect.bottom() - (point[1] - lo) / (hi - lo) * rect.height()
-            p.drawPoint(QPointF(x, y))
-            self.positions.append((x, y, point))
-        if self.trend_visible and self.trend_points:
-            p.save()
-            p.setClipRect(rect)
-            p.setPen(QPen(QColor("#ffbc70"), 2, Qt.PenStyle.DashLine))
-            fitted = [
-                QPointF(
-                    rect.left() + (stamp - xmin) / (xmax - xmin) * rect.width(),
-                    rect.bottom() - (value - lo) / (hi - lo) * rect.height(),
-                )
-                for stamp, value in self.trend_points
-            ]
-            p.drawLine(*fitted)
-            p.restore()
-            p.setPen(QColor("#ffbc70"))
-            p.drawText(rect, Qt.AlignmentFlag.AlignRight, "Trend liniowy (obliczony)")
+
+    def draw_trend(self, p, rect, xmin, xmax, lo, hi):
+        p.save()
+        p.setClipRect(rect)
+        p.setPen(QPen(QColor("#ffbc70"), 2, Qt.PenStyle.DashLine))
+        fitted = [
+            QPointF(
+                rect.left() + (stamp - xmin) / (xmax - xmin) * rect.width(),
+                rect.bottom() - (value - lo) / (hi - lo) * rect.height(),
+            )
+            for stamp, value in self.trend_points
+        ]
+        p.drawLine(*fitted)
+        p.restore()
+        p.setPen(QColor("#ffbc70"))
+        p.drawText(rect, Qt.AlignmentFlag.AlignRight, "Trend liniowy (obliczony)")
 
     def mouseMoveEvent(self, event):
         if not self.positions:
@@ -215,3 +214,18 @@ class Chart(QWidget):
             f"{point[2]}\n{label or f'{value:g}'} {self.unit}",
             self,
         )
+
+
+def series_limits(points, valid):
+    # Axis extents are display geometry, never exported health aggregates.
+    lo = min(x[1] for x in valid)
+    hi = max(x[1] for x in valid)
+    if hi == lo:
+        lo -= 1
+        hi += 1
+    xmin = points[0][0]
+    xmax = points[-1][0]
+    if xmin == xmax:
+        xmin -= 30000
+        xmax += 30000
+    return lo, hi, xmin, xmax

@@ -124,7 +124,7 @@ class CollectorPanel(QWidget):
         if not path:
             self.message.setText("Wskaż plik konfiguracji kolektora")
             return
-        manager = self.host.services.collector_manager(path)
+        services = self.host.services
         missing = object()
 
         def current(result):
@@ -141,6 +141,7 @@ class CollectorPanel(QWidget):
                 self.message.setText(message)
 
         def execute(worker):
+            manager = services.collector_manager(path)
             if key not in {"save", "apply"}:
                 try:
                     manager.files.load_config()

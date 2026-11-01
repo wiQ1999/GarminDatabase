@@ -14,6 +14,25 @@ from tests.ui.test_ui import ready, window
 pytestmark = pytest.mark.ui
 
 
+def test_manager_construction_runs_outside_qt_thread(qtbot, tmp_path, monkeypatch):
+    w = window(qtbot, tmp_path)
+    qt_thread = threading.get_ident()
+    threads = []
+    original = w.services.collector_manager
+
+    def create(path):
+        threads.append(threading.get_ident())
+        return original(path)
+
+    monkeypatch.setattr(w.services, "collector_manager", create)
+    w.collector_status.poll()
+    ready(qtbot, w)
+    w.settings_page.collector_panel.buttons["load"].click()
+    ready(qtbot, w)
+    assert len(threads) == 2
+    assert all(thread != qt_thread for thread in threads)
+
+
 @pytest.mark.parametrize(
     ("anchor", "display"),
     [
@@ -30,7 +49,7 @@ def test_schedule_anchor_displays_warsaw_and_survives_save(
     files = CollectorFiles(tmp_path / "settings.json")
     config = replace(files.defaults(tmp_path), anchor_at=anchor)
     files.save_config(config)
-    panel = w.collector_panel
+    panel = w.settings_page.collector_panel
     panel._loaded(config)
     assert panel.anchor.text() == display
     panel.buttons["save"].click()
@@ -44,7 +63,7 @@ def test_save_collector_config_is_separate_from_apply_and_gui_preferences(
     qtbot, tmp_path
 ):
     w = window(qtbot, tmp_path)
-    panel = w.collector_panel
+    panel = w.settings_page.collector_panel
     path = tmp_path / "settings.json"
     assert panel.interval.minimum() == 15 and panel.interval.value() == 120
     panel.enabled.setChecked(True)
@@ -58,7 +77,7 @@ def test_save_collector_config_is_separate_from_apply_and_gui_preferences(
     assert config.database_dsn is None and config.download_from is None
     assert config.settings_path == str(tmp_path / "settings.json")
     assert "Zainstaluj" in panel.message.text()
-    w.save_settings()
+    w.settings_page.save_settings()
     ready(qtbot, w)
     assert w.settings.refresh_seconds == 15
     panel.interval.setValue(30)
@@ -69,10 +88,10 @@ def test_save_collector_config_is_separate_from_apply_and_gui_preferences(
 
 def test_defaults_share_configuration_directory_and_current_account(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
-    panel = w.collector_panel
+    panel = w.settings_page.collector_panel
     assert panel.path.text() == str(tmp_path / "settings.json")
     assert not hasattr(w, "config_directory")
-    assert w.open_config_button.text() == "Otwórz folder konfiguracji"
+    assert w.settings_page.open_config_button.text() == "Otwórz folder konfiguracji"
     assert panel.account.text() == w.services.current_account()
     assert not hasattr(panel, "dsn")
     assert not hasattr(panel, "data_dir")
@@ -81,9 +100,9 @@ def test_defaults_share_configuration_directory_and_current_account(qtbot, tmp_p
 def test_missing_config_shows_actionable_message(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
     for action in ("load",):
-        w.collector_panel.buttons[action].click()
+        w.settings_page.collector_panel.buttons[action].click()
         ready(qtbot, w)
-        assert "Zapisz konfigurację" in w.collector_panel.message.text()
+        assert "Zapisz konfigurację" in w.settings_page.collector_panel.message.text()
 
 
 def test_global_download_start_is_saved_and_used_by_manual_sync(
@@ -96,8 +115,8 @@ def test_global_download_start_is_saved_and_used_by_manual_sync(
     from garmin_database.adapters.outbound.filesystem.settings_json import Settings
 
     w = window(qtbot, tmp_path)
-    w.download_from.setDate(QDate(2025, 2, 3))
-    w.save_settings()
+    w.settings_page.download_from.setDate(QDate(2025, 2, 3))
+    w.settings_page.save_settings()
     ready(qtbot, w)
     assert Settings.load(w.settings_path).download_from == "2025-02-03"
     calls = []
@@ -124,7 +143,7 @@ def test_slow_schedule_operation_keeps_qt_alive_and_discards_old_path(
     qtbot, tmp_path, monkeypatch
 ):
     w = window(qtbot, tmp_path)
-    panel = w.collector_panel
+    panel = w.settings_page.collector_panel
     path = tmp_path / "collector.json"
     files = CollectorFiles(path)
     files.save_config(files.defaults(tmp_path))
@@ -136,7 +155,7 @@ def test_slow_schedule_operation_keeps_qt_alive_and_discards_old_path(
         started.set()
         assert release.wait(5)
 
-    monkeypatch.setattr(manager, "apply", apply)
+    monkeypatch.setattr(manager, "install", apply)
     monkeypatch.setattr(w.services, "collector_manager", lambda _: manager)
     ticks = []
     timer = QTimer(w)
@@ -159,8 +178,8 @@ def test_slow_schedule_operation_keeps_qt_alive_and_discards_old_path(
 
 def test_status_is_human_readable_and_busy_does_not_enter_gui_journal(qtbot, tmp_path):
     w = window(qtbot, tmp_path)
-    panel = w.collector_panel
-    before = w.details.toPlainText()
+    panel = w.settings_page.collector_panel
+    before = w.start_page.details.toPlainText()
     panel = w.collector_status
     panel.render(
         (
@@ -179,7 +198,7 @@ def test_status_is_human_readable_and_busy_does_not_enter_gui_journal(qtbot, tmp
     )
     assert "zmiany niezastosowane" in panel.message.text()
     assert "logowanie Garmin" in panel.message.text()
-    assert w.details.toPlainText() == before
+    assert w.start_page.details.toPlainText() == before
     assert panel.values["next"].text() == "2026-10-30 13:00:00 +01:00"
     assert (
         panel.log_view.toPlainText()
@@ -225,10 +244,10 @@ def test_collector_has_separate_page_and_shares_poll_clock(
 ):
     w = window(qtbot, tmp_path)
     assert w.navigation.item(4).text() == "Kolektor"
-    assert set(w.collector_panel.buttons) == {"load", "save", "apply"}
+    assert set(w.settings_page.collector_panel.buttons) == {"load", "save", "apply"}
     assert "nie jest skonfigurowany" in w.collector_status.message.text()
-    w.refresh_seconds.setValue(45)
-    w.save_settings()
+    w.settings_page.refresh_seconds.setValue(45)
+    w.settings_page.save_settings()
     ready(qtbot, w)
     assert w.overview.timer.interval() == 45_000
     calls = []
@@ -277,7 +296,7 @@ def test_interactive_mode_selects_current_account_and_explains_locked_desktop(
     qtbot, tmp_path, monkeypatch
 ):
     w = window(qtbot, tmp_path)
-    panel = w.collector_panel
+    panel = w.settings_page.collector_panel
     assert panel.windows_logon.currentData() == "interactive"
     assert panel.account.isReadOnly()
     assert "zablokowanym ekranie" in panel.note.text()
