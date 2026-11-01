@@ -1,14 +1,50 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from threading import Event
 from types import SimpleNamespace
 
 import pytest
 
 from garmin_database.adapters.outbound.filesystem.settings_json import Settings
-from garmin_database.bootstrap.dependencies import Services
+from garmin_database.bootstrap.dependencies import Services, create_sync
 from tests.support.fixtures import fit_bytes, zip_bytes
 
 pytestmark = pytest.mark.integration
+
+
+def test_delayed_snapshot_is_recovered_without_duplicate_fits(tmp_path):
+    services = Services(Settings(data_dir=str(tmp_path)))
+    calls = []
+
+    def download(day):
+        calls.append(day)
+        if len(calls) == 1:
+            error = RuntimeError("private response")
+            error.response = SimpleNamespace(status_code=404)
+            raise error
+        return zip_bytes()
+
+    sync = create_sync(
+        services.db, SimpleNamespace(download_health_snapshot=download), delay=0
+    )
+    day = date(2024, 6, 19)
+    assert sync.run_summary(day, day, Event()).unresolved_days == 1
+    assert sync.run_summary(day, day, Event()).unresolved_days == 1
+    assert len(calls) == 1
+    sync.clock = lambda: datetime.now(timezone.utc) + timedelta(hours=25)
+    result = sync.run_summary(day, day, Event())
+    assert result.successful_days == 1 and result.issue_count == 0
+    assert len(calls) == 2
+    assert sync.archives.payloads == {}
+    assert not (tmp_path / "raw").exists()
+    assert sync.run_summary(day, day, Event()).successful_days == 1
+    with services.db.connect(readonly=True) as conn:
+        assert conn.execute("SELECT count(*) FROM fit_files").fetchone()[0] == 1
+        assert conn.execute("SELECT count(*) FROM fit_messages").fetchone()[0] == 2
+        assert conn.execute("SELECT count(*) FROM fit_fields").fetchone()[0] == 8
+        assert (
+            conn.execute("SELECT download_status FROM import_days").fetchone()[0]
+            == "downloaded"
+        )
 
 
 def test_summary_matches_real_database_with_404_crc_failure_and_successful_last_day(

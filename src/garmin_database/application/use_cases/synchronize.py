@@ -19,6 +19,8 @@ from garmin_database.application.use_cases.download_ahead import DownloadAhead
 from garmin_database.domain.cancellation import Cancelled, check_stop
 from garmin_database.domain.time import dates
 
+NOT_FOUND_RECHECK_DELAY = timedelta(hours=24)
+
 
 class Sync:
     """Download/import workflow. Contracts: docs/04-synchronization.md."""
@@ -30,12 +32,14 @@ class Sync:
         importer: ArchiveImporter,
         source=None,
         delay=3.0,
+        clock=None,
     ):
         self.repository = repository
         self.archives = archives
         self.importer = importer
         self.source = source
         self.delay = delay
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.network = False
         self.refresh_all = False
         self.halt_reason = None
@@ -200,10 +204,11 @@ class Sync:
         return "błąd pobierania" + code + "; import dnia nie został wykonany"
 
     def already_checked(self, old):
-        return bool(
-            not self.refresh_all
-            and old
-            and old["download_status"] in {"not_found_unverified", "no_data_confirmed"}
+        if self.refresh_all or not old:
+            return False
+        return old["download_status"] == "no_data_confirmed" or (
+            old["download_status"] == "not_found_unverified"
+            and not not_found_recheck_due(old, self.clock())
         )
 
     def consecutive_failures(self, previous, day, status):
@@ -306,6 +311,15 @@ class Sync:
             and status < 500
             or attempt == 2
         )
+
+
+def not_found_recheck_due(previous, now):
+    """A missing snapshot can become available later; preserve the resume cooldown."""
+    try:
+        checked = datetime.fromisoformat(previous["checked_at"])
+    except (KeyError, IndexError, TypeError, ValueError):
+        return False
+    return checked.tzinfo is not None and now - checked >= NOT_FOUND_RECHECK_DELAY
 
 
 def error_status(error):
