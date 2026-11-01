@@ -15,9 +15,12 @@ Odczyty, eksport i MCP dopuszczają bieżący dzień Europe/Warsaw. Kompletnoś�
 ## Stany
 
 - Pobranie: `pending`, `downloaded`, `empty_zip`, `not_found_unverified`, `no_data_confirmed`, `failed`, `local_invalid` — zgodnie z ograniczeniami schematu SQL.
+
 - Przetwarzanie pojedynczego FIT: brak ukończonego wyniku, `complete`, `partial`, `failed`; przerwany przebieg ma osobny status `interrupted`.
 - `partial` oznacza zachowanie części rekordów z jednoznacznym opisem ograniczeń; eksport musi sygnalizować niepełne dekodowanie.
 - `no_data_confirmed` wymaga udokumentowanej odpowiedzi potwierdzającej brak archiwum dla daty. 401, 403, 429, błędy serwera i nieznane 404 pozostają błędami, dopóki zachowanie endpointu nie zostanie zweryfikowane. Znane `not_found_unverified` są pomijane w 24-godzinnym okresie ochronnym, nadal widoczne jako nierozstrzygnięte; nie stają się potwierdzonym brakiem danych.
+
+Przyjęcie poprawnego ZIP aktualizuje `checked_at` i usuwa poprzednie `http_status` oraz `error_type`, zachowując licznik prób. Dotyczy to pobrania oraz nowego importu lokalnego; stan dekodowania FIT jest osobny. Sukces pobrania nie może nadal wskazywać błędu poprzedniego żądania.
 
 Sprawdzać cały wybrany zakres od początku pobierania (domyślnie 2024-01-01): nie kończyć wyszukiwania przy pierwszym dniu bez danych. Pierwsza data dostępnego archiwum i pierwszy czas odczytanego pomiaru to dwie różne informacje.
 

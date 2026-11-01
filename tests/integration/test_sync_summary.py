@@ -11,6 +11,38 @@ from tests.support.fixtures import fit_bytes, zip_bytes
 pytestmark = pytest.mark.integration
 
 
+@pytest.mark.parametrize("status", [404, 500])
+def test_successful_download_replaces_previous_error_metadata(tmp_path, status):
+    services = Services(Settings(data_dir=str(tmp_path)))
+    old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    day = date(2024, 6, 19)
+    with services.db.writer_lock(), services.db.connect() as conn:
+        conn.execute(
+            "INSERT INTO import_days(day,download_status,attempts,checked_at,http_status,error_type) VALUES(%s,%s,3,%s,%s,'RuntimeError')",
+            (
+                str(day),
+                "not_found_unverified" if status == 404 else "failed",
+                old,
+                status,
+            ),
+        )
+    services.source_factory = lambda: SimpleNamespace(
+        download_health_snapshot=lambda day: zip_bytes()
+    )
+    result = services.sync(
+        day, day, Event(), lambda *args: None, delay=0, detailed=True
+    )
+    assert result.successful_days == 1 and result.issue_count == 0
+    with services.db.connect(readonly=True) as conn:
+        row = conn.execute(
+            "SELECT * FROM import_days WHERE day=%s", (str(day),)
+        ).fetchone()
+        assert row["download_status"] == "downloaded"
+        assert row["http_status"] is None and row["error_type"] is None
+        assert datetime.fromisoformat(row["checked_at"]) > datetime.fromisoformat(old)
+        assert row["attempts"] == 4
+
+
 def test_delayed_snapshot_is_recovered_without_duplicate_fits(tmp_path):
     services = Services(Settings(data_dir=str(tmp_path)))
     calls = []

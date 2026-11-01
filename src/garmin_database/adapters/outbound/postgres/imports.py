@@ -154,7 +154,8 @@ class Importer:
     def register_archive(conn, size, day, relative, digest, entries, origin):
         conn.execute(
             "INSERT INTO import_days(day,download_status,checked_at) VALUES(%s,%s,%s) "
-            "ON CONFLICT(day) DO UPDATE SET download_status=excluded.download_status",
+            "ON CONFLICT(day) DO UPDATE SET download_status=excluded.download_status, "
+            "checked_at=excluded.checked_at,http_status=NULL,error_type=NULL",
             (day, "downloaded" if entries else "empty_zip", utc_now()),
         )
         conn.execute(
