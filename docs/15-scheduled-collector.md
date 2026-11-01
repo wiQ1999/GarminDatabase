@@ -73,6 +73,8 @@ Aktualizacja istniejącego zadania wymaga osobnego sprawdzenia jego deskryptora:
 
 Windows: `%LOCALAPPDATA%/GarminDatabase/settings.json`; Linux: `/etc/garmin-database/settings.json`. GUI otwiera folder przyciskiem „Otwórz folder konfiguracji”. Pole `refresh_seconds` (5–3600, domyślnie 15) steruje częstotliwością odświeżania statusów, nie pobierania z Garmin. Początek harmonogramu wyznacza terminy, a `download_from` zakres danych.
 
+Edytor początku harmonogramu wyświetla czas Europe/Warsaw i zapisuje odpowiadającą mu chwilę UTC. Wczytanie i ponowny zapis bez edycji zachowują termin, także dla obu wystąpień tej samej godziny przy jesiennej zmianie czasu.
+
 Starsze samodzielne pliki kolektora są nadal czytelne przez CLI. Pierwszy zapis formularza może przenieść ustawienia sąsiedniego `collector.json` do wspólnej konfiguracji, bez usuwania oryginału. Następnie należy zastosować harmonogram, aby zadanie wskazywało nowy plik. Stare niestandardowe ścieżki nie są automatycznie usuwane.
 
 W `state_dir` znajdują się `status.json`, `collector.lock` i `logs/collector.log`. Plik statusu przechowuje m.in. ostatni wynik, terminy, ostatni sukces, bezpieczne liczniki, pauzę sesji, `not_before` i zastosowaną rewizję. Status/log można odczytać bez PostgreSQL. Log ma limit 5 MiB i pięć kopii rotacji. Nie zawiera pomiarów, tokenów, haseł, MFA, odpowiedzi dostawcy, pełnych wyjątków ani DSN.

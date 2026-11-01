@@ -21,6 +21,13 @@ from PySide6.QtWidgets import (
 from garmin_database.adapters.inbound.desktop.busy import BusyButton
 
 
+def warsaw_datetime(value):
+    # Construct from an instant: QDateTime(datetime) can discard Python tzinfo.
+    return QDateTime.fromMSecsSinceEpoch(
+        int(value.timestamp() * 1000), QTimeZone(b"Europe/Warsaw")
+    )
+
+
 class CollectorPanel(QWidget):
     def __init__(self, host):
         super().__init__(host)
@@ -45,7 +52,9 @@ class CollectorPanel(QWidget):
         form.addRow("Odstęp między terminami", self.interval)
         self.anchor = QDateTimeEdit()
         self.anchor.setTimeZone(QTimeZone(b"Europe/Warsaw"))
-        self.anchor.setDateTime(QDateTime(datetime(2024, 1, 1, tzinfo=timezone.utc)))
+        self.anchor.setDateTime(
+            warsaw_datetime(datetime(2024, 1, 1, tzinfo=timezone.utc))
+        )
         self.anchor.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.anchor.setCalendarPopup(True)
         form.addRow("Początek harmonogramu (Warszawa)", self.anchor)
@@ -159,7 +168,9 @@ class CollectorPanel(QWidget):
         )
         self.account.setText(config.run_as)
         self.anchor.setDateTime(
-            QDateTime(datetime.fromisoformat(config.anchor_at.replace("Z", "+00:00")))
+            warsaw_datetime(
+                datetime.fromisoformat(config.anchor_at.replace("Z", "+00:00"))
+            )
         )
         self.message.setText("Konfiguracja wczytana")
 

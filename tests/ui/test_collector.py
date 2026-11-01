@@ -2,6 +2,8 @@
 
 import os
 import threading
+from dataclasses import replace
+from datetime import datetime
 
 import pytest
 from PySide6.QtCore import QTimer
@@ -10,6 +12,32 @@ from garmin_database.adapters.outbound.filesystem.collector_files import Collect
 from tests.ui.test_ui import ready, window
 
 pytestmark = pytest.mark.ui
+
+
+@pytest.mark.parametrize(
+    ("anchor", "display"),
+    [
+        ("2024-01-01T00:00:00+00:00", "2024-01-01 01:00"),
+        ("2026-07-15T00:00:00+00:00", "2026-07-15 02:00"),
+        ("2026-10-25T00:30:00+00:00", "2026-10-25 02:30"),
+        ("2026-10-25T01:30:00+00:00", "2026-10-25 02:30"),
+    ],
+)
+def test_schedule_anchor_displays_warsaw_and_survives_save(
+    qtbot, tmp_path, anchor, display
+):
+    w = window(qtbot, tmp_path)
+    files = CollectorFiles(tmp_path / "settings.json")
+    config = replace(files.defaults(tmp_path), anchor_at=anchor)
+    files.save_config(config)
+    panel = w.collector_panel
+    panel._loaded(config)
+    assert panel.anchor.text() == display
+    panel.buttons["save"].click()
+    ready(qtbot, w)
+    assert datetime.fromisoformat(files.load_config().anchor_at) == datetime.fromisoformat(
+        anchor
+    )
 
 
 def test_save_collector_config_is_separate_from_apply_and_gui_preferences(
