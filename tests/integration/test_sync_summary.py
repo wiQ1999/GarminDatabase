@@ -1,6 +1,7 @@
 from datetime import date, datetime, timedelta, timezone
 from threading import Event
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -10,6 +11,79 @@ from garmin_database.bootstrap.dependencies import Services, create_sync
 from tests.support.fixtures import fit_bytes, zip_bytes
 
 pytestmark = pytest.mark.integration
+
+
+def test_current_day_retries_each_cycle_without_refresh_all_and_deduplicates(tmp_path):
+    services = Services(Settings(data_dir=str(tmp_path)))
+    now = datetime.now(timezone.utc)
+    day = now.astimezone(ZoneInfo("Europe/Warsaw")).date()
+    previous = day - timedelta(days=1)
+    with services.db.writer_lock(), services.db.connect() as conn:
+        conn.execute(
+            "INSERT INTO import_days(day,download_status,attempts,checked_at,http_status) "
+            "VALUES(%s,'not_found_unverified',1,%s,404)",
+            (previous.isoformat(), now.isoformat()),
+        )
+    calls = []
+
+    def download(requested):
+        calls.append(requested)
+        if len(calls) <= 2:
+            raise DownloadFailed(404)
+        return zip_bytes()
+
+    source = SimpleNamespace(download_health_snapshot=download)
+    for expected in ("missing", "missing", "imported", "imported"):
+        sync = create_sync(services.db, source, delay=0)
+        sync.clock = lambda: now
+        summary = sync.run_summary(previous, day, Event())
+        assert not sync.refresh_all
+        assert summary.error_count == 0
+        assert summary.successful_days == (expected == "imported")
+        assert summary.unresolved_days == (2 if expected == "missing" else 1)
+    assert calls == [day.isoformat()] * 4
+    with services.db.connect(readonly=True) as conn:
+        assert conn.execute("SELECT count(*) FROM fit_files").fetchone()[0] == 1
+        assert conn.execute("SELECT count(*) FROM decode_runs").fetchone()[0] == 1
+        assert conn.execute("SELECT count(*) FROM fit_messages").fetchone()[0] == 2
+        assert (
+            conn.execute(
+                "SELECT attempts FROM import_days WHERE day=%s", (previous.isoformat(),)
+            ).fetchone()[0]
+            == 1
+        )
+        current = conn.execute(
+            "SELECT download_status,attempts,http_status,error_type FROM import_days WHERE day=%s",
+            (day.isoformat(),),
+        ).fetchone()
+        assert tuple(current) == ("downloaded", 4, None, None)
+
+
+def test_current_day_with_recent_404_is_prefetched_after_previous_day(tmp_path):
+    services = Services(Settings(data_dir=str(tmp_path)))
+    now = datetime.now(timezone.utc)
+    day = now.astimezone(ZoneInfo("Europe/Warsaw")).date()
+    previous = day - timedelta(days=1)
+    with services.db.writer_lock(), services.db.connect() as conn:
+        conn.execute(
+            "INSERT INTO import_days(day,download_status,attempts,checked_at,http_status) "
+            "VALUES(%s,'not_found_unverified',1,%s,404)",
+            (day.isoformat(), now.isoformat()),
+        )
+    calls = []
+
+    def download(requested):
+        calls.append(requested)
+        return zip_bytes()
+
+    sync = create_sync(
+        services.db, SimpleNamespace(download_health_snapshot=download), delay=0
+    )
+    sync.clock = lambda: now
+    summary = sync.run_summary(previous, day, Event())
+    assert summary.successful_days == 2 and summary.issue_count == 0
+    assert calls == [previous.isoformat(), day.isoformat()]
+    assert not (tmp_path / "raw").exists()
 
 
 @pytest.mark.parametrize("status", [404, 500])

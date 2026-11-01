@@ -77,7 +77,10 @@ def event_text(outcome, *, summary=None, not_before=None):
     elif outcome == "issues":
         message += " Ten wpis nie zawiera szczegółowego podsumowania przyczyny."
     if counts.get("unresolved_days", 0):
-        message += " Dostępność brakujących danych jest sprawdzana ponownie po upływie 24 godzin od poprzedniego sprawdzenia."
+        message += (
+            " Dostępność brakujących danych bieżącego dnia jest sprawdzana przy każdym uruchomieniu synchronizacji."
+            " Wcześniejsze dni są sprawdzane ponownie po upływie 24 godzin od poprzedniego sprawdzenia."
+        )
     if outcome == "rate_limited" and not_before:
         message += " Najwcześniejsza kolejna próba: " + display_time(not_before) + "."
     return message

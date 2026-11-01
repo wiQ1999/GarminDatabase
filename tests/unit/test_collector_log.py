@@ -44,6 +44,7 @@ def test_actual_cause_counts_and_retry_instruction_are_separate_from_errors():
     assert "Błędy pobierania (dni): 0" in message
     assert "Błędy importu FIT (pliki): 0" in message
     assert "brakujących danych" in message and "24 godzin" in message
+    assert "bieżącego dnia" in message and "każdym uruchomieniu" in message
     assert "404" not in message and "z błędami" not in message
     assert "bez błędów; dni bez dostępnych danych pominięto" in message
     assert "nie zawiera" not in message

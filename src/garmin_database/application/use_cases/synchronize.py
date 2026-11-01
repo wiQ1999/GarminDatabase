@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from zipfile import ZipFile
+from zoneinfo import ZoneInfo
 
 from garmin_database.application.dto import SyncSummary
 from garmin_database.application.errors import (
@@ -117,7 +118,7 @@ class Sync:
                 summary.skipped_days += 1
                 self.finish_day(summary, report, "pominięto; brak lokalnego ZIP")
                 continue
-            if self.already_checked(old):
+            if self.already_checked(old, text):
                 self.record_checked_day(summary, old, text, report)
                 continue
             next_day = requested[index].isoformat() if index < len(requested) else None
@@ -201,12 +202,15 @@ class Sync:
         code = f" (HTTP {status})" if status is not None else ""
         return "błąd pobierania" + code + "; import dnia nie został wykonany"
 
-    def already_checked(self, old):
+    def already_checked(self, old, day):
         if self.refresh_all or not old:
+            return False
+        now = self.clock()
+        if day == now.astimezone(ZoneInfo("Europe/Warsaw")).date().isoformat():
             return False
         return old["download_status"] == "no_data_confirmed" or (
             old["download_status"] == "not_found_unverified"
-            and not not_found_recheck_due(old, self.clock())
+            and not not_found_recheck_due(old, now)
         )
 
     def consecutive_failures(self, previous, day, status):
@@ -237,7 +241,7 @@ class Sync:
     def prepare_download(self, day, ahead):
         if day is None or self.archives.exists(day):
             return
-        if self.already_checked(self.repository.day(day)):
+        if self.already_checked(self.repository.day(day), day):
             return
         self.repository.attempt(day)
         ahead.start(day, self.delay)
@@ -311,7 +315,7 @@ class Sync:
 
 
 def not_found_recheck_due(previous, now):
-    """A missing snapshot can become available later; preserve the resume cooldown."""
+    """Recheck missing historical archives after the UTC cooldown."""
     try:
         checked = datetime.fromisoformat(previous["checked_at"])
     except (KeyError, IndexError, TypeError, ValueError):
