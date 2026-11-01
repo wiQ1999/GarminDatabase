@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from garmin_database.adapters.outbound.filesystem.files import atomic_json
 from garmin_database.application.dto import ExportResult
 from garmin_database.application.read_models import aggregation, summary_columns
+from garmin_database.application.time_presentation import warsaw_iso
 from garmin_database.domain.aggregation import monthly_summaries, summary_method
 from garmin_database.domain.cancellation import Cancelled, check_stop
 from garmin_database.domain.values import dumps
@@ -50,7 +51,7 @@ class JSONExport:
             **{"from": start.isoformat(), "to": end.isoformat()},
             timezone="Europe/Warsaw",
             calendar_timezone="Europe/Warsaw",
-            timestamp_timezone="UTC",
+            timestamp_timezone="Europe/Warsaw",
             **snapshot.coverage(start, end),
         )
         if param["enum"]:
@@ -88,7 +89,7 @@ class JSONExport:
             stream.write(
                 dumps(
                     [
-                        row["time"],
+                        warsaw_iso(row["time"]),
                         row["value"],
                         source_ids[source],
                         {
@@ -127,7 +128,11 @@ class JSONExport:
             stream.write(
                 dumps(
                     [
-                        row["day"] if column == "month" else row[column]
+                        row["day"]
+                        if column == "month"
+                        else warsaw_iso(row[column])
+                        if column in {"first_time", "last_time"}
+                        else row[column]
                         for column in columns
                     ]
                 )

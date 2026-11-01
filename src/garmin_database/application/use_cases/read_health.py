@@ -23,6 +23,7 @@ from garmin_database.application.read_models import (
     aggregation,
 )
 from garmin_database.application.settings import valid_parameter_list
+from garmin_database.application.time_presentation import warsaw_iso
 from garmin_database.domain.aggregation import (
     MEAN_PARAMETERS,
     monthly_summaries,
@@ -124,7 +125,7 @@ def formatted_row(row, columns, key):
         if item is None:
             return None
         if column in {"first_time", "last_time"}:
-            return datetime.fromisoformat(item).astimezone(ZONE).isoformat()
+            return warsaw_iso(item)
         if column in {"mean", "minimum", "maximum"}:
             return round(item, PRECISION[key])
         return item
@@ -154,11 +155,7 @@ def sample_row(row, parameter):
             and row["validity"] == "valid"
             and numeric_sample(row["value"], parameter)
         )
-    instant = (
-        datetime.fromisoformat(row["time"]).astimezone(ZONE).isoformat()
-        if row["time"]
-        else None
-    )
+    instant = warsaw_iso(row["time"])
     return [
         instant,
         row["value"],

@@ -55,7 +55,7 @@ class CollectorPanel(QWidget):
         self.anchor.setDateTime(
             warsaw_datetime(datetime(2024, 1, 1, tzinfo=timezone.utc))
         )
-        self.anchor.setDisplayFormat("yyyy-MM-dd HH:mm")
+        self.anchor.setDisplayFormat("yyyy-MM-dd HH:mm:ss ttt")
         self.anchor.setCalendarPopup(True)
         form.addRow("Początek harmonogramu (Warszawa)", self.anchor)
         self.windows_logon = QComboBox()

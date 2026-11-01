@@ -33,8 +33,8 @@ def test_ticks_include_interior_times_and_suitable_precision(span, count, kind):
         fmt = {
             "seconds": "%H:%M:%S",
             "clock": "%H:%M",
-            "date_clock": "%d.%m %H:%M",
-            "date": "%d.%m.%Y",
+            "date_clock": "%Y-%m-%d %H:%M",
+            "date": "%Y-%m-%d",
         }[kind]
         assert label == local.strftime(fmt)
 
@@ -43,8 +43,8 @@ def test_dst_day_labels_include_offsets():
     begin = stamp("2026-10-25T00:00:00+02:00")
     end = stamp("2026-10-25T23:00:00+01:00")
     ticks = time_axis_labels(begin, end, 7)
-    assert ticks[0][1] == "00:00 +0200"
-    assert ticks[-1][1] == "23:00 +0100"
+    assert ticks[0][1] == "00:00 +02:00"
+    assert ticks[-1][1] == "23:00 +01:00"
     assert len(ticks) == 7
 
 
@@ -52,4 +52,4 @@ def test_single_observation_and_narrow_axis_fallback():
     begin = stamp("2026-10-09T06:00:00+00:00")
     assert time_axis_labels(begin, begin, 8) == [(begin, "08:00:00")]
     ticks = time_axis_labels(begin, begin + 4 * 86400000, 1)
-    assert ticks == [(begin + 2 * 86400000, "11.10.2026 08:00")]
+    assert ticks == [(begin + 2 * 86400000, "2026-10-11 08:00")]

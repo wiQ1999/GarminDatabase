@@ -4,7 +4,7 @@ import json
 import os
 import sys
 import threading
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import anyio
@@ -29,6 +29,7 @@ from garmin_database.application.use_cases.read_health import (
 from garmin_database.bootstrap.dependencies import create_exporter as Exporter
 from garmin_database.bootstrap.mcp import create_service
 from garmin_database.domain.aggregation import MEAN_PARAMETERS
+from garmin_database.domain.values import FIT_EPOCH
 from tests.support.fixtures import archive, fit_bytes
 
 pytestmark = pytest.mark.unit
@@ -286,9 +287,64 @@ def test_daily_period_and_export_share_weighting_and_time(source, tmp_path):
     exported = json.loads((result.directory / "history" / (KEY + ".json")).read_text())
     erow = dict(zip(exported["columns"], exported["data"][0]))
     assert erow["mean"] == row["mean"]
-    assert exported["timestamp_timezone"] == "UTC"
+    assert exported["timestamp_timezone"] == "Europe/Warsaw"
     assert exported["calendar_timezone"] == "Europe/Warsaw"
-    assert erow["first_time"].endswith("+00:00")
+    assert erow["first_time"] == row["first_time"]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "day,utc_times,local_times",
+    [
+        (
+            "2026-03-29",
+            ["2026-03-29T00:30:00Z", "2026-03-29T01:30:00Z"],
+            ["2026-03-29T01:30:00+01:00", "2026-03-29T03:30:00+02:00"],
+        ),
+        (
+            "2026-10-25",
+            ["2026-10-25T00:30:00Z", "2026-10-25T01:30:00Z"],
+            ["2026-10-25T02:30:00+02:00", "2026-10-25T02:30:00+01:00"],
+        ),
+    ],
+)
+def test_chart_mcp_and_exports_preserve_instants_across_dst(
+    source, tmp_path, day, utc_times, local_times
+):
+    db, settings, path, service = source
+    values = [
+        (int(datetime.fromisoformat(t).timestamp()) - FIT_EPOCH, 60 + i)
+        for i, t in enumerate(utc_times)
+    ]
+    Importer(db).archive(
+        archive(db.root, day, fit_bytes(55, [(253, 4, 134), (27, 1, 2)], values))
+    )
+    query = Queries(db)
+    param = next(p for p in query.parameters() if p["key"] == KEY)
+    start = date.fromisoformat(day)
+    original = list(query.rows(param, start, start))
+    assert all(row["time"].endswith("+00:00") for row in original)
+    chart, _ = query.chart(param, start, start)
+    assert [point[2] for point in chart] == [
+        t[:10] + " " + t[11:19] + " " + t[19:] for t in local_times
+    ]
+    assert [r[0] for r in service.samples(day, KEY)["data"]] == local_times
+    daily = unpack(service.daily(day, day, [KEY]))[0]
+    assert [daily["first_time"], daily["last_time"]] == local_times
+    result = Exporter(db, settings, path).generate(
+        tmp_path / "out", [param], start, start
+    )
+    details = json.loads((result.directory / "details" / (KEY + ".json")).read_text())
+    history = json.loads((result.directory / "history" / (KEY + ".json")).read_text())
+    assert (
+        details["timestamp_timezone"]
+        == history["timestamp_timezone"]
+        == "Europe/Warsaw"
+    )
+    assert [r[0] for r in details["data"]] == local_times
+    row = dict(zip(history["columns"], history["data"][0]))
+    assert [row["first_time"], row["last_time"]] == local_times
+    assert list(query.rows(param, start, start)) == original
 
 
 @pytest.mark.integration

@@ -2,6 +2,8 @@
 
 Dokument opisuje dostępny interfejs Windows, jego zachowanie i wymagania prezentacji. Procedury startu, budowania i testowania znajdują się w [instrukcji uruchamiania](12-running-and-testing.md).
 
+Wszystkie daty i godziny prezentowane użytkownikowi dotyczą `Europe/Warsaw`, niezależnie od strefy systemu. Pełny zapis to `RRRR-MM-DD GG:mm:ss +01:00` zimą lub `+02:00` latem; offset dobierany jest dla daty zdarzenia, nie według bieżącego sezonu. Status i dziennik kolektora, konfiguracja harmonogramu oraz podpowiedzi wykresów stosują ten sam zapis. Starsze wpisy ISO UTC są przeliczane przy odczycie bez nadpisywania oryginału. Czas bez znanej strefy nie jest interpretowany według ustawień komputera. Oś wykresu skraca datę/godzinę zależnie od zakresu, zachowując kolejność rok–miesiąc–dzień i offset przy przejściu zmiany czasu. Dni bez godziny mają zapis `RRRR-MM-DD`. PostgreSQL, cache, stan wykonawczy i terminy harmonogramu pozostają w UTC.
+
 Błąd startu pokazuje zrozumiałą przyczynę i kod diagnostyczny, np. `STARTUP/PASSWORD_MISSING`, `STARTUP/PASSWORD_REJECTED` lub `STARTUP/SERVER_UNAVAILABLE`. Nie ogranicza się do nazwy `OperationalError`. Bezpieczny zapis w `%LOCALAPPDATA%/GarminDatabase/logs/startup-failure.json` zawiera kategorię, typ, opcjonalny SQLSTATE, ścieżkę programu i ustawień oraz wynik kontroli dostępu do pliku haseł. Nie zapisuje haseł, connection stringu ani treści wyjątku PostgreSQL. Brak uprawnień do zapisania diagnostyki nie zasłania pierwotnego komunikatu błędu.
 
 ## Uruchamianie i wygląd

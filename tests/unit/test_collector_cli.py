@@ -1,5 +1,6 @@
 """CLI routing and offline operation; no personal configuration or sessions."""
 
+import json
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -9,6 +10,7 @@ import pytest
 from garmin_database.adapters.inbound.collector.commands import main
 from garmin_database.adapters.outbound.filesystem.collector_files import CollectorFiles
 from garmin_database.adapters.outbound.scheduler.manager import ScheduleManager
+from garmin_database.application.collector_models import CollectorState
 
 pytestmark = pytest.mark.unit
 
@@ -49,6 +51,17 @@ def cli(tmp_path):
 def test_offline_commands_do_not_connect_sql_or_garmin(cli, command, capsys):
     assert cli.invoke(command) == 0
     assert "private" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("command", [["status", "--json"], ["schedule", "status"]])
+def test_cli_status_presents_warsaw_without_rewriting_state(cli, command, capsys):
+    config = cli.files.load_config()
+    state = CollectorState(started_at="2026-07-15T23:30:00Z")
+    cli.files.save_state(config, state)
+    assert cli.invoke(command) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["state"]["started_at"] == "2026-07-16T01:30:00+02:00"
+    assert cli.files.load_state(config).started_at == state.started_at
 
 
 def test_init_never_overwrites_configuration(cli):

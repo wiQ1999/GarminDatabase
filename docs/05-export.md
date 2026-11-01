@@ -61,7 +61,7 @@ UTF-8, poprawny JSON, krótkie angielskie nazwy. Parametr ma nazwę `message_nam
 
 Każda seria ma `parameter`, `unit`, `from`, `to`, `kind` (`history` albo `details`), `representation` i `columns`. Tablica `data` zawiera wiersze w kolejności z `columns`. Jednostka jest podana raz; wartości są już przeskalowane według profilu FIT.
 
-Szczegóły oraz źródłowe podsumowania mają kolumny `[time, value, source, validity]`. Kody `v`, `i`, `p`, `e` rozwija `validity_labels`; źródła `s1`, `s2` rozwija słownik `sources`. Każde źródło podaje ścieżkę FIT w ZIP i `requested_day`, który nie zastępuje czasu pomiaru. Nieznany czas to `null`. Czasy pomiarów są zapisane w UTC ISO 8601, a pole `timezone` określa lokalną granicę dni zestawień. Kody kategorii rozwija `value_labels`.
+Szczegóły oraz źródłowe podsumowania mają kolumny `[time, value, source, validity]`. Kody `v`, `i`, `p`, `e` rozwija `validity_labels`; źródła `s1`, `s2` rozwija słownik `sources`. Każde źródło podaje ścieżkę FIT w ZIP i `requested_day`, który nie zastępuje czasu pomiaru. Nieznany czas to `null`. Czasy pomiarów są zapisane w ISO 8601 w strefie `Europe/Warsaw` z jawnym offsetem właściwym dla daty; pole `timezone` określa lokalną granicę dni zestawień. Kody kategorii rozwija `value_labels`.
 
 Historia obliczona ma `representation: computed_summary`, `source_representation`, `summary_origin: application`, `data_revision` i `aggregation` z metodą, okresem i wersją algorytmu. Jej kolumny zależą od metody i są wymienione w pliku. Przykład demonstracyjny fragmentu średniej dziennej:
 
@@ -73,7 +73,7 @@ Historia obliczona ma `representation: computed_summary`, `source_representation
   "summary_origin": "application",
   "aggregation": {"method": "sample_mean", "period": "day", "algorithm_version": 1},
   "columns": ["day", "mean", "minimum", "maximum", "valid_count", "invalid_count", "excluded_count", "untimed_count", "first_time", "last_time", "day_basis"],
-  "data": [["2026-10-09", 50, 40, 60, 2, 1, 0, 0, "2026-10-09T01:00:00+00:00", "2026-10-09T01:05:00+00:00", "measurement_time"]]
+  "data": [["2026-10-09", 50, 40, 60, 2, 1, 0, 0, "2026-10-09T03:00:00+02:00", "2026-10-09T03:05:00+02:00", "measurement_time"]]
 }
 ```
 
@@ -97,7 +97,7 @@ Punkt wejścia: `Exporter.generate` w `src/garmin_database/application/use_cases
 
 Lista `export_parameters` w zapisanych Ustawieniach określa dostępność w plikach. Ekran Eksport i `--parameters` wybierają jej podzbiór. CLI bez `--parameters` używa tej listy; bezpośrednie wywołanie `Exporter` także ją sprawdza i ponownie pobiera kanoniczne opisy parametrów. Pusta lista niczego nie udostępnia. Migracja ustawień sprzed wersji 2 zamienia dawny pusty wybór „wszystko” jednorazowo na jawne klucze aktualnego katalogu. Nowe parametry nie włączają się automatycznie. MCP ma osobną listę i przełącznik, opisane w [UI](11-desktop-ui.md).
 
-Wszystkie pliki v2 zachowują dotychczasowe kolumny i precyzję. Nagłówki mają dodatkowo `calendar_timezone: Europe/Warsaw` oraz `timestamp_timezone: UTC`; dawne `timezone` nadal oznacza granice dni. Rozpoznane momenty, również `first_time` i `last_time`, pozostają w UTC. MCP pokazuje te same momenty w Warszawie z pełną datą i offsetem i zaokrągla wyłącznie prezentację: HRV/tętno do liczb całkowitych, oddech/saturację/stres do jednego miejsca. Nie zmienia PostgreSQL ani cache.
+Wszystkie nowe pliki v2 zachowują dotychczasowe kolumny i precyzję, a `calendar_timezone` oraz `timestamp_timezone` mają wartość `Europe/Warsaw`. Dotyczy to również `first_time`, `last_time` i `created_at` manifestu. Przeliczenie zachowuje rzeczywisty moment i ułamki sekund, również podczas zmiany czasu; nie zmienia PostgreSQL ani cache. Starsze eksporty z `timestamp_timezone: UTC` pozostają poprawne i nie są przepisywane. Odbiorca powinien respektować offset każdej wartości ISO, zamiast zakładać stałe przesunięcie. MCP używa tej samej strefy i zaokrągla wyłącznie prezentację wartości: HRV/tętno do liczb całkowitych, oddech/saturację/stres do jednego miejsca.
 
 Średnia okresowa MCP i miesięczna średnia eksportu korzystają ze wspólnego `period_summary`: `sum(mean_day * valid_count_day) / sum(valid_count_day)`. Obliczenie używa niezaokrąglonych danych. Dni bez poprawnych próbek nie są zerami i nie mają wagi. Średnie nie są ważone czasem. Wynik dla tego samego okresu i rewizji jest zgodny przed formatowaniem.
 

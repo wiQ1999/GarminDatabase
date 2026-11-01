@@ -86,8 +86,7 @@ def test_default_path_and_identity_match_application(monkeypatch, tmp_path):
     )
     if os.name == "nt":
         assert (
-            collector_files.default_config_path()
-            == application_dir() / "settings.json"
+            collector_files.default_config_path() == application_dir() / "settings.json"
         )
         assert files_account(collector_files) == "SYNTHETIC-PC\\synthetic-user"
     else:
@@ -109,6 +108,24 @@ def test_corrupt_state_fails_closed_and_log_is_allowlisted(files, tmp_path):
     path.write_text(json.dumps({"outcome": "private-error"}))
     with pytest.raises(ValueError):
         files.load_state(config)
+
+
+def test_log_converts_legacy_utc_without_rewriting_original(files, tmp_path):
+    config = replace(files.defaults(tmp_path), state_dir=str(tmp_path / "state"))
+    files.log(config, "success")
+    path = tmp_path / "state/logs/collector.log"
+    from datetime import datetime
+
+    timestamp = datetime.strptime(
+        path.read_text().splitlines()[0], "%Y-%m-%d %H:%M:%S %z success"
+    )
+    from garmin_database.application.time_presentation import warsaw_iso
+
+    assert warsaw_iso(timestamp) == timestamp.isoformat()
+    original = "2026-07-15T23:30:00.123456+00:00 success\n"
+    path.write_bytes(original.encode("utf-8"))
+    assert files.logs(config) == "2026-07-16 01:30:00 +02:00 success\n"
+    assert path.read_text() == original
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Linux credential file permissions")

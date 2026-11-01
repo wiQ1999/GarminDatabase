@@ -5,6 +5,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from garmin_database.adapters.outbound.postgres.summaries import Summaries
+from garmin_database.application.time_presentation import display_time
 from garmin_database.domain.aggregation import has_chart_summary, summary_method
 from garmin_database.domain.cancellation import check_stop
 from garmin_database.domain.values import FIT_EPOCH
@@ -365,11 +366,7 @@ class Queries:
             check_stop(stop)
             if row["time"]:
                 stamp = int(datetime.fromisoformat(row["time"]).timestamp() * 1000)
-                label = (
-                    datetime.fromisoformat(row["time"])
-                    .astimezone(ZoneInfo("Europe/Warsaw"))
-                    .strftime("%Y-%m-%d %H:%M:%S")
-                )
+                label = display_time(row["time"])
             elif parameter["representation"] == "source_summary":
                 stamp = bounds(
                     date.fromisoformat(row["requested_day"]),

@@ -17,10 +17,10 @@ pytestmark = pytest.mark.ui
 @pytest.mark.parametrize(
     ("anchor", "display"),
     [
-        ("2024-01-01T00:00:00+00:00", "2024-01-01 01:00"),
-        ("2026-07-15T00:00:00+00:00", "2026-07-15 02:00"),
-        ("2026-10-25T00:30:00+00:00", "2026-10-25 02:30"),
-        ("2026-10-25T01:30:00+00:00", "2026-10-25 02:30"),
+        ("2024-01-01T00:00:00+00:00", "2024-01-01 01:00:00 +01:00"),
+        ("2026-07-15T00:00:00+00:00", "2026-07-15 02:00:00 +02:00"),
+        ("2026-10-25T00:30:00+00:00", "2026-10-25 02:30:00 +02:00"),
+        ("2026-10-25T01:30:00+00:00", "2026-10-25 02:30:00 +01:00"),
     ],
 )
 def test_schedule_anchor_displays_warsaw_and_survives_save(
@@ -174,12 +174,14 @@ def test_status_is_human_readable_and_busy_does_not_enter_gui_journal(qtbot, tmp
                 "state": {"outcome": "auth_required", "auth_required": True},
                 "next_run": "2026-10-30T12:00:00+00:00",
             },
-            "synthetic log",
+            "2026-10-30T12:00:00+00:00 success\n",
         )
     )
     assert "zmiany niezastosowane" in panel.message.text()
     assert "logowanie Garmin" in panel.message.text()
     assert w.details.toPlainText() == before
+    assert panel.values["next"].text() == "2026-10-30 13:00:00 +01:00"
+    assert panel.log_view.toPlainText() == "2026-10-30 13:00:00 +01:00 success\n"
 
 
 def test_collector_has_separate_page_and_shares_poll_clock(

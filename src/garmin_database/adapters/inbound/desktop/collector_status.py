@@ -1,24 +1,15 @@
 """Independent, paced, read-only diagnostics for the collector page."""
 
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFormLayout, QLabel, QTextEdit, QVBoxLayout, QWidget
 
 from garmin_database.adapters.inbound.desktop.busy import BusyButton
 from garmin_database.adapters.inbound.desktop.workers import Worker
 from garmin_database.application.collector_messages import OUTCOME_LABELS
-
-
-def local_time(value):
-    if not value:
-        return "brak"
-    return (
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
-        .astimezone(ZoneInfo("Europe/Warsaw"))
-        .strftime("%Y-%m-%d %H:%M %z")
-    )
+from garmin_database.application.time_presentation import (
+    collector_log_text,
+    display_time,
+)
 
 
 class CollectorStatusPanel(QWidget):
@@ -154,8 +145,8 @@ class CollectorStatusPanel(QWidget):
             ("success", state.get("last_success")),
             ("pause", state.get("not_before")),
         ]:
-            self.values[key].setText(local_time(value))
-        self.log_view.setPlainText(log)
+            self.values[key].setText(display_time(value))
+        self.log_view.setPlainText(collector_log_text(log))
 
     def release(self):
         worker, self.worker = self.worker, None

@@ -20,6 +20,10 @@ from garmin_database.application.collector_models import (
     CollectorConfig,
     CollectorState,
 )
+from garmin_database.application.time_presentation import (
+    collector_log_text,
+    display_time,
+)
 
 
 def current_account():
@@ -216,7 +220,7 @@ class CollectorFiles:
                     "",
                     0,
                     "%s %s",
-                    (datetime.now(timezone.utc).isoformat(), outcome),
+                    (display_time(datetime.now(timezone.utc)), outcome),
                     None,
                 )
             )
@@ -229,4 +233,4 @@ class CollectorFiles:
             return "Brak logów kolektora"
         with path.open("rb") as stream:
             stream.seek(max(0, path.stat().st_size - 65536))
-            return stream.read().decode("utf-8", errors="replace")
+            return collector_log_text(stream.read().decode("utf-8", errors="replace"))

@@ -8,6 +8,7 @@ import sys
 from dataclasses import replace
 from threading import Event
 
+from garmin_database.application.time_presentation import collector_status_times
 from garmin_database.application.use_cases.run_collector import RunCollector
 
 
@@ -95,7 +96,13 @@ def main(argv=None, *, files_factory, manager_factory, session_factory, synchron
             )
         manager = manager_factory(args.config)
         if args.command == "status":
-            print(json.dumps(manager.status(config), ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    collector_status_times(manager.status(config)),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
         elif args.command == "logs":
             print(files.logs(config))
         elif args.command == "prepare-key":
@@ -114,7 +121,13 @@ def main(argv=None, *, files_factory, manager_factory, session_factory, synchron
             print("Sesja kolektora gotowa")
         elif args.command == "schedule":
             if args.action == "status":
-                print(json.dumps(manager.status(config), ensure_ascii=False, indent=2))
+                print(
+                    json.dumps(
+                        collector_status_times(manager.status(config)),
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
             else:
                 if args.action in {"enable", "disable"}:
                     config.enabled = args.action == "enable"
