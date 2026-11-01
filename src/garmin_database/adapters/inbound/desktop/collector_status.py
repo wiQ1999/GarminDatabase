@@ -1,6 +1,7 @@
 """Independent, paced, read-only diagnostics for the collector page."""
 
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QFormLayout, QLabel, QTextEdit, QVBoxLayout, QWidget
 
 from garmin_database.adapters.inbound.desktop.busy import BusyButton
@@ -19,6 +20,7 @@ class CollectorStatusPanel(QWidget):
         self.worker = None
         self.generation = 0
         self.stopped = False
+        self.log_text = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(18)
@@ -100,7 +102,7 @@ class CollectorStatusPanel(QWidget):
             self.message.setText(
                 "Kolektor nie jest skonfigurowany. Otwórz Ustawienia → Automatyczne pobieranie."
             )
-            self.log_view.setPlainText("Brak logów kolektora")
+            self.update_log("Brak logów kolektora")
             for value in self.values.values():
                 value.setText("brak")
             return
@@ -146,7 +148,22 @@ class CollectorStatusPanel(QWidget):
             ("pause", state.get("not_before")),
         ]:
             self.values[key].setText(display_time(value))
-        self.log_view.setPlainText(readable_log(log))
+        self.update_log(readable_log(log))
+
+    def update_log(self, text):
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        if text == self.log_text:
+            return
+        vertical = self.log_view.verticalScrollBar()
+        horizontal = self.log_view.horizontalScrollBar()
+        position, sideways = vertical.value(), horizontal.value()
+        follow_latest = self.log_text is None or position == vertical.maximum()
+        self.log_view.setPlainText(text)
+        if follow_latest:
+            self.log_view.moveCursor(QTextCursor.MoveOperation.End)
+        vertical.setValue(vertical.maximum() if follow_latest else position)
+        horizontal.setValue(sideways)
+        self.log_text = text
 
     def release(self):
         worker, self.worker = self.worker, None

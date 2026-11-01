@@ -144,6 +144,8 @@ PostgreSQL może działać przy kolektorze lub na innym hoście. Windows DPAPI p
 
 ## Zakładka Kolektor
 
+Dziennik przy pierwszym odczycie pokazuje najnowsze wpisy na dole. Odświeżenie zachowuje pozycję przewiniętą przez użytkownika; widok pozostawiony na dole podąża za nowymi wpisami. Identyczny odczyt nie zastępuje dokumentu, zachowując również zaznaczenie tekstu. Powrót na dół ponownie włącza podążanie za wpisami. Po rotacji do krótszego dziennika pozycja mieści się w nowym zakresie przewijania.
+
 Ustawienia przechowują wyłącznie konfigurację i zastosowanie harmonogramu. Zakładka „Kolektor” pokazuje rejestrację zadania, zgodność konfiguracji, ostatni wynik, konto, następny termin, rozpoczęcie, zakończenie, ostatni sukces, pauzę oraz log. Automatyczny odczyt korzysta z tego samego zegara `refresh_seconds` co stan bazy, ale z niezależnego workera — awaria SQL nie blokuje diagnostyki automatu. Jeden odczyt naraz, pomijanie ukrytego okna, odrzucanie starej generacji i zamknięcie przez sygnały. Przycisk „Odśwież stan i log” wykonuje dodatkowy odczyt; nie uruchamia pobierania.
 
 Instalacja zapisuje formularz i rejestruje harmonogram jednym przyciskiem. Wspólny formularz logowania ma wybór sesji: aplikacji albo kolektora aktualnego konta Windows. Dla innego konta kolektora używa się CLI pod tym kontem, bez kopiowania sesji. [Krótka instrukcja użytkownika](16-user-guide.md).
