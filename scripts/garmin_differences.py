@@ -145,19 +145,29 @@ def observation_day(row):
     )
 
 
-def source_card_value(data, channel, begin, end):
+def source_card_observations(data, channel):
     if channel == "chart":
-        observations = [
+        return [
             (datetime.fromtimestamp(t / 1000, ZONE).date().isoformat(), v)
             for t, v, _ in data["chart"]
             if numeric(v)
         ]
-    else:
-        observations = [
-            (observation_day(r), r["value"])
-            for r in data[channel] or []
-            if r["validity"] == "valid" and numeric(r["value"])
-        ]
+    return [
+        (observation_day(r), r["value"])
+        for r in data[channel] or []
+        if r["validity"] == "valid" and numeric(r["value"])
+    ]
+
+
+def conflicting_source_days(data, channel):
+    days = defaultdict(set)
+    for day, value in source_card_observations(data, channel):
+        days[day].add(value)
+    return sum(len(values) > 1 for values in days.values())
+
+
+def source_card_value(data, channel, begin, end):
+    observations = source_card_observations(data, channel)
     latest = dict(observations)
     value = sum(latest.values()) / len(latest) if latest else None
     return (
@@ -241,7 +251,7 @@ def compare_card(data, card, channel, begin, end):
         return dict(status="no_channel_value", method=method)
     exact = equal(actual, card["value"])
     rounded = equal(round(actual, card["precision"]), card["value"])
-    return dict(
+    result = dict(
         status="exact"
         if exact
         else "display_rounding_match"
@@ -250,6 +260,20 @@ def compare_card(data, card, channel, begin, end):
         method=method,
         semantic_constraint=card["reason"],
     )
+    conflicts = (
+        conflicting_source_days(data, channel)
+        if card["operation"] == "source_daily_last"
+        else 0
+    )
+    if conflicts:
+        result.update(
+            status="ambiguous_source_observations",
+            conflicting_days=conflicts,
+            last_candidate_status=result["status"],
+            method="no_canonical_source_selection",
+            candidate_method=method,
+        )
+    return result
 
 
 def scoped_observations(rows, begin, end):

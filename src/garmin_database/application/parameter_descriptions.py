@@ -4,8 +4,8 @@ from dataclasses import dataclass, replace
 
 from garmin_database.domain.aggregation import MEAN_PARAMETERS
 
-VERSION = 1
-REVIEWED_ON = "2026-10-25"
+VERSION = 2
+REVIEWED_ON = "2026-11-01"
 SOURCES = {
     "hr": (
         "Garmin: Heart Rate Monitoring",
@@ -351,7 +351,7 @@ def parameter_description(parameter):
     if key in MEAN_PARAMETERS:
         presentation = "Dzień w UI pokazuje próbki. MCP i dłuższe okresy używają średniej poprawnych próbek, ważonej ich liczbą, bez ważenia czasem i wypełniania luk. Wynik może różnić się od podsumowania Garmin Connect."
     elif parameter.get("representation") == "source_summary":
-        presentation = "Gotowe podsumowanie producenta. Przy nieznanym czasie pomiaru dzień archiwum jest tylko metadanymi, nie potwierdzonym czasem pomiaru."
+        presentation = "Gotowe podsumowanie producenta. Przy nieznanym czasie pomiaru dzień archiwum jest tylko metadanymi, nie potwierdzonym czasem pomiaru. Aplikacja zachowuje każdą obserwację; ostatnia nie musi odpowiadać końcowej karcie Garmin Connect."
     else:
         presentation = "UI prezentuje wartości źródłowe. Kody kategorii i stany liczników nie są średnią pomiaru fizjologicznego."
     return dict(

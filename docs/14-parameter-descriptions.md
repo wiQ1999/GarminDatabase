@@ -34,9 +34,9 @@ Obiekt `description` zawiera:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "language": "pl-PL",
-  "reviewed_on": "2026-10-25",
+  "reviewed_on": "2026-11-01",
   "meaning": "Znaczenie konkretnego parametru",
   "measurement": "Czujnik lub algorytm opisany przez producenta",
   "limitations": "Granice interpretacji tego pola",

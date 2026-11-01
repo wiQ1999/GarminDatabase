@@ -171,6 +171,35 @@ def test_mean_plot_does_not_supply_unavailable_daily_extrema():
     assert daily_card_value(data, "maximum_daily_mean", "chart")[0] == 30
 
 
+def test_source_conflicts_cannot_be_resolved_by_matching_the_reference():
+    from scripts.garmin_differences import compare_card
+
+    rows = [
+        dict(time=None, requested_day="2026-08-16", value=v, validity="valid")
+        for v in (50, 70)
+    ]
+    data = dict(export=rows)
+    card = dict(operation="source_daily_last", value=70, precision=0, reason="source")
+    result = compare_card(data, card, "export", date(2026, 8, 16), date(2026, 8, 16))
+    assert result["status"] == "ambiguous_source_observations"
+    assert result["conflicting_days"] == 1
+    assert result["last_candidate_status"] == "exact"
+
+
+def test_repeated_equal_source_summaries_are_not_conflicting():
+    from scripts.garmin_differences import compare_card
+
+    rows = [
+        dict(time=None, requested_day="2026-08-16", value=70, validity="valid")
+        for _ in range(2)
+    ]
+    card = dict(operation="source_daily_last", value=70, precision=0, reason="source")
+    result = compare_card(
+        dict(export=rows), card, "export", date(2026, 8, 16), date(2026, 8, 16)
+    )
+    assert result["status"] == "exact"
+
+
 def test_difference_locators_omit_values_and_validate_report_counts():
     from datetime import datetime
 

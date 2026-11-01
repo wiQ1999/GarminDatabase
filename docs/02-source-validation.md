@@ -56,6 +56,8 @@ Zakres i rodzaj widoku pochodzą z zapisanego DOM, a nie z nazwy pliku. Odczyt o
 
 Porównanie zachowuje kolejność agregacji: „Średnia wysokiego” jest średnią dziennych maksimów, a okresowe minimum/maksimum stresu dotyczy średnich dziennych. Średnia okresowych średnich dziennych jest nieważona; nie zastępuje jej średnia wszystkich próbek. Wykres dziennych średnich nie udostępnia dziennych maksimów — takie porównanie otrzymuje status braku wartości kanału. Reguły raportu nie zmieniają kontraktu agregacji aplikacji.
 
+Jeżeli ten sam dzień zawiera różne ważne podsumowania źródłowe, raport zgłasza `ambiguous_source_observations`. Porównanie ostatniego kandydata pozostaje diagnostyką, także gdy liczba pasuje do HTML. Nie wybieraj arbitralnie pierwszego, ostatniego ani najbliższego karcie rekordu jako ostatecznego podsumowania Garmin Connect. Powtarzające się równe wartości nie są konfliktem.
+
 ```powershell
 python scripts/compare_garmin_sources.py --input verification --settings-file ŚCIEŻKA_DO_SETTINGS_JSON --mcp-executable ŚCIEŻKA_DO_GarminDatabaseMCP.exe --output local-notes/garmin-comparison
 ```
