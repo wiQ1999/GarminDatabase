@@ -54,6 +54,8 @@ Geometria SVG, ogólne etykiety „Series” albo statystyka o innym znaczeniu n
 
 Zakres i rodzaj widoku pochodzą z zapisanego DOM, a nie z nazwy pliku. Odczyt obejmuje punkty, karty, liczbowe podsumowania dostępności i komórki tabel dziennych/tygodniowych. Każda komórka tabeli jest porównywana w zakresie jej wiersza, z zachowaniem jawnego roku i granic tygodnia. Karty i punkty bez jednoznacznego odpowiednika mają osobny status, także gdy przechowywana jest podobnie nazwana miara. Dopasowanie liczb po wyprowadzeniu statystyki z serii nie potwierdza równoważności algorytmów Garmin. Diagnostyka przesunięcia czasu oraz kontynuacji kategorii pomiędzy obserwacjami nie zmienia reguły ścisłego porównania.
 
+Porównanie zachowuje kolejność agregacji: „Średnia wysokiego” jest średnią dziennych maksimów, a okresowe minimum/maksimum stresu dotyczy średnich dziennych. Średnia okresowych średnich dziennych jest nieważona; nie zastępuje jej średnia wszystkich próbek. Wykres dziennych średnich nie udostępnia dziennych maksimów — takie porównanie otrzymuje status braku wartości kanału. Reguły raportu nie zmieniają kontraktu agregacji aplikacji.
+
 ```powershell
 python scripts/compare_garmin_sources.py --input verification --settings-file ŚCIEŻKA_DO_SETTINGS_JSON --mcp-executable ŚCIEŻKA_DO_GarminDatabaseMCP.exe --output local-notes/garmin-comparison
 ```

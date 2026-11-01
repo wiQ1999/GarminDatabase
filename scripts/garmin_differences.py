@@ -202,10 +202,24 @@ def plot_card_value(data, card):
     ), "derived_from_plot_points" if values else "no_numeric_data"
 
 
+def daily_card_value(data, operation, channel):
+    reducer, field = operation.split("_daily_")
+    if channel == "chart":
+        if field != "mean":
+            return None, "daily_extrema_not_in_plot"
+        values = [v for _, v, _ in data["chart"] if numeric(v)]
+    else:
+        daily = export_daily(data) if channel == "export" else data["mcp"] or []
+        values = [r[field] for r in daily if numeric(r.get(field))]
+    return reduce_values(values, reducer), operation
+
+
 def card_value(data, card, channel, begin, end):
     operation = card["operation"]
     if operation == "source_daily_last":
         return source_card_value(data, channel, begin, end)
+    if "_daily_" in operation:
+        return daily_card_value(data, operation, channel)
     if channel == "mcp":
         return data.get("mcp_period", {}).get(operation), data.get(
             "mcp_period_method", "get_period_stats"

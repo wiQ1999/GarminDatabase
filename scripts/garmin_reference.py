@@ -144,7 +144,9 @@ def window_card_metric(label):
 
 def extreme_card_metric(label, subject):
     kinds = {"hr": HR, "respiration": RESP, "stress": STRESS}
-    if label in {"Wysokie", "Najwyższa", "Średnia wysokiego"} and subject in kinds:
+    if label == "Średnia wysokiego" and subject == "hr":
+        return HR, "mean_daily_maximum", "source_sampling_or_scope_may_differ"
+    if label in {"Wysokie", "Najwyższa"} and subject in kinds:
         return kinds[subject], "maximum", "source_sampling_or_scope_may_differ"
     if label in {"Najniższa", "Najniższa częstotliwość oddechu", "Najniższe SpO2"}:
         key = (
@@ -242,10 +244,16 @@ def reference_points(page, year, subject):
     return points, dict(unparsed)
 
 
-def reference_cards(page, subject):
+def reference_cards(page, subject, period=False):
     cards = []
     for index, (name, text) in enumerate(page.cards(), 1):
         key, operation, reason = card_metric(name, subject)
+        if (
+            period
+            and subject == "stress"
+            and operation in {"mean", "minimum", "maximum"}
+        ):
+            operation += "_daily_mean"
         fraction = re.search(r"[.,](\d+)", text)
         cards.append(
             dict(
@@ -313,7 +321,7 @@ def reference(path):
         range_origin=origin,
         reference_issues=reference_issues(path, subject, begin, end),
         points=points,
-        cards=reference_cards(page, subject)
+        cards=reference_cards(page, subject, begin != end)
         + table_cards(page, subject, begin, end)
         + accessible_cards(page),
         unparsed_point_formats=unparsed,

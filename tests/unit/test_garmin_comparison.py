@@ -132,6 +132,45 @@ def test_weighted_history_and_unweighted_plot_are_distinct_statistics():
     assert reduce_values([10, 30], "mean") == 20
 
 
+def test_period_reference_preserves_statistic_scope():
+    from scripts.garmin_reference import HR, card_metric, reference_cards
+
+    assert card_metric("Średnia wysokiego", "hr")[:2] == (HR, "mean_daily_maximum")
+    page = SavedPage()
+    page.feed(
+        '<div><span class="DataBlock_dataField__x">12</span><span class="DataBlock_dataLabel__x">Najniższa</span></div>'
+    )
+    assert (
+        reference_cards(page, "stress", period=True)[0]["operation"]
+        == "minimum_daily_mean"
+    )
+    assert reference_cards(page, "stress")[0]["operation"] == "minimum"
+
+
+def test_period_card_reduces_daily_statistics_instead_of_global_samples():
+    from scripts.garmin_differences import daily_card_value
+
+    daily = [dict(mean=10, maximum=20), dict(mean=30, maximum=80)]
+    data = dict(
+        mcp=daily, history=dict(columns=["mean", "maximum"], data=[[10, 20], [30, 80]])
+    )
+    for channel in ("mcp", "export"):
+        assert daily_card_value(data, "mean_daily_maximum", channel)[0] == 50
+        assert daily_card_value(data, "minimum_daily_mean", channel)[0] == 10
+        assert daily_card_value(data, "mean_daily_mean", channel)[0] == 20
+
+
+def test_mean_plot_does_not_supply_unavailable_daily_extrema():
+    from scripts.garmin_differences import daily_card_value
+
+    data = dict(chart=[(1, 10, ""), (2, 30, "")])
+    assert daily_card_value(data, "mean_daily_maximum", "chart") == (
+        None,
+        "daily_extrema_not_in_plot",
+    )
+    assert daily_card_value(data, "maximum_daily_mean", "chart")[0] == 30
+
+
 def test_difference_locators_omit_values_and_validate_report_counts():
     from datetime import datetime
 
