@@ -47,3 +47,17 @@ python scripts/verify_garmin_html.py --input verification --settings-file ŚCIE�
 ```
 
 Geometria SVG, ogólne etykiety „Series” albo statystyka o innym znaczeniu nie wystarczają do dowodu dokładnej zgodności. Raport jawnie zachowuje takie ograniczenia i rozbieżności; nie traktuj pominiętego widoku jako testu zaliczonego. HTML, raporty i wyniki niezależnego SDK pozostają poza Git. Raport narzędzia zawiera liczniki i metadane, bez wartości pomiarów, sesji, DSN i treści wyjątków.
+
+### Pełna analiza trzech wariantów wyjścia
+
+`scripts/compare_garmin_sources.py` porównuje każdy lokalny HTML osobno z danymi przekazywanymi do wykresu (`Queries.chart` i przygotowanie serii), rzeczywistym procesem MCP stdio oraz ponownie odczytanymi plikami produkcyjnego eksportera. Kontrola obejmuje szczegóły, historię dzienną i miesięczną, wszystkie strony MCP, duplikaty, ważność, nieznany czas i pochodzenie. Zestawienie odnotowuje udokumentowane zaokrąglenie MCP, bez zaokrąglania danych źródłowych i eksportów. Nie jest testem zgodności pikseli renderera.
+
+Zakres i rodzaj widoku pochodzą z zapisanego DOM, a nie z nazwy pliku. Odczyt obejmuje punkty, karty, liczbowe podsumowania dostępności i komórki tabel dziennych/tygodniowych. Każda komórka tabeli jest porównywana w zakresie jej wiersza, z zachowaniem jawnego roku i granic tygodnia. Karty i punkty bez jednoznacznego odpowiednika mają osobny status, także gdy przechowywana jest podobnie nazwana miara. Dopasowanie liczb po wyprowadzeniu statystyki z serii nie potwierdza równoważności algorytmów Garmin. Diagnostyka przesunięcia czasu oraz kontynuacji kategorii pomiędzy obserwacjami nie zmienia reguły ścisłego porównania.
+
+```powershell
+python scripts/compare_garmin_sources.py --input verification --settings-file ŚCIEŻKA_DO_SETTINGS_JSON --mcp-executable ŚCIEŻKA_DO_GarminDatabaseMCP.exe --output local-notes/garmin-comparison
+```
+
+Narzędzie tworzy prywatną konfigurację walidacji, nie zmieniając polityki udostępniania aplikacji. Odczytuje PostgreSQL bez modyfikacji danych i wyłącza publikację odtwarzalnego cache. Dla parametrów pustych w dniu kontrolnym szuka uzupełniającego dnia z obserwacjami; pusty wynik nie jest dowodem zgodności wartości. Raport obejmuje cały katalog i jawnie wskazuje parametry nieudostępniane przez MCP. Wymagane są zależności desktop/MCP i dostęp do istniejącej bazy, bez logowania Garmin i nowych pobrań.
+
+W katalogu wyniku powstają `comparison.html`, `comparison.json`, `differences.csv`, lokalizatory punktów w `point-differences.csv` oraz prywatne pliki eksportu w `exports/`. Lokalizatory odtwarza się z plików eksportu po ścisłym potwierdzeniu ich równoważności z wariantami i kontroli liczników dopasowania; indeks kanału dotyczy serii znormalizowanej. Raporty zawierają liczniki, nazwy parametrów i lokalizatory, a pomiary pozostają w źródłach i wygenerowanych eksportach. Nie dodawaj tego katalogu do Git. Materiał bez daty, wymaganych wartości lub odpowiedniego widoku jest wynikiem nieweryfikowalnym, nigdy zaliczonym.
