@@ -1,70 +1,51 @@
 """Ograniczony odczyt MCP bez Qt i zapisów: docs/03-architecture.md."""
 
-import base64
 import hashlib
-import hmac
-import json
-import os
-import secrets
-import time
 from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta
-from pathlib import Path
-from threading import Event
-from zoneinfo import ZoneInfo
+from threading import Lock
 
+from garmin_database.application.errors import AccessError
 from garmin_database.application.mcp_metrics import MCP_PARAMETERS
+from garmin_database.application.mcp_results import (
+    MAX_BYTES,
+    PAGE_DAYS,
+    READ_SECONDS,
+    READ_TIMEOUT_MESSAGE,
+    ReadBudget,
+    compress_days,
+    date_chunks,
+    date_range,
+    observation_coverage,
+    sample_row,
+    series,
+)
+from garmin_database.application.page_cursor import PageCursor
 from garmin_database.application.parameter_descriptions import parameter_description
 from garmin_database.application.ports import ReadFailure
 from garmin_database.application.read_models import (
     DAILY_COLUMNS,
     PERIOD_COLUMNS,
     PRECISION,
-    aggregation,
 )
 from garmin_database.application.settings import valid_parameter_list
-from garmin_database.application.time_presentation import warsaw_iso
+from garmin_database.application.time_presentation import WARSAW
 from garmin_database.domain.aggregation import (
     MEAN_PARAMETERS,
     monthly_summaries,
-    numeric_sample,
     period_summary,
 )
 from garmin_database.domain.cancellation import Cancelled
 from garmin_database.domain.time import dates
 from garmin_database.domain.values import dumps
 
-MAX_BYTES = 16 * 1024
-PAGE_DAYS = 92
-READ_SECONDS = 60
-READ_TIMEOUT_MESSAGE = "Przekroczono 60 s odczytu. Zawęź zakres lub wybór metryk."
-ZONE = ZoneInfo("Europe/Warsaw")
-
-
-class AccessError(ValueError):
-    """Safe, actionable message suitable for a client; never a raw SQL exception."""
-
-
-class ReadBudget:
-    def __init__(self, stop=None, seconds=READ_SECONDS):
-        self.stop = stop or Event()
-        self.deadline = time.monotonic() + seconds
-
-    def is_set(self):
-        return self.stop.is_set() or time.monotonic() >= self.deadline
-
-    def check(self):
-        if self.stop.is_set():
-            raise AccessError("Anulowano odczyt.")
-        if self.is_set():
-            raise AccessError(READ_TIMEOUT_MESSAGE)
+ZONE = WARSAW
 
 
 def policy_key(settings):
     policy = [
-        str(Path(settings.data_dir).resolve()),
+        settings.data_dir,
         settings.database_dsn,
-        os.environ.get("GARMIN_DATABASE_DSN"),
         settings.settings_version,
         settings.mcp_enabled,
         sorted(settings.mcp_parameters),
@@ -86,95 +67,6 @@ def load_policy(path, settings_store):
     return settings
 
 
-def date_range(begin, finish):
-    try:
-        start, end = date.fromisoformat(begin), date.fromisoformat(finish)
-        next(dates(start, end))
-    except (ValueError, TypeError):
-        raise AccessError(
-            "Podaj daty YYYY-MM-DD od początku do końca, najpóźniej dzisiaj."
-        ) from None
-    return start, end
-
-
-def date_chunks(start, end):
-    while start <= end:
-        finish = min(end, start + timedelta(days=PAGE_DAYS - 1))
-        yield start, finish
-        start = finish + timedelta(days=1)
-
-
-def compress_days(values, reason, parameter=None):
-    result = []
-    for day in sorted(values):
-        if result and date.fromisoformat(result[-1]["to"]) + timedelta(
-            days=1
-        ) == date.fromisoformat(day):
-            result[-1]["to"] = day
-        else:
-            item = dict(reason=reason, **{"from": day, "to": day})
-            if parameter:
-                item["parameter"] = parameter
-            result.append(item)
-    return result
-
-
-def formatted_row(row, columns, key):
-    def value(column):
-        item = row[column]
-        if item is None:
-            return None
-        if column in {"first_time", "last_time"}:
-            return warsaw_iso(item)
-        if column in {"mean", "minimum", "maximum"}:
-            return round(item, PRECISION[key])
-        return item
-
-    return [value(c) for c in columns]
-
-
-def series(parameter, rows, columns, period):
-    key = parameter["key"]
-    return dict(
-        parameter=key,
-        unit=parameter["unit"],
-        description=parameter_description(parameter),
-        summary_origin="application",
-        aggregation=aggregation(parameter, period),
-        precision=PRECISION[key],
-        columns=columns,
-        data=[formatted_row(r, columns, key) for r in rows],
-    )
-
-
-def sample_row(row, parameter):
-    included = None
-    if parameter["key"] in MEAN_PARAMETERS:
-        included = bool(
-            row["time"]
-            and row["validity"] == "valid"
-            and numeric_sample(row["value"], parameter)
-        )
-    instant = warsaw_iso(row["time"])
-    return [
-        instant,
-        row["value"],
-        row["validity"],
-        row["requested_day"],
-        row["time_basis"],
-        included,
-    ]
-
-
-def observation_coverage(coverage):
-    return dict(
-        decode_status=coverage["decode_status"],
-        gaps=compress_days(coverage["missing_days"], "missing_archive")
-        + compress_days(coverage["unimported_or_partial_days"], "partial_decode")
-        + compress_days(coverage.get("ongoing_days", []), "current_day"),
-    )
-
-
 class MCPData:
     def __init__(
         self,
@@ -190,7 +82,8 @@ class MCPData:
         self.settings_path = settings_path
         self.max_bytes = max_bytes
         self.seconds = seconds
-        self.secret = secrets.token_bytes(32)
+        self.cursor = PageCursor()
+        self.read_lock = Lock()
         self.catalog_cache = None
 
     def check_policy(self, key):
@@ -205,50 +98,38 @@ class MCPData:
         key = policy_key(settings)
         budget = ReadBudget(stop, self.seconds)
         budget.check()
-        readings = self.readings_factory(settings)
-        try:
-            with readings.snapshot(budget) as snapshot:
-                identity = [*snapshot.identity, key]
-                snapshot.policy_revision = key
-                yield settings, snapshot, budget, identity
+        with self.exclusive_read(budget):
+            readings = self.readings_factory(settings)
+            try:
+                with readings.snapshot(budget) as snapshot:
+                    identity = [*snapshot.identity, key]
+                    snapshot.policy_revision = key
+                    yield settings, snapshot, budget, identity
+                    budget.check()
+                    self.check_policy(key)
+            except (Cancelled, ReadFailure) as error:
                 budget.check()
-                self.check_policy(key)
-        except (Cancelled, ReadFailure) as error:
+                if isinstance(error, ReadFailure) and error.reason == "timeout":
+                    # PostgreSQL rounds statement_timeout to milliseconds. It can
+                    # expire just before the client monotonic deadline on Windows.
+                    raise AccessError(READ_TIMEOUT_MESSAGE) from None
+                raise AccessError(
+                    "Nie można odczytać bazy. Przygotuj ją w aplikacji i ponów odczyt."
+                ) from None
+            except OSError:
+                raise AccessError(
+                    "Brak dostępnej bazy. Wskaż folder danych w aplikacji."
+                ) from None
+
+    @contextmanager
+    def exclusive_read(self, budget):
+        while not self.read_lock.acquire(timeout=0.05):
             budget.check()
-            if isinstance(error, ReadFailure) and error.reason == "timeout":
-                # PostgreSQL rounds statement_timeout to milliseconds. It can
-                # expire just before the client monotonic deadline on Windows.
-                raise AccessError(READ_TIMEOUT_MESSAGE) from None
-            raise AccessError(
-                "Nie można odczytać bazy. Przygotuj ją w aplikacji i ponów odczyt."
-            ) from None
-        except OSError:
-            raise AccessError(
-                "Brak dostępnej bazy. Wskaż folder danych w aplikacji."
-            ) from None
-
-    def encode_cursor(self, value):
-        raw = dumps(value).encode()
-        digest = hmac.digest(self.secret, raw, "sha256")
-        return base64.urlsafe_b64encode(digest + raw).decode()
-
-    def decode_cursor(self, cursor, expected):
         try:
-            if not isinstance(cursor, str) or len(cursor) > 4096:
-                raise ValueError()
-            raw = base64.b64decode(cursor, altchars=b"-_", validate=True)
-            if not hmac.compare_digest(
-                raw[:32], hmac.digest(self.secret, raw[32:], "sha256")
-            ):
-                raise ValueError()
-            value = json.loads(raw[32:])
-            if value["query"] != expected:
-                raise ValueError()
-            return value["next"]
-        except (ValueError, TypeError, KeyError):
-            raise AccessError(
-                "Kursor nieprawidłowy lub nieaktualny. Rozpocznij zapytanie ponownie."
-            ) from None
+            budget.check()
+            yield
+        finally:
+            self.read_lock.release()
 
     def fits(self, payload):
         # Reserve the complete MCP content/structuredContent envelope, without duplication.
@@ -283,7 +164,7 @@ class MCPData:
 
     def catalog(self, cursor=None, stop=None):
         with self.snapshot(stop) as (settings, snap, budget, identity):
-            offset = self.decode_cursor(cursor, ["catalog", identity]) if cursor else 0
+            offset = self.cursor.decode(cursor, ["catalog", identity]) if cursor else 0
             cache_key = dumps(identity)
             if self.catalog_cache is None or self.catalog_cache[0] != cache_key:
                 items = [
@@ -306,7 +187,7 @@ class MCPData:
             for index, item in enumerate(self.catalog_cache[1][offset:], offset):
                 result.update(
                     truncated=True,
-                    next_cursor=self.encode_cursor(
+                    next_cursor=self.cursor.encode(
                         dict(query=["catalog", identity], next=index)
                     ),
                 )
@@ -351,7 +232,7 @@ class MCPData:
             parameters = self.select(snap, settings, metrics, means_only=True)
             query = ["daily", identity, date_from, date_to, metrics]
             begin = (
-                date.fromisoformat(self.decode_cursor(cursor, query))
+                date.fromisoformat(self.cursor.decode(cursor, query))
                 if cursor
                 else start
             )
@@ -369,7 +250,7 @@ class MCPData:
                 if finish < end:
                     result.update(
                         truncated=True,
-                        next_cursor=self.encode_cursor(
+                        next_cursor=self.cursor.encode(
                             dict(
                                 query=query,
                                 next=(finish + timedelta(days=1)).isoformat(),
@@ -479,7 +360,7 @@ class MCPData:
         with self.snapshot(stop) as (settings, snap, budget, identity):
             selected = self.select(snap, settings, [parameter])[0]
             query = [kind, identity, date_from, date_to, parameter, limit]
-            offset = self.decode_cursor(cursor, query) if cursor else 0
+            offset = self.cursor.decode(cursor, query) if cursor else 0
             result = self.envelope(snap, start, end)
             result.update(
                 parameter=parameter,
@@ -501,7 +382,7 @@ class MCPData:
             with closing(snap.rows(selected, start, end, offset=offset)) as rows:
                 for row in rows:
                     budget.check()
-                    result["next_cursor"] = self.encode_cursor(
+                    result["next_cursor"] = self.cursor.encode(
                         dict(query=query, next=offset + len(result["data"]))
                     )
                     result["truncated"] = True
@@ -531,7 +412,7 @@ class MCPData:
             parameters = self.select(snap, settings, metrics, means_only=True)
             query = ["history", identity, date_from, date_to, metrics, period]
             begin = (
-                date.fromisoformat(self.decode_cursor(cursor, query))
+                date.fromisoformat(self.cursor.decode(cursor, query))
                 if cursor
                 else start
             )
@@ -559,7 +440,7 @@ class MCPData:
             if finish < end:
                 result.update(
                     truncated=True,
-                    next_cursor=self.encode_cursor(
+                    next_cursor=self.cursor.encode(
                         dict(query=query, next=(finish + timedelta(days=1)).isoformat())
                     ),
                 )

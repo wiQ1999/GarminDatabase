@@ -10,6 +10,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from garmin_database.application.errors import AccessError, ParameterSelectionError
 from garmin_database.application.use_cases.read_health import MAX_BYTES
 
 
@@ -176,7 +177,7 @@ async def call(service, name, arguments, limiter):
         return error_result(
             "Nieprawidłowe argumenty. Sprawdź schemat narzędzia i katalog metryk."
         )
-    except ValueError as error:
+    except (AccessError, ParameterSelectionError) as error:
         return error_result(str(error))
     except Exception:
         return error_result(

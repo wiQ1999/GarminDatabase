@@ -1,5 +1,6 @@
 """Shared selection and aggregation descriptions; no database access."""
 
+from garmin_database.application.errors import ParameterSelectionError
 from garmin_database.domain.aggregation import ALGORITHM_VERSION, summary_method
 
 QUALITY_COLUMNS = [
@@ -61,10 +62,12 @@ def select_parameters(catalog, allowed, requested):
     """Resolve canonical metadata; callers cannot inject catalog ids or scaling."""
     keys = list(requested)
     if not keys or len(set(keys)) != len(keys):
-        raise ValueError("Wybierz co najmniej jeden niepowtarzający się parametr")
+        raise ParameterSelectionError(
+            "Wybierz co najmniej jeden niepowtarzający się parametr"
+        )
     available = {p["key"]: p for p in catalog if p["key"] in allowed}
     if any(key not in available for key in keys):
-        raise ValueError(
+        raise ParameterSelectionError(
             "Parametr nieznany lub wyłączony. Sprawdź katalog i Ustawienia."
         )
     return [available[key] for key in keys]
