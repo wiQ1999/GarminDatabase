@@ -29,7 +29,9 @@ class DownloadAhead:
 
     def finish(self):
         self.abort.set()
-        self.executor.shutdown(wait=True, cancel_futures=True)
+        executor, self.executor = self.executor, None
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
 
     def abandoned(self):
         """Return an unconsumed attempt after finish(), without retaining payloads."""
@@ -66,17 +68,12 @@ class DownloadAhead:
         if not self.has(day):
             raise RuntimeError("Nieprawidłowa kolejność pobierania")
         _, future, _ = self.pending
-        try:
-            while not wait([future], timeout=0.05).done:
-                check_stop(self.stop)
+        while not wait([future], timeout=0.05).done:
             check_stop(self.stop)
-        except Cancelled:
-            # Cleanup must still inspect/persist an eventual HTTP error for this
-            # attempt; otherwise a prefetched 404 would be retried on resume.
-            raise
-        else:
-            self.pending = None
-            return future.result()
+        check_stop(self.stop)
+        # Cancellation retains the pending attempt for cleanup and persistence.
+        self.pending = None
+        return future.result()
 
     def fetch(self, day, delay, started):
         if self.abort.wait(delay):

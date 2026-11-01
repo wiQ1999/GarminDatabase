@@ -1,3 +1,5 @@
+import math
+
 LOGIN_STAGES = {
     "connect": "łączenie z Garmin Connect",
     "mfa_wait": "oczekiwanie na kod MFA",
@@ -74,4 +76,31 @@ class CollectorInstallIncomplete(RuntimeError):
         super().__init__(
             "Rejestracja kolektora nie jest kompletna: aplikacja nie może odczytać aktualnego zadania. "
             "Sprawdź uprawnienia harmonogramu."
+        )
+
+
+class AccessError(ValueError):
+    """A controlled, actionable message that MCP may publish to its client."""
+
+
+class ParameterSelectionError(ValueError):
+    """A safe rejection of a missing, repeated or disabled parameter."""
+
+
+class DownloadFailed(RuntimeError):
+    """Transport-neutral failure; upstream responses never cross the source port."""
+
+    def __init__(self, http_status=None, retry_after_seconds=None):
+        super().__init__("Nie udało się pobrać danych Garmin")
+        self.http_status = (
+            http_status
+            if type(http_status) is int and 100 <= http_status <= 599
+            else None
+        )
+        self.retry_after_seconds = (
+            retry_after_seconds
+            if type(retry_after_seconds) in (int, float)
+            and math.isfinite(retry_after_seconds)
+            and retry_after_seconds >= 0
+            else None
         )

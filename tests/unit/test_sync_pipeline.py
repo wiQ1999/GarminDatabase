@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from garmin_database.adapters.outbound.filesystem.archives import Archives
+from garmin_database.application.errors import DownloadFailed
 from garmin_database.application.use_cases.download_ahead import DownloadAhead
 from garmin_database.application.use_cases.synchronize import Sync, validate_zip
 from garmin_database.domain.cancellation import Cancelled
@@ -114,8 +115,7 @@ def test_fatal_prefetched_response_stops_before_a_third_request(tmp_path, status
         requests.append(day)
         if day == "2024-06-20":
             failed.set()
-            error = RuntimeError("synthetic-private-body")
-            error.response = SimpleNamespace(status_code=status)
+            error = DownloadFailed(status, None)
             raise error
         return zip_bytes()
 
@@ -155,8 +155,7 @@ def test_cancel_joins_prefetch_preserves_zip_or_records_unresolved_day(
             second_started.set()
             assert finish_http.wait(5)
             if outcome == "404":
-                error = RuntimeError("synthetic-private-body")
-                error.response = SimpleNamespace(status_code=404)
+                error = DownloadFailed(404, None)
                 raise error
         return zip_bytes()
 

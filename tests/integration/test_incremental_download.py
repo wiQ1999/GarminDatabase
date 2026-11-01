@@ -8,6 +8,7 @@ import pytest
 from garmin_database.adapters.outbound.postgres.database import Database
 from garmin_database.adapters.outbound.postgres.imports import Importer
 from garmin_database.application.archive_payload import ArchivePayload
+from garmin_database.application.errors import DownloadFailed
 from garmin_database.bootstrap.dependencies import create_sync
 from garmin_database.domain.time import dates, today
 from tests.support.fixtures import fit_bytes, zip_bytes
@@ -99,7 +100,6 @@ def test_today_remains_partial_even_after_all_received_files_decode(tmp_path):
 
 
 def test_full_download_retries_unresolved_404(tmp_path):
-    from types import SimpleNamespace
 
     db = Database(tmp_path)
 
@@ -109,8 +109,7 @@ def test_full_download_retries_unresolved_404(tmp_path):
         def download_health_snapshot(self, day):
             self.calls += 1
             if self.calls == 1:
-                error = RuntimeError("synthetic")
-                error.response = SimpleNamespace(status_code=404)
+                error = DownloadFailed(404, None)
                 raise error
             return zip_bytes()
 

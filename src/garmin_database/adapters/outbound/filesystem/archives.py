@@ -30,6 +30,12 @@ class Archives:
             raise FileExistsError("Archiwum już istnieje")
         atomic_write(path, payload)
 
+    def release(self, day):
+        """Persistent originals are retained after their import."""
+
+    def clear(self):
+        """Only memory staging is cleared at the end of synchronization."""
+
 
 class MemoryArchives:
     """Bounded network staging; original archives are never persisted."""

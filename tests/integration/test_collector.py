@@ -3,7 +3,6 @@
 import threading
 from dataclasses import replace
 from datetime import date
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -11,7 +10,7 @@ import pytest
 from garmin_database.adapters.outbound.filesystem.collector_files import CollectorFiles
 from garmin_database.adapters.outbound.filesystem.settings_json import Settings
 from garmin_database.adapters.outbound.postgres.database import Database
-from garmin_database.application.errors import BusyError
+from garmin_database.application.errors import BusyError, DownloadFailed
 from garmin_database.bootstrap.dependencies import Services, create_sync
 from tests.support.fixtures import fit_bytes
 
@@ -40,8 +39,7 @@ def test_gui_services_open_under_another_process_writer_without_recovery(tmp_pat
 
 
 def test_sync_exposes_persistent_cooldown_without_parsing_progress(tmp_path):
-    error = RuntimeError("private upstream response")
-    error.response = SimpleNamespace(status_code=429, headers={"Retry-After": "14400"})
+    error = DownloadFailed(429, 14400)
     source = Mock()
     source.download_health_snapshot.side_effect = error
     sync = create_sync(Database(tmp_path), source, delay=0)
@@ -123,8 +121,7 @@ def test_collector_runs_the_real_incremental_import_and_busy_is_only_logged(
     assert source.download_health_snapshot.call_count == 2
     assert source.download_health_snapshot.call_args.args[0] == "2024-01-03"
     assert not list(tmp_path.rglob("*.zip"))
-    error = RuntimeError("private upstream response")
-    error.response = SimpleNamespace(status_code=404, headers={})
+    error = DownloadFailed(404)
     source.download_health_snapshot.side_effect = error
     now += timedelta(hours=2)
     assert runner.run(config, threading.Event()) == "issues"

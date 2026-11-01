@@ -3,12 +3,14 @@
 import logging
 
 from garmin_database.application.errors import (
+    DownloadFailed,
+    LoginFailed,
     SessionRequired,
     SessionStorageError,
 )
 from garmin_database.domain.cancellation import Cancelled, check_stop
 
-from .errors import login_failure
+from .errors import error_status, login_failure, retry_after
 
 
 class GarminSource:
@@ -86,9 +88,14 @@ class GarminSource:
         return prompt
 
     def download_health_snapshot(self, day):
-        if self.api is None:
-            self.login()
-        payload = self.api.download_health_snapshot(day)
+        try:
+            if self.api is None:
+                self.login()
+            payload = self.api.download_health_snapshot(day)
+        except (Cancelled, SessionRequired, SessionStorageError, LoginFailed):
+            raise
+        except Exception as error:
+            raise DownloadFailed(error_status(error), retry_after(error, 0)) from None
         try:
             self.store.save(self.api.client.dumps())  # retain refreshed tokens
         except Exception:

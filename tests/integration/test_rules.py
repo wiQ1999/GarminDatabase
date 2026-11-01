@@ -6,6 +6,7 @@ import pytest
 
 from garmin_database.adapters.outbound.fit.profile import TimeResolver
 from garmin_database.adapters.outbound.garmin.client import GarminSource
+from garmin_database.adapters.outbound.garmin.errors import error_status
 from garmin_database.adapters.outbound.postgres.database import Database
 from garmin_database.adapters.outbound.postgres.imports import Importer
 from garmin_database.adapters.outbound.postgres.queries import (
@@ -14,8 +15,7 @@ from garmin_database.adapters.outbound.postgres.queries import (
     group,
 )
 from garmin_database.adapters.outbound.security.dpapi_session import SessionStore
-from garmin_database.application.errors import LoginFailed
-from garmin_database.application.use_cases.synchronize import error_status
+from garmin_database.application.errors import DownloadFailed, LoginFailed
 from garmin_database.bootstrap.cli import main
 from garmin_database.bootstrap.dependencies import create_sync as Sync
 from garmin_database.domain.values import FIT_EPOCH, json_value, typed_value
@@ -219,7 +219,7 @@ def test_sync_http_failures(tmp_path, status):
 
         def download_health_snapshot(self, day):
             self.calls += 1
-            raise RuntimeError(f"HTTP {status}")
+            raise DownloadFailed(status)
 
     source = Source()
     db = Database(tmp_path)

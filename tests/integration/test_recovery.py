@@ -7,12 +7,12 @@ import pytest
 
 from garmin_database.adapters.outbound.filesystem.files import atomic_json
 from garmin_database.adapters.outbound.garmin.client import GarminSource
+from garmin_database.adapters.outbound.garmin.errors import error_status, retry_after
 from garmin_database.adapters.outbound.postgres.database import Database
 from garmin_database.adapters.outbound.postgres.imports import Importer
 from garmin_database.adapters.outbound.postgres.queries import Queries
 from garmin_database.adapters.outbound.security.dpapi_session import SessionStore
-from garmin_database.application.errors import SessionRequired
-from garmin_database.application.use_cases.synchronize import error_status, retry_after
+from garmin_database.application.errors import DownloadFailed, SessionRequired
 from garmin_database.bootstrap.dependencies import create_exporter as Exporter
 from garmin_database.bootstrap.dependencies import create_sync as Sync
 from garmin_database.domain.cancellation import Cancelled
@@ -170,7 +170,7 @@ def test_network_retries_are_bounded_and_secret_free(tmp_path):
 
         def download_health_snapshot(self, day):
             self.calls += 1
-            raise RuntimeError("HTTP 503 private-token")
+            raise DownloadFailed(503)
 
     class NoSleep:
         def wait(self, duration):
@@ -279,10 +279,7 @@ def test_retry_after_delays_the_next_request(tmp_path):
         def download_health_snapshot(self, day):
             self.calls += 1
             if self.calls == 1:
-                error = RuntimeError("private response")
-                error.response = SimpleNamespace(
-                    status_code=503, headers={"Retry-After": "15"}
-                )
+                error = DownloadFailed(503, 15)
                 raise error
             return zip_bytes()
 
@@ -370,8 +367,7 @@ def test_404_is_explained_and_next_day_downloads_then_resume_reports_unresolved(
         def download_health_snapshot(self, day):
             self.calls.append(day)
             if day == "2024-01-01":
-                error = RuntimeError("private-token private-response")
-                error.response = SimpleNamespace(status_code=404)
+                error = DownloadFailed(404, None)
                 raise error
             return zip_bytes()
 

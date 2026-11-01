@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from garmin_database.adapters.outbound.filesystem.settings_json import Settings
+from garmin_database.application.errors import DownloadFailed
 from garmin_database.bootstrap.dependencies import Services, create_sync
 from tests.support.fixtures import fit_bytes, zip_bytes
 
@@ -50,8 +51,7 @@ def test_delayed_snapshot_is_recovered_without_duplicate_fits(tmp_path):
     def download(day):
         calls.append(day)
         if len(calls) == 1:
-            error = RuntimeError("private response")
-            error.response = SimpleNamespace(status_code=404)
+            error = DownloadFailed(404, None)
             raise error
         return zip_bytes()
 
@@ -88,8 +88,7 @@ def test_summary_matches_real_database_with_404_crc_failure_and_successful_last_
 
     def download(day):
         if day == "2024-06-19":
-            error = RuntimeError("private response")
-            error.response = SimpleNamespace(status_code=404)
+            error = DownloadFailed(404, None)
             raise error
         return zip_bytes(bad if day == "2024-06-20" else fit_bytes())
 

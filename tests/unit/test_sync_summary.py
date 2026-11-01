@@ -10,6 +10,7 @@ import pytest
 from garmin_database.adapters.inbound.cli.commands import run_command
 from garmin_database.adapters.outbound.filesystem.archives import Archives
 from garmin_database.application.dto import SyncSummary
+from garmin_database.application.errors import DownloadFailed
 from garmin_database.application.sync_messages import sync_heading, sync_summary_text
 from garmin_database.application.use_cases.synchronize import Sync
 from tests.support.fixtures import zip_bytes
@@ -100,8 +101,7 @@ def test_new_and_previously_unresolved_404s_have_same_summary_without_redownload
     def download(day):
         calls.append(day)
         if day == START.isoformat():
-            error = RuntimeError("private response")
-            error.response = SimpleNamespace(status_code=404)
+            error = DownloadFailed(404, None)
             raise error
         return zip_bytes()
 
@@ -152,8 +152,7 @@ def test_fit_errors_are_counted_as_files_and_do_not_poison_next_day(tmp_path):
 @pytest.mark.parametrize("status", [401, 403, 429])
 def test_fatal_network_error_reports_incomplete_operation(tmp_path, status):
     def download(day):
-        error = RuntimeError("private response")
-        error.response = SimpleNamespace(status_code=status)
+        error = DownloadFailed(status, None)
         raise error
 
     result = Sync(

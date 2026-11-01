@@ -1,11 +1,10 @@
-import re
 from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
 from io import BytesIO
 from zipfile import ZipFile
 
 from garmin_database.application.dto import SyncSummary
 from garmin_database.application.errors import (
+    DownloadFailed,
     LoginFailed,
     SessionRequired,
     SessionStorageError,
@@ -125,12 +124,11 @@ class Sync:
             failed, status, halt = self.download_day(
                 text, stop, progress, report, ahead, next_day
             )
+            self.record_download(summary, text, failed, status, halt, report)
             if halt:
                 summary.halt_reason = self.halt_reason
                 summary.http_status = status
                 summary.retry_not_before = self.retry_not_before
-            self.record_download(summary, text, failed, status, halt, report)
-            if halt:
                 summary.halted = index < len(requested)
                 return summary
             consecutive = self.finish_download_day(consecutive, text, status)
@@ -270,8 +268,7 @@ class Sync:
                     self.halt_reason = "session_error"
                 if status == 429:
                     self.retry_not_before = (
-                        datetime.now(timezone.utc)
-                        + timedelta(seconds=retry_after(error, self.delay))
+                        self.clock() + timedelta(seconds=retry_after(error, self.delay))
                     ).isoformat()
             return 1, status, halt
         # Only validated, saved ZIPs reach this point. Register the next attempt
@@ -322,31 +319,6 @@ def not_found_recheck_due(previous, now):
     return checked.tzinfo is not None and now - checked >= NOT_FOUND_RECHECK_DELAY
 
 
-def error_status(error):
-    if isinstance(error, (SessionRequired, SessionStorageError)):
-        return None
-    if isinstance(error, LoginFailed) and error.code.endswith("/LOCAL_SESSION"):
-        return None
-    seen = set()
-    while error is not None and id(error) not in seen:
-        seen.add(id(error))
-        status = getattr(getattr(error, "response", None), "status_code", None)
-        if status is not None:
-            return int(status)
-        match = re.search(
-            r"(?:API Error|HTTP|status[=: ]+)\s*(\d{3})", str(error), re.I
-        )
-        if match:
-            return int(match.group(1))
-        name = type(error).__name__
-        if "Authentication" in name:
-            return 401
-        if "TooManyRequests" in name:
-            return 429
-        error = error.__cause__ or error.__context__
-    return None
-
-
 def validate_zip(payload):
     with ZipFile(BytesIO(payload)) as z:
         if z.testzip() is not None:
@@ -372,25 +344,15 @@ def download_error_message(error, status):
     return f"Błąd pobierania — {code}: {explanation}"
 
 
-def retry_after(error, fallback, now=None):
-    """Respect the server delay without persisting response headers or bodies."""
-    seen = set()
-    while error is not None and id(error) not in seen:
-        seen.add(id(error))
-        headers = getattr(getattr(error, "response", None), "headers", {}) or {}
-        value = headers.get("Retry-After")
-        if value is not None:
-            try:
-                delay = (
-                    int(value)
-                    if str(value).isdigit()
-                    else (
-                        parsedate_to_datetime(str(value))
-                        - (now or datetime.now(timezone.utc))
-                    ).total_seconds()
-                )
-                return max(fallback, delay)
-            except (TypeError, ValueError, OverflowError):
-                pass
-        error = error.__cause__ or error.__context__
+def error_status(error):
+    if isinstance(error, LoginFailed) and error.code.endswith("/LOCAL_SESSION"):
+        return None
+    if isinstance(error, (DownloadFailed, LoginFailed)):
+        return error.http_status
+    return None
+
+
+def retry_after(error, fallback):
+    if isinstance(error, DownloadFailed) and error.retry_after_seconds is not None:
+        return max(fallback, error.retry_after_seconds)
     return fallback
