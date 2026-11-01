@@ -4,6 +4,8 @@ Definicja wykonywalna: [schema/001_initial.sql](../schema/001_initial.sql). Sche
 
 Aktualna wersja migracji bazy to `max(schema_migrations.version)=3`. [Migracja 002](../schema/002_query_indexes.sql) dodaje indeksy, w tym złożony klucz obcy definicji pola, który umożliwia ponowne przetwarzanie bez pełnego skanowania wartości pól. [Migracja 003](../schema/003_summaries.sql) dodaje osobną warstwę podsumowań, bez zmiany fizycznych danych FIT. Aplikacja wykonuje migracje transakcyjnie i zapisuje ich SHA-256 w `schema_migrations`.
 
+Odczyt sprawdza cały zestaw wersji i SHA w tym samym snapshotcie co dane. Sama maksymalna wersja nie potwierdza kompletności schematu. Katalog dostępności obejmuje aktywne pola fizyczne i ich opisane komponenty bitowe; nieaktywne dekodowania nie rozszerzają zakresu danych.
+
 ## Podsumowania aplikacji — migracja 003
 
 `dataset_state` zawiera pojedynczy numer rewizji. Triggery PL/pgSQL wykonywane raz na instrukcję podnoszą go przy zmianie dekodowań lub powiązań FIT z archiwami. Wycofanie transakcji wycofuje również zmianę rewizji. `summary_cache` identyfikuje parametr, metodę, wersję algorytmu, rewizję źródeł, obliczony zakres i datę obliczenia.
@@ -114,7 +116,7 @@ Wymagany PostgreSQL 16 lub nowszy i psycopg 3. Klucze obce są zawsze egzekwowan
 
 ## Sprawdzenia schematu
 
-Testy `tests/test_schema.py` wykonują DDL na prawdziwym PostgreSQL w oddzielnym schemacie testowym i sprawdzają relacje, konwersję jednostek bez zmiany wartości raw, tablice z nieważnymi elementami, uint64, zakaz kilku reprezentacji wartości, zgodność definicji i pochodzenie jednego pliku w wielu archiwach. Nie tworzą kopii bazy danych użytkownika.
+Testy `tests/integration/test_schema.py` wykonują DDL na prawdziwym PostgreSQL w oddzielnym schemacie testowym i sprawdzają relacje, konwersję jednostek bez zmiany wartości raw, tablice z nieważnymi elementami, uint64, zakaz kilku reprezentacji wartości, zgodność definicji i pochodzenie jednego pliku w wielu archiwach. Nie tworzą kopii bazy danych użytkownika.
 
 Połączenia odczytu używają `REPEATABLE READ READ ONLY`; wartości, podsumowania i metadane eksportu pochodzą z jednego obrazu. Szczegóły są pobierane kursorem serwerowym po 1000 wierszy, bez buforowania całego wyniku w pamięci klienta. Rozmiar w statusie pochodzi z `pg_database_size(current_database())` i obejmuje całą wskazaną bazę, nie tylko tabele aplikacji.
 

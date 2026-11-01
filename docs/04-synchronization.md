@@ -3,7 +3,7 @@
 ## Przebieg synchronizacji
 
 1. Ustal aktualną datę w `Europe/Warsaw`; maksymalny dzień importu to dzisiaj. Brak dodatkowego opóźnienia po północy.
-2. Domyślny początek pobierania: 2024-01-01. GUI i lokalny kolektor korzystają ze wspólnego `download_from` w ustawieniach aplikacji; zakres eksportu jest niezależny. CLI może podać węższy okres przez `--from`.
+2. Domyślny początek pobierania: 2024-01-01. GUI, CLI importu i lokalny kolektor korzystają ze wspólnego `download_from`; zakres eksportu jest niezależny. Jawne `--from` i `--to` nadpisują odpowiednie granice CLI.
 3. „Pobierz nowe dane” zaczyna od ostatniego dnia zarejestrowanego archiwum (włącznie), uwzględniając także wcześniejsze błędy i niekompletne importy. Przy pustej bazie zaczyna od początku zakresu. Znane nierozstrzygnięte HTTP 404 pozostają jawne; ponowna kontrola jest możliwa najwcześniej po 24 godzinach od ostatniego sprawdzenia.
 4. „Pobierz wszystko” sprawdza cały zakres, również ponawiając nierozstrzygnięte dni. Nie wymusza ponownego dekodowania istniejących kompletnych FIT.
 5. Pobierz i zweryfikuj ZIP w pamięci. Zarejestruj pochodzenia FIT i deduplikuj je po SHA-256 w PostgreSQL. Nazwa ani pozycja wpisu w kolejnym ZIP nie jest identyfikatorem treści FIT.
@@ -29,6 +29,8 @@ Sprawdzać cały wybrany zakres od początku pobierania (domyślnie 2024-01-01):
 Żądania HTTP są sekwencyjne i mogą nakładać się na import poprzedniego ZIP. Nie ma równoległego masowego pobierania. Klient ma timeouty; aplikacja podejmuje najwyżej trzy próby na dzień z lokalną przerwą 3 s i zwiększeniem odstępu po błędzie. Nagłówek `Retry-After`, w sekundach lub jako data HTTP, zwiększa odstęp przed ponowieniem. 401, 403 i 429 zatrzymują bieżące pobieranie; także pięć kolejnych nieudanych dni powoduje zatrzymanie. Postęp jest zachowany. Przed ręcznym wznowieniem po 429 należy odczekać; aplikacja nie ponawia automatycznie takiego żądania. To parametry aplikacji, nie deklarowane limity Garmin.
 
 Nie logować odpowiedzi zawierających zdrowotne dane, hasła, kody MFA, ciasteczka ani tokeny. W panelu szczegółów UI oraz przyszłym trybie bez UI wystarczą data, etap, status i bezpieczny kod błędu.
+
+Adapter Garmin przekształca błąd pobierania w `DownloadFailed`, przekazując wyłącznie strukturalny status HTTP i czas Retry-After. Rdzeń nie interpretuje nazw wyjątków SDK, odpowiedzi ani ich prywatnej treści. Logowanie i problemy magazynu sesji mają osobne bezpieczne typy. Termin pauzy wyznacza ten sam wstrzyknięty zegar co reguły ponowień.
 
 HTTP 404 jest prezentowane jako dzień brakujący/pominięty — brak dostępnych danych Garmin, bez alarmującego kodu HTTP i bez zaliczania do błędów pobierania/importu. Synchronizacja sprawdza kolejne dni. Przy samych brakach podsumowanie informuje o zakończeniu bez błędów z pominiętymi dniami, ale nie deklaruje pełnej historii. W SQL pozostaje `not_found_unverified`: brak dostępnego archiwum nie dowodzi, że pomiarów nigdy nie było. Przez 24 godziny od `checked_at` nie ponawia się żądania; następny zwykły cykl po tym odstępie znów sprawdza dostępność. Odstęp liczy się w UTC. Potwierdzony brak danych jest pomijany. Wpis bez poprawnego czasu wymaga jawnego „Pobierz wszystko”, aby ponowić sprawdzenie.
 

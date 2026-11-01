@@ -19,13 +19,13 @@ Zachować dane dostępne w dziennym eksporcie dobrostanu Garmin i udostępnić j
 1. Pobieranie dziennego ZIP dobrostanu przez WebAPI. Domyślny początek historii to 2024-01-01, koniec to dzisiaj według Europe/Warsaw. Użytkownik może zawęzić zakres.
 2. Pobieranie przyrostowe od ostatniego pobranego dnia oraz pobieranie całego zakresu. Wcześniejsze błędy i nieukończone importy są ponawiane. Import lokalnych ZIP i ponowne dekodowanie pozostają w CLI.
 3. Zachowanie definicji i fizycznych pól FIT w PostgreSQL bez trwałego zapisywania pobieranych ZIP, także bez rozpoznanej nazwy lub semantyki. Identyczne treści FIT są deduplikowane po SHA-256.
-4. Ekrany Start, Dane, Eksport i Ustawienia; postęp, zatrzymanie i przeglądanie już zatwierdzonych danych podczas importu.
+4. Ekrany Start, Dane, Eksport, Ustawienia i Kolektor; postęp, zatrzymanie i przeglądanie już zatwierdzonych danych podczas importu.
 5. Szczegóły pojedynczego dnia. Dłuższe zakresy pokazują oryginalne podsumowania Garmin albo oznaczone średnie dzienne HRV, tętna, oddechu, saturacji i stresu. Wykres odświeża się automatycznie; opcjonalny trend jest tylko prezentacją.
 6. Ręczny eksport JSON v2 z wyborem parametrów, zakresu, dnia/miesiąca podsumowań i ostatnich N dni szczegółów. Każdy eksport tworzy nowy folder i zachowuje poprzednie pakiety.
 7. Niezależne listy udostępniania eksportu i MCP. Pusta lista nie udostępnia żadnych danych; nowe serie nie włączają się same.
-8. Lokalny MCP przez `stdio`: katalog, podsumowania dzienne i statystyki całego okresu dla pięciu obsługiwanych średnich pomiarów. Bez zapisów do bazy, sesji Garmin i serwera HTTP.
+8. Lokalny MCP przez `stdio`: sześć narzędzi, katalog 43 jawnych kluczy, szczegóły, pięć średnich oraz źródłowe obserwacje snu, HRV i monitoringu. Bez zapisów do bazy, sesji Garmin i serwera HTTP.
 9. Logowanie Garmin z MFA i zaszyfrowaną sesją DPAPI. Hasła i kody MFA nie są zapisywane; błędy nie ujawniają sekretów ani treści odpowiedzi.
-10. [Kolektor cykliczny](15-scheduled-collector.md) dla Windows 11 x64, Raspberry Pi OS 64-bit i Debian/Ubuntu 64-bit z systemd. Harmonogram uruchamia jednorazowy proces, domyślnie co 2 h i minimum co 15 min, ze wspólnym przyrostowym pobieraniem, osobnym kontem/sesją i lokalnym zarządzaniem. PostgreSQL może być na oddzielnej maszynie.
+10. [Kolektor cykliczny](15-scheduled-collector.md) dla Windows 11 x64, Raspberry Pi OS 64-bit i Debian/Ubuntu 64-bit z systemd. Harmonogram uruchamia jednorazowy proces, domyślnie co 2 h i minimum co 15 min, ze wspólnym przyrostowym pobieraniem i lokalnym zarządzaniem. Windows domyślnie korzysta z bieżącego konta i sesji GUI, bez hasła Windows; osobne konto jest opcjonalne. PostgreSQL może być na oddzielnej maszynie.
 
 ## Granice interpretacji i przechowywania
 

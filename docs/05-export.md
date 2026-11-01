@@ -2,6 +2,8 @@
 
 Eksport jest uruchamiany ręcznie z UI lub CLI. Użytkownik wybiera parametry, zakres historii, liczbę ostatnich dni szczegółowych (domyślnie 90), okres obliczonych podsumowań i folder na eksporty. Dane służą odczytowi przez Claude lub ChatGPT; pliki nie zawierają instrukcji ani interpretacji medycznych.
 
+CLI dziedziczy zapisane `history_from`, `history_to`, `recent_days` i `summary_period`; puste `history_to` oznacza bieżący dzień Europe/Warsaw. Jawne opcje nadpisują pojedyncze wartości. Zakres odwrotny jest odrzucany przed zapisem ustawień w GUI i przed rozpoczęciem eksportu.
+
 ## Pakiet wynikowy
 
 Każde uruchomienie tworzy nowy folder w wybranej lokalizacji, np.:

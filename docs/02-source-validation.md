@@ -50,6 +50,8 @@ Geometria SVG, ogólne etykiety „Series” albo statystyka o innym znaczeniu n
 
 ### Pełna analiza trzech wariantów wyjścia
 
+Parser zapisanej strony jest wspólny w `scripts/garmin_html.py` i nie wykonuje skryptów HTML. Porównanie granic czasu normalizuje znaczniki do chwili UTC, zachowując precyzję; równoważne zapisy UTC i Europe/Warsaw nie oznaczają różnicy. Domyślny dzień kontroli kanałów jest ostatnim dniem archiwum lub dniem bieżącym; można wskazać `--audit-day`. Dostępność uwzględnia także komponenty bitowe FIT. Brak obsługiwanej metryki pozostaje jawnym brakiem, bez wywołania pustego eksportu.
+
 `scripts/compare_garmin_sources.py` porównuje każdy lokalny HTML osobno z danymi przekazywanymi do wykresu (`Queries.chart` i przygotowanie serii), rzeczywistym procesem MCP stdio oraz ponownie odczytanymi plikami produkcyjnego eksportera. Kontrola obejmuje szczegóły, historię dzienną i miesięczną, wszystkie strony MCP, duplikaty, ważność, nieznany czas i pochodzenie. Zestawienie odnotowuje udokumentowane zaokrąglenie MCP, bez zaokrąglania danych źródłowych i eksportów. Nie jest testem zgodności pikseli renderera.
 
 Zakres i rodzaj widoku pochodzą z zapisanego DOM, a nie z nazwy pliku. Odczyt obejmuje punkty, karty, liczbowe podsumowania dostępności i komórki tabel dziennych/tygodniowych. Każda komórka tabeli jest porównywana w zakresie jej wiersza, z zachowaniem jawnego roku i granic tygodnia. Karty i punkty bez jednoznacznego odpowiednika mają osobny status, także gdy przechowywana jest podobnie nazwana miara. Dopasowanie liczb po wyprowadzeniu statystyki z serii nie potwierdza równoważności algorytmów Garmin. Diagnostyka przesunięcia czasu oraz kontynuacji kategorii pomiędzy obserwacjami nie zmienia reguły ścisłego porównania.

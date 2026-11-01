@@ -15,6 +15,12 @@ flowchart TD
 
 Strzałki oznaczają zależności kodu. W czasie wykonania przypadek użycia wywołuje port, którego implementację dostarcza adapter. Nie tworzy połączenia SQL ani klienta Garmin.
 
+Rdzeń nie wykonuje operacji plikowych ani dynamicznych importów. Polityka MCP jest czystym skrótem ustawień; tożsamość rzeczywistego połączenia i schematu dostarcza snapshot adaptera. Testy architektury kontrolują importy, także przez aliasy, oraz złożoność funkcji i funkcji zagnieżdżonych. Limit Radon wynosi 10 dla aplikacji i skryptów.
+
+`Window` koordynuje nawigację, wspólne workery i zamykanie. `StartPage`, `DataPage`, `ExportPage` i `SettingsPage` są osobnymi komponentami Qt z własnymi widżetami i interakcjami. Wygląd oraz drobne elementy współdzielą `theme.py` i `widgets.py`. Odczyt wykresu pozostaje w `DataPage`, poza głównym wątkiem Qt. Tworzenie menedżera kolektora, jego odczyty i komendy również odbywają się w workerach.
+
+`CollectorManager` w `application/use_cases/manage_collector.py` zarządza instalacją, statusem i logowaniem przez porty. `NativeRegistration` realizuje rejestrację systemową, UAC i uprawnienia. `bootstrap/collector.py` wybiera scheduler oraz wstrzykuje fabryki runtime i klienta Garmin. Potwierdzony pomocnik administracyjny sam publikuje zastosowaną rewizję; zwykły proces nie zapisuje ponownie jego chronionego stanu.
+
 ```text
 src/garmin_database/
   domain/                 wartości, czas, anulowanie i czyste agregacje
@@ -134,15 +140,17 @@ Identyczny FIT obecny w kilku archiwach ma jedną reprezentację danych i wiele 
 
 `application/read_models.py` definiuje wspólny wybór parametrów i opis agregacji, a adapter `adapters/outbound/postgres/readings.py` realizuje odczyt podsumowań. `DataAccess.snapshot` otwiera jedno połączenie PostgreSQL `REPEATABLE READ READ ONLY`, katalog i rewizję. Wszystkie metryki oraz metadane kompletności jednej odpowiedzi korzystają z tego samego obrazu. Eksporter ponownie rozwiązuje klucze do aktualnych opisów katalogu, więc podanie własnych identyfikatorów pól lub skalowania nie omija wyboru użytkownika.
 
-Eksport i MCP używają tych samych jednostek, reguł wykluczenia próbek, granic dni i niezaokrąglonych obliczeń. `period_summary` łączy średnie dni z wagą `valid_count`; korzysta z niego zarówno eksport miesięczny, jak i odczyt całego okresu. Źródłowe podsumowania Garmin, kategorie i liczniki nadal zachowują dotychczasowe znaczenie w plikach. MCP v1 obsługuje wyłącznie pięć jawnych `MEAN_PARAMETERS`, bez zgadywanych aliasów nocnego HRV lub tętna spoczynkowego.
+Eksport i MCP używają tych samych jednostek, reguł wykluczenia próbek, granic dni i niezaokrąglonych obliczeń. `period_summary` łączy średnie dni z wagą `valid_count`; korzysta z niego zarówno eksport miesięczny, jak i odczyt całego okresu. Źródłowe podsumowania Garmin, kategorie i liczniki zachowują odrębne znaczenie. MCP udostępnia sześć narzędzi i jawną listę 43 kluczy: średnie pięciu `MEAN_PARAMETERS` oraz opisane obserwacje źródłowe. Nie tworzy zgadywanych aliasów nocnego HRV ani tętna spoczynkowego.
 
 `Summaries.daily(..., publish_cache=False)` odczytuje aktualny cache albo liczy wynik bez jego publikacji. MCP używa wyłącznie tego trybu i nie inicjalizuje/migruje bazy. Nie korzysta z sesji Garmin ani sieci Garmin. Eksport może publikować cache przez dodatkowe połączenie według dotychczasowych zasad rewizji i blokady writera. Rdzeń odczytu nie importuje Qt ani SDK MCP.
 
 `application/use_cases/read_health.py` zapewnia wybór metryk, kontrolę zapisanych ustawień przed i po odczycie, lokalne formatowanie czasu oraz limity. Zmiana bazy, rewizji danych lub polityki MCP unieważnia kursor powiązany z zapytaniem i podpisany kluczem procesu. Restart procesu także unieważnia kursory. Nie utrzymujemy otwartej transakcji między stronami. Po unieważnieniu klient rozpoczyna zapytanie od początku, aby nie łączyć różnych obrazów danych.
 
+`application/mcp_results.py` formatuje tabele, zakresy i metadane oraz współdzieli deadline z domeną. `application/page_cursor.py` odpowiada za podpis i weryfikację kursora. Blokada odczytu obejmuje cały snapshot, także gdy klient anulował oczekiwanie na pracujący wątek. Oczekujące żądanie może anulować kolejkę przed otwarciem SQL. Adapter MCP publikuje wyłącznie kontrolowane `AccessError` i błędy wyboru parametrów; pozostałe wyjątki otrzymują stały komunikat.
+
 `adapters/inbound/mcp/server.py` jest adapterem oficjalnego SDK `mcp==1.28.0`, uruchamianym przez `scripts/entrypoints/mcp_stdio.py`. Używa lokalnego transportu `stdio`: klient uruchamia proces, a standardowe wyjście zawiera tylko protokół. Wynik jest w `structuredContent`; krótka część tekstowa nie powiela danych. Schematy wejściowe odrzucają dodatkowe pola, wymagają jawnych metryk, a wszystkie narzędzia są oznaczone jako odczytowe. Wyjątki techniczne są zastępowane krótkimi komunikatami bez danych i surowego SQL. Pojedynczy proces wykonuje jedno zapytanie danych naraz; anulowanie sygnalizuje przerwanie obliczeń i zapytania PostgreSQL przez anulowanie sterownika i statement_timeout.
 
-Warstwa nie udostępnia operacji zapisu, SQL, plików FIT ani zdalnego HTTP. Obsługa aktywności, źródłowych podsumowań nocnych, okien godzinowych, median, odchylenia standardowego i porównywania okresów pozostaje późniejszym zakresem. Statystyki opisują obserwacje i nie zawierają interpretacji medycznej. Kontrakt narzędzi i uruchamianie opisuje [instrukcja](12-running-and-testing.md).
+Warstwa nie udostępnia operacji zapisu, SQL, plików FIT ani zdalnego HTTP. Obsługa aktywności, okien godzinowych, median, odchylenia standardowego i porównywania okresów pozostaje późniejszym zakresem. Statystyki opisują obserwacje i nie zawierają interpretacji medycznej. Kontrakt narzędzi i uruchamianie opisuje [instrukcja](12-running-and-testing.md).
 
 Specyfikacja transportu: [MCP stdio](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#stdio). Implementacja protokołu: [oficjalny Python SDK](https://github.com/modelcontextprotocol/python-sdk/tree/v1.x).
 

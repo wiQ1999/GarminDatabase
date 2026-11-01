@@ -4,7 +4,7 @@
 
 Aplikacja przechowuje lokalne polskie parafrazy publicznych materiałów Garmin, z odnośnikami do producenta. Definicje są wspólne dla panelu pod wykresem i `description` w katalogu oraz metodach odczytu MCP. Rejestr jest w `src/garmin_database/application/parameter_descriptions.py`; nie wymaga sieci ani dodatkowego odczytu bazy podczas wyboru parametru.
 
-Wersja opisu: **1**, sprawdzenie źródeł: **2026-10-25**. Definicje techniczne sprawdzono w publicznym profilu FIT SDK **21.218.0**, zgodnym z przypiętą zależnością projektu; odnośnik do repozytorium Garmin prowadzi do bieżącego publicznego profilu. Teksty nie zastępują instrukcji konkretnego modelu. Plik FIT nie zawsze identyfikuje sprzęt, który dostarczył pojedynczy odczyt, dlatego opis funkcji nie potwierdza rodzaju czujnika każdej próbki.
+Wersja opisu: **2**, sprawdzenie źródeł: **2026-11-01**. Definicje techniczne sprawdzono w publicznym profilu FIT SDK **21.218.0**, zgodnym z przypiętą zależnością projektu; odnośnik do repozytorium Garmin prowadzi do bieżącego publicznego profilu. Teksty nie zastępują instrukcji konkretnego modelu. Plik FIT nie zawsze identyfikuje sprzęt, który dostarczył pojedynczy odczyt, dlatego opis funkcji nie potwierdza rodzaju czujnika każdej próbki.
 
 `evidence` określa zakres potwierdzenia: `manufacturer_explanation` — producent opisuje funkcję, `fit_profile_only` — potwierdzona definicja pola, ale ograniczony opis algorytmu, `not_documented` — brak zweryfikowanego objaśnienia nowego pola. Nieznany parametr zachowuje nazwę i wartość, bez wymyślonej interpretacji. Nieznane wagi, progi, jednostki i prywatne algorytmy pozostają nieznane.
 

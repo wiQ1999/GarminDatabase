@@ -18,6 +18,8 @@ Windows: `.venv/Scripts/python.exe -m garmin_database` lub `dist/GarminDatabase/
 
 Skonfiguruj `GARMIN_TEST_DATABASE_DSN` na osobną bazę testową PostgreSQL. Fixture tworzą osobny schemat per test i usuwają go po zakończeniu. Korzystają tylko z syntetycznych FIT/ZIP. Nie ma zamiennika SQLite ani pomijania testów z powodu braku serwera.
 
+Fixture i smoke używają wspólnego `tests/support/postgresql.py`. Odrzuca on bazę aplikacji o nazwie `garmin`, tworzy własny schemat i usuwa go również po błędzie. Nadal należy jawnie wskazać osobną bazę testową; sama inna nazwa nie zastępuje izolacji środowiska.
+
 Windows PowerShell:
 
 ```powershell
@@ -38,7 +40,7 @@ export GARMIN_TEST_DATABASE_DSN='host=localhost port=5432 dbname=garmin_tests us
 
 | Warstwa | Zakres |
 | --- | --- |
-| Architektury | Kierunek importów między warstwami, brak bibliotek dostawców w rdzeniu i niezależny proces MCP |
+| Architektury | Kierunek importów i aliasów, rdzeń bez operacji plikowych i dynamicznych importów, niezależny proces MCP/kolektora, złożoność funkcji do 10 |
 | Jednostkowe | Typy FIT, precyzja, timestampy, strefa/DST, reguły podsumowań, HTTP, ustawienia i odrzucanie haseł w DSN |
 | Integracyjne | Prawdziwy PostgreSQL, DDL i ograniczenia, atomowe migracje i SHA, import/rollback/CRC, idempotencja, advisory lock między katalogami, spójne snapshoty, cache i anulowanie, eksport i kursory serwerowe, brak fallbacku przy niedostępnej bazie |
 | UI | Nawigacja, zakresy i daty, spinner, nieaktualne odpowiedzi, trend, eksport, ustawienia PostgreSQL, zatrzymanie, MFA |
@@ -50,8 +52,9 @@ Kontrola statyczna:
 Testy `tests/ui/test_responsiveness.py` zatrzymują odczyt stanu, zapis, przygotowanie eksportu i otwieranie zasobów na barierach w tle. Sprawdzają obsługę zdarzeń Qt, ruch wskaźnika, nawigację, brak kolejki powtórzonych odświeżeń, cykle odczytu i zamknięcie bez `wait()` w wątku GUI. Regresje obejmują publikację liczników przed wolnym katalogiem, zachowanie stanu przy błędzie katalogu, odstęp ponowień i zastępowanie komunikatów także przed pierwszym poprawnym odczytem. Dziennik sprawdzany jest przed operacją, podczas jej trwania i po zakończeniu, z limitem 500 wierszy oraz bez przycisku szczegółów. Testy PostgreSQL sprawdzają snapshoty i anulowanie rzeczywistego `pg_sleep` przez deadline i Event. `test_catalog_query.py` weryfikuje katalog z wieloma nieobserwowanymi wariantami w ograniczonym czasie SQL oraz źródła interpretacji, brak duplikatów i odrzucenie nieaktywnych dekodowań. Używają wyłącznie osobnej bazy testowej i syntetycznych archiwów.
 
 ```sh
-python -m ruff check src tests scripts/entrypoints scripts/build.py scripts/run_tests.py scripts/smoke.py
-python -m ruff format --check src tests scripts/entrypoints scripts/build.py scripts/run_tests.py scripts/smoke.py
+python -m ruff check src scripts tests
+python -m radon cc -s src scripts
+python -m pytest tests/architecture -q
 ```
 
 ## Build i smoke
@@ -99,6 +102,8 @@ Fingerprint porównuje wszystkie zachowane wartości, typy, ważność, definicj
 Próg 2× w tym odbiorze dotyczy pełnego importu lokalnego w porównywalnym środowisku. Nie oznacza dwukrotnie szybszej odpowiedzi serwera Garmin ani gwarancji dla każdego pojedynczego małego FIT. Nakładanie HTTP na import ma odrębne testy synchronizacji z barierami zdarzeń: jeden request naraz, najwyżej jeden dzień wyprzedzenia, zachowana kolejność SQL, zatrzymanie po 401/403/429, Retry-After, anulowanie i wznowienie. Testy partii obejmują późne CRC, anulowanie po flush, reprocess, odwróconą kolejność RETURNING, tablice/null/UTF-8/uint64 i poprawną kompletność dnia.
 
 ## Operacje bez UI
+
+CLI importu używa zapisanego `download_from`. Eksport używa `history_from`, `history_to` (puste oznacza dzisiaj), `recent_days` i `summary_period`. Jawne opcje polecenia mają pierwszeństwo. Wszystkie wejścia korzystają z jednego potoku synchronizacji, bez osobnego downloadera i jawnych plików sesji.
 
 ```sh
 python -m garmin_database.bootstrap.cli status --data-dir data

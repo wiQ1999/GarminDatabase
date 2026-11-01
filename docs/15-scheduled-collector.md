@@ -31,6 +31,7 @@ Nie ma stałego demona, kolejki poleceń, HTTP/API ani zdalnego sterowania kolek
 | `domain/schedule.py` | Stałe terminy UTC, następny przyszły termin i pomijanie spóźnionych uruchomień |
 | `application/collector_models.py` | Wersjonowana konfiguracja, rewizja i stan kolektora |
 | `application/use_cases/run_collector.py` | Jedno wykonanie, blokady, pauzy, wspólny Sync i trwały wynik |
+| `application/use_cases/manage_collector.py` | Instalacja, odczyt statusu i logowanie przez porty |
 | `application/ports.py` | Port runtime kolektora oraz istniejące porty importu |
 | `adapters/inbound/collector/commands.py` | CLI i wejście harmonogramu |
 | `adapters/outbound/collector_runtime.py` | Zegar, czas rozruchu, pliki stanu i bezpieczna klasyfikacja błędów |
@@ -43,6 +44,8 @@ Nie ma stałego demona, kolejki poleceń, HTTP/API ani zdalnego sterowania kolek
 Domain i application nadal używają tylko biblioteki standardowej. Status i obsługa harmonogramu nie ładują Qt, SDK Garmin, FIT ani MCP. Samo wejście poza terminem nie otwiera SQL, sesji ani logu. `Services.prepare()` sprawdza bieżący schemat przez odczyt; inicjalizacja i odzyskiwanie importu wymagają writera. GUI może otworzyć się i czytać zatwierdzone dane podczas pracy kolektora.
 
 Blokady obejmują lokalną instancję kolektora, plik sesji i dotychczasowy writer SQL. PostgreSQL advisory lock chroni tę samą bazę/schemat również między hostami o różnych folderach danych. Logowanie i cały sieciowy Sync korzystający z tego samego magazynu sesji nie zachodzą na siebie. Blokady zwalnia system także po awarii procesu. Nie usuwać plików blokad w celu odblokowania aktywnej operacji.
+
+Pominięcie zajętego writera zachowuje cały wcześniejszy wynik, podsumowanie, pauzę uwierzytelnienia i Retry-After; zapisuje jedynie podjęty termin i następny cykl. Utrata dostępu do sesji po synchronizacji kończy próbę trwałym `session_error`, zamiast pozostawiać stan pracy. Po rejestracji przez UAC zastosowaną rewizję zapisuje pomocnik z odpowiednimi uprawnieniami.
 
 ## Harmonogram systemowy
 

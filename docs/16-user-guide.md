@@ -63,6 +63,8 @@ MCP ma dostęp tylko do odczytu. `get_samples` pokazuje szczegóły dnia, `get_h
 
 ## Polecenia
 
+`garmin-db` używa zapisanej daty początku pobierania. Eksport dziedziczy zapisany zakres historii, liczbę dni szczegółów i okres podsumowań. Opcje `--from`, `--to`, `--recent-days` i `--summary-period` nadpisują odpowiednie wartości dla danego wywołania.
+
 | Program | Polecenia |
 | --- | --- |
 | `garmin-db` (pakiet Python) | `status`, `sync`, `sync-all`, `import-local`, `reprocess`, `export`; opcje przez `--help` |
