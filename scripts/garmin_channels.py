@@ -28,6 +28,7 @@ from garmin_database.domain.aggregation import (
     monthly_summaries,
     period_summary,
 )
+from scripts.garmin_independent_summaries import daily_audit
 
 
 def stamp(value):
@@ -315,6 +316,8 @@ async def collect_parameter(
         export_history=history_audit(parameter, rows, daily, history),
         mcp=checked_mcp,
     )
+    if key in MEAN_PARAMETERS:
+        audit["raw_daily_summary"] = daily_audit(rows, key, daily)
     month_file = read_export(month_directory, "history", key)
     audit["export_month_history"] = monthly_export_audit(
         parameter, rows, daily, month_file, begin, end

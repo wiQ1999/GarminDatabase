@@ -56,6 +56,7 @@ def summarize_audit(audits):
                 "export_details",
                 "export_history",
                 "export_month_history",
+                "raw_daily_summary",
             ]:
                 if channel not in channels:
                     continue
