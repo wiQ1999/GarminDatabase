@@ -19,7 +19,8 @@ def imports(path):
             yield from (a.name for a in node.names)
         if isinstance(node, ast.ImportFrom):
             package = ".".join(path.parent.relative_to(PACKAGE.parent).parts)
-            yield resolve_name("." * node.level + (node.module or ""), package)
+            module = resolve_name("." * node.level + (node.module or ""), package)
+            yield from (module + "." + alias.name for alias in node.names)
 
 
 @pytest.mark.parametrize(
@@ -74,3 +75,29 @@ def test_collector_management_has_no_gui_sdk_or_decoder_dependency(tmp_path):
         timeout=20,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_core_has_no_filesystem_effects_or_dynamic_imports():
+    effects = {
+        "open",
+        "read_text",
+        "write_text",
+        "read_bytes",
+        "write_bytes",
+        "resolve",
+        "mkdir",
+        "unlink",
+        "connect",
+        "import_module",
+        "__import__",
+    }
+    for layer in ("domain", "application"):
+        for path in (PACKAGE / layer).rglob("*.py"):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if isinstance(node, ast.Call):
+                    name = (
+                        node.func.attr
+                        if isinstance(node.func, ast.Attribute)
+                        else getattr(node.func, "id", None)
+                    )
+                    assert name not in effects, (path, node.lineno, name)

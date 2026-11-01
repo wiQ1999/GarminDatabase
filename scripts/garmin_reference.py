@@ -6,7 +6,7 @@ import re
 from collections import Counter
 from datetime import date, datetime
 
-from scripts.verify_garmin_html import MONTHS, PHASES, ZONE, SavedPage
+from scripts.garmin_html import MONTHS, PHASES, ZONE, SavedPage
 
 HR = "monitoring.heart_rate"
 RESP = "respiration_rate.respiration_rate"
@@ -46,26 +46,36 @@ def ancestors(node):
         node = node.parent
 
 
+def display_dates(text, year):
+    parts = re.findall(r"([^\W\d_]+)\s+(\d{1,2})(?:,\s*(\d{4}))?", text)
+    try:
+        return [
+            date(int(y or year), PL_MONTHS[m[:3].capitalize()], int(d))
+            for m, d, y in parts
+        ]
+    except (KeyError, TypeError, ValueError):
+        return []
+
+
 def visible_range(page, filename):
-    year = int(re.findall(r"\d{4}", filename)[-1])
+    years = re.findall(r"\d{4}", filename)
+    year = int(years[-1]) if years else None
     labels = [
         n.text()
         for n in page.root.walk()
         if n.has_class("NavigationComponent_datePickerContainer")
     ]
     if labels:
-        parts = re.findall(r"([^\W\d_]+)\s+(\d{1,2})(?:,\s*(\d{4}))?", labels[0])
-        if parts:
-            dates = [
-                date(int(y or year), PL_MONTHS[m[:3]], int(d)) for m, d, y in parts
-            ]
+        dates = display_dates(labels[0], year)
+        if dates:
             return dates[0], dates[-1], labels[0], "visible_picker"
     for node in page.root.walk():
         if node.has_class("ui-datepicker-trigger"):
             match = re.search(r",\s*([^\W\d_]+)\s+(\d+),\s*(\d{4})", node.text())
             if match:
-                day = date(int(match[3]), PL_MONTHS[match[1][:3]], int(match[2]))
-                return day, day, node.text(), "visible_picker"
+                dates = display_dates(match[0], year)
+                if dates:
+                    return dates[0], dates[0], node.text(), "visible_picker"
     return None, None, "brak daty w widoku", "unavailable"
 
 

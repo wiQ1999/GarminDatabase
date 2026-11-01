@@ -210,7 +210,11 @@ def history_audit(parameter, rows, daily, history):
         return difference(map(signature, rows), map(signature, export_rows(history)))
     columns = summary_columns(parameter, "day")
     return difference(
-        (scalar([r[c] for c in columns]) for r in daily), map(scalar, history["data"])
+        (scalar(normalized_summary(r, columns)) for r in daily),
+        (
+            scalar(normalized_summary(dict(zip(history["columns"], row)), columns))
+            for row in history["data"]
+        ),
     )
 
 
@@ -264,10 +268,15 @@ def monthly_export_audit(parameter, rows, daily, history, begin, end):
         return difference(map(signature, rows), map(signature, export_rows(history)))
     columns = summary_columns(parameter, "month")
     expected = (
-        [r["day"] if c == "month" else r[c] for c in columns]
-        for r in monthly_summaries(daily, begin, end)
+        dict(row, month=row["day"]) for row in monthly_summaries(daily, begin, end)
     )
-    return difference(map(scalar, expected), map(scalar, history["data"]))
+    return difference(
+        (scalar(normalized_summary(row, columns)) for row in expected),
+        (
+            scalar(normalized_summary(dict(zip(history["columns"], row)), columns))
+            for row in history["data"]
+        ),
+    )
 
 
 async def mean_statistics_audit(wire, key, begin, end, revision, daily):

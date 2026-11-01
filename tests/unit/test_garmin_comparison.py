@@ -14,6 +14,59 @@ from scripts.garmin_reference import (
 )
 
 
+def test_summary_audit_compares_instants_across_export_timezone_formats():
+    from garmin_database.application.read_models import summary_columns
+    from garmin_database.application.time_presentation import warsaw_iso
+    from garmin_database.domain.aggregation import aggregate_days, monthly_summaries
+    from scripts.garmin_channels import history_audit, monthly_export_audit
+
+    parameter = dict(key="monitoring.heart_rate", representation="sample")
+    start, end = date(2024, 1, 2), date(2024, 1, 3)
+    rows = [
+        dict(
+            time="2024-01-02T09:00:00.123456+00:00",
+            value=70,
+            validity="valid",
+            requested_day="2024-01-02",
+        )
+    ]
+    daily = aggregate_days(rows, parameter)
+    for period, values in (
+        ("day", daily),
+        ("month", list(monthly_summaries(daily, start, end))),
+    ):
+        columns = summary_columns(parameter, period)
+        document = dict(
+            columns=columns,
+            data=[
+                [
+                    row["day"]
+                    if column == "month"
+                    else warsaw_iso(row[column])
+                    if column in ("first_time", "last_time")
+                    else row[column]
+                    for column in columns
+                ]
+                for row in values
+            ],
+        )
+        audit = (
+            history_audit(parameter, rows, daily, document)
+            if period == "day"
+            else monthly_export_audit(parameter, rows, daily, document, start, end)
+        )
+        assert audit["equal"]
+        document["data"][0][columns.index("first_time")] = (
+            "2024-01-02T10:00:01.123456+01:00"
+        )
+        audit = (
+            history_audit(parameter, rows, daily, document)
+            if period == "day"
+            else monthly_export_audit(parameter, rows, daily, document, start, end)
+        )
+        assert not audit["equal"]
+
+
 def test_reference_uses_visible_range_instead_of_filename():
     page = SavedPage()
     page.feed(
@@ -34,6 +87,18 @@ def test_year_range_keeps_explicit_years():
         date(2025, 11, 2),
         date(2026, 10, 31),
     )
+
+
+def test_visible_explicit_date_does_not_require_date_in_filename():
+    page = SavedPage()
+    page.feed('<div class="NavigationComponent_datePickerContainer">paź 25, 2026</div>')
+    assert visible_range(page, "capture.html")[:2] == (date(2026, 10, 25),) * 2
+
+
+def test_unknown_calendar_year_is_unavailable_instead_of_guessed():
+    page = SavedPage()
+    page.feed('<div class="NavigationComponent_datePickerContainer">Paź 25</div>')
+    assert visible_range(page, "capture.html")[:2] == (None, None)
 
 
 def test_generic_series_is_only_mapped_with_semantic_axis_context():

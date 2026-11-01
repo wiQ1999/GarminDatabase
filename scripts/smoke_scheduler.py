@@ -26,7 +26,7 @@ from psycopg import sql
 from psycopg.conninfo import make_conninfo
 
 from garmin_database.adapters.outbound.filesystem.collector_files import CollectorFiles
-from garmin_database.adapters.outbound.scheduler.manager import ScheduleManager
+from garmin_database.bootstrap.collector import create_manager
 
 
 def powershell(script, payload):
@@ -49,7 +49,9 @@ def powershell(script, payload):
     if result.returncode:
         # Only this isolated smoke uses generated credentials. Never print the
         # PowerShell exception message, command source, payload or password.
-        category = result.stderr.strip().splitlines()[-1] if result.stderr else "unknown"
+        category = (
+            result.stderr.strip().splitlines()[-1] if result.stderr else "unknown"
+        )
         if not re.fullmatch(r"[A-Za-z0-9_.:, -]{1,240}", category):
             category = "unknown"
         raise RuntimeError("Native Windows smoke operation failed: " + category)
@@ -179,6 +181,54 @@ def diagnostics(instance, state):
 
 
 def main():
+    options, binary, dsn = smoke_options()
+    nonce = uuid4().hex[:10]
+    name, schema = "gdbci" + nonce, "garmin_native_" + nonce
+    base = (Path(os.environ["PROGRAMDATA"]) if os.name == "nt" else Path("/opt")) / (
+        "garmin-ci-" + nonce
+    )
+    base.mkdir(mode=0o755)
+    if os.name == "nt" and not options.preflight:
+        subprocess.run(
+            [
+                "wevtutil.exe",
+                "sl",
+                "Microsoft-Windows-TaskScheduler/Operational",
+                "/e:true",
+            ],
+            check=True,
+            capture_output=True,
+        )
+    created = False
+    try:
+        account, password = create_account(name, base)
+        created = True
+        if options.preflight:
+            print("Native scheduler account preflight OK")
+            return
+        program, probe = prepare_program(binary, base, account)
+        check_schedule(
+            binary, base, account, password, name, schema, dsn, program, probe
+        )
+
+    finally:
+        if created:
+            if os.name == "nt":
+                powershell("Remove-LocalUser -Name $p.name", {"name": name})
+            else:
+                subprocess.run(["userdel", name], capture_output=True, check=False)
+        expected_parent = (
+            Path(os.environ["PROGRAMDATA"]) if os.name == "nt" else Path("/opt")
+        )
+        if (
+            base.resolve().parent != expected_parent.resolve()
+            or base.name != "garmin-ci-" + nonce
+        ):
+            raise ValueError("Refusing cleanup outside the disposable smoke directory")
+        shutil.rmtree(base)
+
+
+def smoke_options():
     args = argparse.ArgumentParser()
     args.add_argument("executable", type=Path, nargs="?")
     args.add_argument("--preflight", action="store_true")
@@ -194,126 +244,109 @@ def main():
     )
     if not admin:
         raise PermissionError("Native smoke requires an isolated admin/root CI runner")
-    nonce = uuid4().hex[:10]
-    name, schema = "gdbci" + nonce, "garmin_native_" + nonce
-    base = (Path(os.environ["PROGRAMDATA"]) if os.name == "nt" else Path("/opt")) / (
-        "garmin-ci-" + nonce
+    return options, binary, dsn
+
+
+def prepare_program(binary, base, account):
+    program = base / "program"
+    shutil.copytree(binary.parent, program)
+    source = base / "source"
+    shutil.copytree(
+        Path(__file__).resolve().parents[1] / "src",
+        source,
+        ignore=shutil.ignore_patterns("__pycache__"),
     )
-    base.mkdir(mode=0o755)
-    if os.name == "nt" and not options.preflight:
-        subprocess.run(
-            ["wevtutil.exe", "sl", "Microsoft-Windows-TaskScheduler/Operational", "/e:true"],
-            check=True,
-            capture_output=True,
-        )
-    created = False
-    try:
-        account, password = create_account(name, base)
-        created = True
-        if options.preflight:
-            print("Native scheduler account preflight OK")
-            return
-        program = base / "program"
-        shutil.copytree(binary.parent, program)
-        source = base / "source"
-        shutil.copytree(
-            Path(__file__).resolve().parents[1] / "src",
-            source,
-            ignore=shutil.ignore_patterns("__pycache__"),
-        )
-        probe = base / "session-probe.py"
-        probe.write_text(
-            "import json,sys\nfrom pathlib import Path\n"
-            + f"sys.path.insert(0,{str(source)!r})\n"
-            + "from garmin_database.bootstrap.collector import session_store\n"
-            + "from garmin_database.application.collector_models import CollectorConfig\n"
-            + "config=CollectorConfig(**json.loads(Path(sys.argv[1]).read_text()))\n"
-            + "store=session_store(config)\n"
-            + "with store.lock():\n store.save('synthetic-native-session')\n assert store.load()=='synthetic-native-session'\n store.clear()\n"
-            + "(Path(config.state_dir)/'session-probe.ok').write_text('ok')\n",
-            encoding="utf-8",
-        )
-        if os.name == "nt":
-            for directory in (program, source):
-                subprocess.run(
-                    [
-                        "icacls.exe",
-                        str(directory),
-                        "/grant",
-                        account + ":(OI)(CI)RX",
-                        "/T",
-                    ],
-                    capture_output=True,
-                    check=True,
+    probe = base / "session-probe.py"
+    probe.write_text(
+        "import json,sys\nfrom pathlib import Path\n"
+        + f"sys.path.insert(0,{str(source)!r})\n"
+        + "from garmin_database.bootstrap.collector import session_store\n"
+        + "from garmin_database.application.collector_models import CollectorConfig\n"
+        + "config=CollectorConfig(**json.loads(Path(sys.argv[1]).read_text()))\n"
+        + "store=session_store(config)\n"
+        + "with store.lock():\n store.save('synthetic-native-session')\n assert store.load()=='synthetic-native-session'\n store.clear()\n"
+        + "(Path(config.state_dir)/'session-probe.ok').write_text('ok')\n",
+        encoding="utf-8",
+    )
+    if os.name == "nt":
+        for directory in (program, source):
+            subprocess.run(
+                [
+                    "icacls.exe",
+                    str(directory),
+                    "/grant",
+                    account + ":(OI)(CI)RX",
+                    "/T",
+                ],
+                capture_output=True,
+                check=True,
+            )
+    return program, probe
+
+
+def wait_for_collector(files, config, name):
+    deadline = time.monotonic() + 210
+    while time.monotonic() < deadline:
+        state = files.load_state(config)
+        if state.outcome == "auth_required":
+            break
+        if state.finished_at and state.outcome not in {
+            "running",
+            "never_run",
+        }:
+            diagnostics(name, state)
+            raise RuntimeError("Native collector finished with " + state.outcome)
+        time.sleep(1)
+    else:
+        diagnostics(name, state)
+        raise RuntimeError("Native scheduled collector did not complete")
+    return state
+
+
+def check_schedule(binary, base, account, password, name, schema, dsn, program, probe):
+    with psycopg.connect(dsn, autocommit=True) as database:
+        database.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        try:
+            files = CollectorFiles(base / "collector.json")
+            config = replace(
+                files.defaults(base / "data"),
+                state_dir=str(base / "state"),
+                session_path=str(base / "state/auth/session.bin"),
+                run_as=account,
+                windows_logon="password",
+                instance=name,
+                status_reader=(
+                    os.environ.get("USERDOMAIN", ".") + "\\" + getpass.getuser()
                 )
-        with psycopg.connect(dsn, autocommit=True) as database:
-            database.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
-            try:
-                files = CollectorFiles(base / "collector.json")
-                config = replace(
-                    files.defaults(base / "data"),
-                    state_dir=str(base / "state"),
-                    session_path=str(base / "state/auth/session.bin"),
-                    run_as=account,
-                    windows_logon="password",
-                    instance=name,
-                    status_reader=(
-                        os.environ.get("USERDOMAIN", ".") + "\\" + getpass.getuser()
-                    )
-                    if os.name == "nt"
-                    else "",
-                    database_dsn=make_conninfo(dsn, options="-c search_path=" + schema),
-                    interval_minutes=15,
-                    enabled=True,
-                    anchor_at=(datetime.now(timezone.utc) + timedelta(minutes=2))
-                    .replace(second=0, microsecond=0)
-                    .isoformat(),
-                )
-                files.save_config(config)
-                manager = ScheduleManager(
-                    files,
-                    scheduler(
-                        files, [str(program / binary.name)], config, password, probe
-                    ),
-                )
-                if os.name != "nt":
-                    manager.prepare_key(config)
-                manager.apply(config)
-                deadline = time.monotonic() + 210
-                while time.monotonic() < deadline:
-                    state = files.load_state(config)
-                    if state.outcome == "auth_required":
-                        break
-                    if state.finished_at and state.outcome not in {
-                        "running",
-                        "never_run",
-                    }:
-                        diagnostics(name, state)
-                        raise RuntimeError(
-                            "Native collector finished with " + state.outcome
-                        )
-                    time.sleep(1)
-                else:
-                    diagnostics(name, state)
-                    raise RuntimeError("Native scheduled collector did not complete")
-                assert (Path(config.state_dir) / "session-probe.ok").read_text() == "ok"
-                assert state.auth_required and state.summary["processed_days"] == 1
-                assert not Path(config.session_path).exists()
-                print(
-                    "Native scheduler smoke OK: dedicated account, encrypted session, persistent auth pause"
-                )
-            finally:
-                cleanup_task(name)
-                database.execute(
-                    sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema))
-                )
-    finally:
-        if created:
-            if os.name == "nt":
-                powershell("Remove-LocalUser -Name $p.name", {"name": name})
-            else:
-                subprocess.run(["userdel", name], capture_output=True, check=False)
-        shutil.rmtree(base)
+                if os.name == "nt"
+                else "",
+                database_dsn=make_conninfo(dsn, options="-c search_path=" + schema),
+                interval_minutes=15,
+                enabled=True,
+                anchor_at=(datetime.now(timezone.utc) + timedelta(minutes=2))
+                .replace(second=0, microsecond=0)
+                .isoformat(),
+            )
+            files.save_config(config)
+            manager = create_manager(
+                files,
+                scheduler(files, [str(program / binary.name)], config, password, probe),
+            )
+            if os.name != "nt":
+                manager.prepare_key(config)
+            manager.apply(config)
+            state = wait_for_collector(files, config, name)
+            assert (Path(config.state_dir) / "session-probe.ok").read_text() == "ok"
+            assert state.auth_required and state.summary["processed_days"] == 1
+            assert not Path(config.session_path).exists()
+            print(
+                "Native scheduler smoke OK: dedicated account, encrypted session, persistent auth pause"
+            )
+        finally:
+            cleanup_task(name)
+            database.execute(
+                sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema))
+            )
 
 
 if __name__ == "__main__":

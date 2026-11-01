@@ -12,11 +12,6 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
-from uuid import uuid4
-
-import psycopg
-from psycopg import sql
-from psycopg.conninfo import make_conninfo
 
 from garmin_database.adapters.outbound.postgres.database import Database
 from garmin_database.adapters.outbound.postgres.imports import Importer
@@ -24,6 +19,7 @@ from garmin_database.adapters.outbound.postgres.imports import Importer
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from tests.support.fixtures import archive, fit_bytes  # noqa: E402
+from tests.support.postgresql import isolated_schema  # noqa: E402
 
 
 def baseline_importer(ref):
@@ -50,22 +46,11 @@ def baseline_importer(ref):
 
 @contextmanager
 def isolated_database(dsn):
-    schema = "garmin_bench_" + uuid4().hex
-    with psycopg.connect(dsn, autocommit=True) as admin:
-        if admin.info.dbname == "garmin":
-            raise ValueError("Wskaż osobną bazę testową")
-        admin.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
-        try:
-            with tempfile.TemporaryDirectory(dir=ROOT / "test-results") as folder:
-                db = Database(
-                    folder, make_conninfo(dsn, options=f"-c search_path={schema}")
-                )
-                db.initialize()
-                yield db
-        finally:
-            admin.execute(
-                sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema))
-            )
+    with isolated_schema(dsn, "garmin_bench_") as scoped:
+        with tempfile.TemporaryDirectory(dir=ROOT / "test-results") as folder:
+            db = Database(folder, scoped)
+            db.initialize()
+            yield db
 
 
 def fingerprint(db):

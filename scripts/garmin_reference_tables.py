@@ -3,8 +3,8 @@
 import re
 from datetime import date
 
+from scripts.garmin_html import Node
 from scripts.garmin_reference import HR, NUMBER, PL_MONTHS, STRESS, numeric_card
-from scripts.verify_garmin_html import Node
 
 
 def month_day(text, default_month=None):

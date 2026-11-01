@@ -1,11 +1,15 @@
 import importlib.util
+import json
 import struct
+import time
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
 import fitdecode
 from garmin_fit_sdk import Encoder
+
+from tests.support.fixtures import archive, fit_bytes
 
 spec = importlib.util.spec_from_file_location(
     "inventory",
@@ -94,3 +98,37 @@ class InventoryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_empty_inventory_has_zero_counts_and_no_division_by_zero(tmp_path):
+    inventory.main(["--data-dir", str(tmp_path)])
+    report = json.loads((tmp_path / "fit_inventory.json").read_text(encoding="utf-8"))
+    assert report["summary"]["archives"] == 0
+    assert report["summary"]["public_profile_named_occurrence_percent"] == 0
+    assert report["summary"]["unique_files_decoded"] == 0
+    from scripts.render_fit_inventory_docs import analysis_report, catalog_report
+
+    catalog, known = catalog_report(report)
+    analysis = analysis_report(report, {"days": {}}, known)
+    assert "0 archiwa" in catalog
+    assert "PostgreSQL" in analysis
+    assert known == []
+
+
+def test_cached_unselected_files_do_not_inflate_inventory_and_report_is_repeatable(
+    tmp_path,
+):
+    scan = inventory.InventoryScan(
+        {"unselected": inventory.decode_inventory(fit_bytes())}
+    )
+    path = archive(tmp_path)
+    scan.scan_archive(path)
+    report = scan.report([path], {"days": {}}, time.monotonic(), {})
+    assert report["summary"]["unique_file_hashes"] == 1
+    assert report["summary"]["unique_files_decoded"] == 1
+    assert (
+        report["fields"]
+        == scan.report([path], {"days": {}}, time.monotonic(), {})["fields"]
+    )
+    scan.scan_archive(path)
+    assert scan.totals["file_occurrences"] == 2

@@ -21,6 +21,7 @@ from garmin_database.adapters.outbound.filesystem.settings_json import Settings 
 from garmin_database.adapters.outbound.postgres.database import Database  # noqa: E402
 from garmin_database.adapters.outbound.postgres.queries import Queries  # noqa: E402
 from garmin_database.application.mcp_metrics import MCP_PARAMETERS  # noqa: E402
+from garmin_database.domain.time import today  # noqa: E402
 from scripts.garmin_channels import Wire, collect  # noqa: E402
 from scripts.garmin_differences import selected_keys, source_differences  # noqa: E402
 from scripts.garmin_point_locators import write_point_locators  # noqa: E402
@@ -201,9 +202,13 @@ def supplemental_scopes(db, catalog, audit):
         for key, check in audit["parameters"].items():
             if check["sql_rows"]:
                 continue
+            ids = (
+                set(catalog[key]["ids"])
+                | Queries.component_rules(catalog[key], conn).keys()
+            )
             day = conn.execute(
                 "SELECT max(a.day) FROM fit_fields f JOIN fit_messages m ON m.id=f.message_id JOIN file_decodes d ON d.id=m.file_decode_id JOIN archive_entries e ON e.fit_file_id=d.fit_file_id JOIN archives a ON a.id=e.archive_id WHERE d.is_active=1 AND f.resolved_catalog_id=ANY(%s)",
-                (catalog[key]["ids"],),
+                (list(ids),),
             ).fetchone()[0]
             if day:
                 scopes.setdefault(date.fromisoformat(day), []).append(key)
@@ -223,7 +228,7 @@ async def compare_references(
         if ref["start"] and ref["topic"] != "unrelated_or_incomplete":
             keys = selected_keys(ref, catalog)
             token = (ref["start"], ref["end"], tuple(keys))
-            if token not in cache:
+            if keys and token not in cache:
                 cache[token] = await collect(
                     db,
                     configured,
@@ -236,7 +241,7 @@ async def compare_references(
                     wire,
                 )
                 audits.append(public_source(cache[token]))
-            bundle = cache[token]
+            bundle = cache.get(token)
         sources.append(source_differences(ref, bundle, catalog))
         (args.output / "sources.checkpoint.json").write_text(
             json.dumps(sources, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -245,6 +250,11 @@ async def compare_references(
 
 
 async def run_channels(args, db, catalog, configured, private, refs):
+    with db.connect(readonly=True) as conn:
+        last_day = conn.execute("SELECT max(day) FROM archives").fetchone()[0]
+    audit_day = args.audit_day or (
+        date.fromisoformat(last_day) if last_day else today()
+    )
     params = StdioServerParameters(
         command=str(args.mcp_executable.resolve()),
         args=["--settings-file", str(private.resolve())],
@@ -269,8 +279,8 @@ async def run_channels(args, db, catalog, configured, private, refs):
                     args.output / "exports",
                     catalog,
                     list(catalog),
-                    date(2026, 10, 30),
-                    date(2026, 10, 30),
+                    audit_day,
+                    audit_day,
                     wire,
                 )
                 cursor = None
@@ -419,6 +429,11 @@ def main():
     parser.add_argument("--settings-file", type=Path, required=True)
     parser.add_argument("--mcp-executable", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--audit-day",
+        type=date.fromisoformat,
+        help="Dzień kontroli katalogu; domyślnie ostatnie archiwum",
+    )
     args = parser.parse_args()
     try:
         anyio.run(analyze, args)

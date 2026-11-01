@@ -84,9 +84,14 @@ def main():
             email=input("Garmin email (local console): ").strip(),
             password=getpass("Garmin password: "),
             prompt_mfa=lambda: getpass("Garmin MFA code: ").strip(),
+            retry_attempts=0,
         )
-        api.login()
-        candidate = api.download_health_snapshot(args.date.isoformat())
+        try:
+            api.login("{}")
+            candidate = api.download_health_snapshot(args.date.isoformat())
+        finally:
+            api.password = None
+            api.prompt_mfa = None
         inventory(candidate)
         output.parent.mkdir(parents=True, exist_ok=True)
         try:

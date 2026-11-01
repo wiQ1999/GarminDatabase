@@ -4,6 +4,36 @@ from zoneinfo import ZoneInfo
 from scripts.verify_garmin_html import SavedPage, compare_points, parse_point
 
 
+def test_source_cards_use_visible_day_and_do_not_choose_conflicting_last_value(
+    tmp_path, monkeypatch
+):
+    from datetime import date
+
+    from scripts import verify_garmin_html as verification
+
+    page = SavedPage()
+    page.feed('<div class="NavigationComponent_datePickerContainer">Paź 25, 2026</div>')
+    key = "hrv_status_summary.last_night_average"
+    requested = []
+
+    def channels(queries, service, parameter, start, end):
+        requested.append((start, end))
+        return [{"value": value, "validity": "valid"} for value in (40, 50)], {}
+
+    monkeypatch.setattr(verification, "compare_channels", channels)
+    checks, _ = verification.check_cards(
+        tmp_path / "2026_07_16-hrv.html",
+        page,
+        [("Średnia nocna", "50 ms")],
+        None,
+        None,
+        {key: {"key": key}},
+    )
+    assert requested == [(date(2026, 10, 25), date(2026, 10, 25))]
+    assert checks[0]["status"] == "ambiguous_source_observations"
+    assert not checks[0]["matched"]
+
+
 def test_saved_html_extracts_cards_without_executing_scripts():
     page = SavedPage()
     page.feed("""<script>raise Error("untrusted")</script><div class="DataBlock_large__x">

@@ -8,8 +8,7 @@ import re
 import sys
 from collections import Counter
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta
-from html.parser import HTMLParser
+from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
@@ -19,32 +18,12 @@ from garmin_database.adapters.outbound.postgres.database import Database
 from garmin_database.adapters.outbound.postgres.queries import Queries
 from garmin_database.application.mcp_metrics import MCP_PARAMETERS
 from garmin_database.bootstrap.mcp import create_service
+from scripts.garmin_html import MONTHS, PHASES, ZONE, SavedPage
+from scripts.garmin_reference import visible_range
 
-MONTHS = {
-    name: index
-    for index, name in enumerate(
-        (
-            "Jan",
-            "Feb",
-            "Mar",
-            "Apr",
-            "May",
-            "Jun",
-            "Jul",
-            "Aug",
-            "Sep",
-            "Oct",
-            "Nov",
-            "Dec",
-        ),
-        1,
-    )
-}
-ZONE = ZoneInfo("Europe/Warsaw")
 POINT = re.compile(
     r"\w+,\s*(\d{1,2})\s+([A-Za-z]{3}),\s*(\d{1,2}):(\d{2})(?::(\d{2}))?,\s*(-?\d+(?:\.\d+)?)\.\s+(.+)"
 )
-PHASES = {"Czuwanie": 1, "Przebudzenie": 1, "Płytki": 2, "Głęboki": 3, "REM": 4}
 CARDS = {
     "Ocena jakości snu": "sleep_assessment.overall_sleep_score",
     "Średnia nocna": "hrv_status_summary.last_night_average",
@@ -53,80 +32,6 @@ CARDS = {
     "Tętno spoczynkowe": "monitoring_hr_data.current_day_resting_heart_rate",
     "Śr. tętno spoczynkowe z 7 dni": "monitoring_hr_data.resting_heart_rate",
 }
-
-
-class Node:
-    def __init__(self, tag="root", attrs=(), parent=None):
-        self.tag, self.attrs, self.parent = tag, dict(attrs), parent
-        self.children = []
-
-    def walk(self):
-        yield self
-        for child in self.children:
-            if isinstance(child, Node):
-                yield from child.walk()
-
-    def text(self):
-        value = " ".join(
-            child.text() if isinstance(child, Node) else child
-            for child in self.children
-        ).strip()
-        return " ".join(value.split())
-
-    def has_class(self, prefix):
-        return any(c.startswith(prefix) for c in self.attrs.get("class", "").split())
-
-
-class SavedPage(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.root = self.current = Node()
-
-    def handle_starttag(self, tag, attrs):
-        node = Node(tag, attrs, self.current)
-        self.current.children.append(node)
-        if tag not in {
-            "area",
-            "base",
-            "br",
-            "col",
-            "embed",
-            "hr",
-            "img",
-            "input",
-            "link",
-            "meta",
-            "param",
-            "source",
-            "track",
-            "wbr",
-        }:
-            self.current = node
-
-    def handle_startendtag(self, tag, attrs):
-        self.current.children.append(Node(tag, attrs, self.current))
-
-    def handle_endtag(self, tag):
-        node = self.current
-        while node.parent is not None:
-            if node.tag == tag:
-                self.current = node.parent
-                return
-            node = node.parent
-
-    def handle_data(self, data):
-        self.current.children.append(data)
-
-    def cards(self):
-        for label in self.root.walk():
-            if label.has_class("SleepScoreSummary_dailySleepScoreValue"):
-                yield "Ocena jakości snu", label.text()
-            if not label.has_class("DataBlock_dataLabel"):
-                continue
-            parent = label.parent
-            fields = [n for n in parent.walk() if n.has_class("DataBlock_dataField")]
-            if len(fields) == 1:
-                yield label.text(), fields[0].text()
 
 
 @dataclass(frozen=True)
@@ -267,11 +172,21 @@ def check_point_groups(points, queries, service, catalog):
     return checks, channels
 
 
-def check_cards(path, cards, queries, service, catalog):
+def card_comparison(key, expected, rows):
+    values = {r["value"] for r in rows if r["validity"] == "valid"}
+    return dict(
+        parameter=key,
+        matched=len(values) == 1 and same_number(expected, next(iter(values))),
+        source_rows=len(rows),
+        method="unique_valid_source_observation",
+        status="ambiguous_source_observations" if len(values) > 1 else "compared",
+    )
+
+
+def check_cards(path, page, cards, queries, service, catalog):
     card_checks, channels = [], {}
-    single_day = re.fullmatch(r"(\d{4})_(\d{2})_(\d{2})-[a-z]+", path.stem)
-    if single_day:
-        day = date(*map(int, single_day.groups()))
+    day, end, _, _ = visible_range(page, path.name)
+    if day is not None and day == end:
         for label, text in cards:
             key = CARDS.get(label)
             value = re.fullmatch(r"\s*(\d+(?:[.,]\d+)?)\s*(?:ms|bpm)?\s*", text)
@@ -280,17 +195,8 @@ def check_cards(path, cards, queries, service, catalog):
             rows, channels[key] = compare_channels(
                 queries, service, catalog[key], day, day
             )
-            valid = [r for r in rows if r["validity"] == "valid"]
-            match = bool(valid) and same_number(
-                float(value[1].replace(",", ".")), valid[-1]["value"]
-            )
             card_checks.append(
-                dict(
-                    parameter=key,
-                    matched=match,
-                    source_rows=len(rows),
-                    method="last_valid_source_observation",
-                )
+                card_comparison(key, float(value[1].replace(",", ".")), rows)
             )
     return card_checks, channels
 
@@ -298,16 +204,20 @@ def check_cards(path, cards, queries, service, catalog):
 def check_file(path, queries, service, catalog):
     page = SavedPage()
     page.feed(path.read_text(encoding="utf-8"))
-    year = int(re.findall(r"\d{4}", path.stem)[-1])
+    _, end, _, _ = visible_range(page, path.name)
     labels = [
         n.attrs["aria-label"]
         for n in page.root.walk()
         if n.attrs.get("aria-label") and n.has_class("highcharts-point")
     ]
-    points = [p for label in labels if (p := parse_point(label, year))]
+    points = (
+        [p for label in labels if (p := parse_point(label, end.year))] if end else []
+    )
     checks, channels = check_point_groups(points, queries, service, catalog)
     cards = list(page.cards())
-    card_checks, card_channels = check_cards(path, cards, queries, service, catalog)
+    card_checks, card_channels = check_cards(
+        path, page, cards, queries, service, catalog
+    )
     channels.update(card_channels)
     return dict(
         file=path.name,

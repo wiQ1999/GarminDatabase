@@ -81,9 +81,7 @@ def source_locators(source, reference_root):
             if p["parameter"] == key and p["method"] == feature["label"]
         ]
         data, parameter, begin, end = load_verified_series(source, key)
-        for variant in ["chart", "mcp", "export"]:
-            audit_key = "export_details" if variant == "export" else variant
-            assert source["channel_audit"][key][audit_key]["equal"]
+        for variant in verified_variants(source, key):
             actual = channel_points(data, key, variant, begin, end, parameter)
             yield from point_mismatch_rows(source, feature, points, actual, variant)
 
@@ -109,3 +107,16 @@ def write_point_locators(report, output):
         writer.writeheader()
         for source in report["sources"]:
             writer.writerows(source_locators(source, Path(report["reference_root"])))
+
+
+def verified_variants(source, key):
+    for variant in ["chart", "mcp", "export"]:
+        audit_key = "export_details" if variant == "export" else variant
+        audit = source["channel_audit"][key][audit_key]
+        if audit.get("status") in {
+            "not_exposed_by_public_contract",
+            "unsupported_period",
+        }:
+            continue
+        assert audit["equal"]
+        yield variant
